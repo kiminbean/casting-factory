@@ -15,6 +15,85 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+// -- 출고 관리 목업 데이터 --
+type ShippingStatus = "완료" | "진행 중" | "대기";
+
+interface ShippingOrder {
+  id: string;
+  productName: string;
+  company: string;
+  quantity: number;
+  shippingDate: string;
+  status: ShippingStatus;
+}
+
+interface ShippingEvent {
+  timestamp: string;
+  product: string;
+  quantity: number;
+  destination: string;
+}
+
+const shippingOrders: ShippingOrder[] = [
+  {
+    id: "SHP-001",
+    productName: "맨홀 뚜껑 KS D-600",
+    company: "(주)경기도시공사",
+    quantity: 20,
+    shippingDate: "2026-03-28",
+    status: "완료",
+  },
+  {
+    id: "SHP-002",
+    productName: "맨홀 뚜껑 KS D-600",
+    company: "(주)한국도로공사",
+    quantity: 15,
+    shippingDate: "2026-03-30",
+    status: "진행 중",
+  },
+  {
+    id: "SHP-003",
+    productName: "배수구 그레이팅",
+    company: "(주)부산항만공사",
+    quantity: 50,
+    shippingDate: "2026-04-02",
+    status: "대기",
+  },
+];
+
+const recentShippingEvents: ShippingEvent[] = [
+  {
+    timestamp: "2026-03-30 09:15",
+    product: "맨홀 뚜껑 KS D-600",
+    quantity: 10,
+    destination: "(주)한국도로공사",
+  },
+  {
+    timestamp: "2026-03-29 14:30",
+    product: "주철 그레이팅 B형",
+    quantity: 30,
+    destination: "(주)서울시설공단",
+  },
+  {
+    timestamp: "2026-03-28 11:00",
+    product: "맨홀 뚜껑 KS D-600",
+    quantity: 20,
+    destination: "(주)경기도시공사",
+  },
+  {
+    timestamp: "2026-03-27 16:45",
+    product: "배수구 그레이팅",
+    quantity: 15,
+    destination: "(주)인천항만공사",
+  },
+];
+
+const shippingStatusBadge: Record<ShippingStatus, string> = {
+  완료: "bg-green-100 text-green-700",
+  "진행 중": "bg-yellow-100 text-yellow-700",
+  대기: "bg-gray-100 text-gray-600",
+};
+
 // -- 통계 계산 --
 const activeTransports = mockTransports.filter((t) => t.status !== "completed").length;
 const completedTransports = mockTransports.filter((t) => t.status === "completed").length;
@@ -390,6 +469,139 @@ export default function LogisticsPage() {
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* 6. 출고 관리 */}
+        <div className="space-y-4">
+
+          {/* 섹션 헤더 */}
+          <div className="flex items-center gap-3">
+            <Truck className="w-6 h-6 text-indigo-600" />
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">출고 관리</h2>
+              <p className="text-sm text-gray-500">출고 지시서 현황 및 출고 이력 관리</p>
+            </div>
+          </div>
+
+          {/* 출고 통계 카드 3개 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* 금일 출고 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-gray-500">금일 출고</span>
+                <div className="w-9 h-9 bg-indigo-50 rounded-lg flex items-center justify-center">
+                  <Package className="w-5 h-5 text-indigo-600" />
+                </div>
+              </div>
+              <p className="text-3xl font-bold text-gray-900">20개</p>
+              <p className="text-xs text-gray-400 mt-1">오늘 출고 완료된 수량</p>
+            </div>
+
+            {/* 금주 출고 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-gray-500">금주 출고</span>
+                <div className="w-9 h-9 bg-green-50 rounded-lg flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                </div>
+              </div>
+              <p className="text-3xl font-bold text-gray-900">85개</p>
+              <p className="text-xs text-gray-400 mt-1">이번 주 누적 출고 수량</p>
+            </div>
+
+            {/* 출고 대기 */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium text-gray-500">출고 대기</span>
+                <div className="w-9 h-9 bg-amber-50 rounded-lg flex items-center justify-center">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+              </div>
+              <p className="text-3xl font-bold text-gray-900">50개</p>
+              <p className="text-xs text-gray-400 mt-1">출고 대기 중인 수량</p>
+            </div>
+          </div>
+
+          {/* 출고 지시서 목록 + 최근 출고 이력 */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            {/* 출고 지시서 목록 테이블 */}
+            <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Package className="w-4 h-4 text-gray-500" />
+                <h3 className="text-base font-semibold text-gray-800">출고 지시서 목록</h3>
+                <span className="ml-auto text-xs text-gray-400">{shippingOrders.length}건</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      <th className="px-4 py-3 text-left font-medium text-gray-500">출고ID</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-500">제품명</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-500">납품회사</th>
+                      <th className="px-4 py-3 text-right font-medium text-gray-500">수량</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-500">출고일자</th>
+                      <th className="px-4 py-3 text-left font-medium text-gray-500">상태</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {shippingOrders.map((order) => (
+                      <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 font-mono text-xs text-gray-600">{order.id}</td>
+                        <td className="px-4 py-3">
+                          <span className="flex items-center gap-1">
+                            <Package className="w-3 h-3 text-gray-400 shrink-0" />
+                            <span className="text-xs text-gray-700">{order.productName}</span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-700">{order.company}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-800">
+                          {order.quantity}개
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-600">{order.shippingDate}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${shippingStatusBadge[order.status]}`}
+                          >
+                            {order.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* 최근 출고 이력 */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Clock className="w-4 h-4 text-gray-500" />
+                <h3 className="text-base font-semibold text-gray-800">최근 출고 이력</h3>
+              </div>
+              <div className="p-4 space-y-3">
+                {recentShippingEvents.map((event, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0"
+                  >
+                    <div className="mt-0.5 w-7 h-7 bg-indigo-50 rounded-lg flex items-center justify-center shrink-0">
+                      <Truck className="w-4 h-4 text-indigo-500" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-gray-800 truncate">{event.product}</p>
+                      <p className="text-xs text-gray-500 truncate">{event.destination}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs font-semibold text-indigo-700">{event.quantity}개</span>
+                        <span className="text-[10px] text-gray-400">{event.timestamp}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </div>
         </div>
 
