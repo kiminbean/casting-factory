@@ -33,12 +33,14 @@ export default function Header() {
   const [currentTime, setCurrentTime] = useState<string>("");
 
   useEffect(() => {
-    // Set initial time on client only to avoid hydration mismatch
-    setCurrentTime(formatKoreanDateTime(new Date()));
-
     const timer = setInterval(() => {
       setCurrentTime(formatKoreanDateTime(new Date()));
     }, 1000);
+
+    // 초기값을 requestAnimationFrame으로 설정하여 cascading render 방지
+    requestAnimationFrame(() => {
+      setCurrentTime(formatKoreanDateTime(new Date()));
+    });
 
     return () => clearInterval(timer);
   }, []);

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { mockInspections, mockDefectTypeStats } from "@/lib/mock-data";
+import { mockInspections } from "@/lib/mock-data";
 import { formatDate } from "@/lib/utils";
 import { CheckCircle, XCircle, ClipboardList, TrendingDown } from "lucide-react";
 

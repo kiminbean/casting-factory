@@ -276,8 +276,8 @@ export default function OrdersPage() {
 
   // 정렬된 주문 목록
   const sortedOrders = [...mockOrders].sort((a, b) => {
-    let aVal: string | number = a[sortKey] as string | number;
-    let bVal: string | number = b[sortKey] as string | number;
+    const aVal: string | number = a[sortKey] as string | number;
+    const bVal: string | number = b[sortKey] as string | number;
 
     if (typeof aVal === "string" && typeof bVal === "string") {
       const cmp = aVal.localeCompare(bVal, "ko");
