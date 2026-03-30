@@ -1,0 +1,962 @@
+"use client";
+
+import { useState } from "react";
+import {
+  Factory,
+  CheckCircle,
+  ChevronRight,
+  ChevronLeft,
+  Package,
+  Settings,
+  FileText,
+  User,
+  CircleCheck,
+} from "lucide-react";
+
+// ─────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────
+
+type ProductId = "D450" | "D600" | "D800" | "GRATING";
+
+interface Product {
+  id: ProductId;
+  name: string;
+  spec: string;
+  priceRange: string;
+  basePrice: number;
+  diameterOptions: string[];
+  thicknessOptions: string[];
+}
+
+interface FormData {
+  // Step 1
+  selectedProduct: ProductId | null;
+  // Step 2
+  diameter: string;
+  thickness: string;
+  loadClass: string;
+  material: string;
+  postProcessing: string[];
+  quantity: number;
+  desiredDelivery: string;
+  notes: string;
+  // Step 4
+  companyName: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+}
+
+// ─────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────
+
+const PRODUCTS: Product[] = [
+  {
+    id: "D450",
+    name: "맨홀 뚜껑 KS D-450",
+    spec: "직경 450mm, KS 규격",
+    priceRange: "50,000 - 70,000원",
+    basePrice: 55000,
+    diameterOptions: ["450mm", "460mm", "470mm"],
+    thicknessOptions: ["25mm", "30mm", "35mm", "40mm"],
+  },
+  {
+    id: "D600",
+    name: "맨홀 뚜껑 KS D-600",
+    spec: "직경 600mm, KS 규격",
+    priceRange: "75,000 - 100,000원",
+    basePrice: 85000,
+    diameterOptions: ["600mm", "610mm", "620mm"],
+    thicknessOptions: ["30mm", "35mm", "40mm", "45mm"],
+  },
+  {
+    id: "D800",
+    name: "맨홀 뚜껑 KS D-800",
+    spec: "직경 800mm, KS 규격",
+    priceRange: "110,000 - 140,000원",
+    basePrice: 120000,
+    diameterOptions: ["800mm", "810mm", "820mm"],
+    thicknessOptions: ["35mm", "40mm", "45mm", "50mm"],
+  },
+  {
+    id: "GRATING",
+    name: "배수구 그레이팅 500x300",
+    spec: "500x300mm, 격자형",
+    priceRange: "30,000 - 45,000원",
+    basePrice: 35000,
+    diameterOptions: ["500x300mm", "500x350mm", "600x300mm"],
+    thicknessOptions: ["20mm", "25mm", "30mm"],
+  },
+];
+
+const LOAD_CLASSES = ["EN124 B125", "EN124 C250", "EN124 D400", "EN124 E600", "EN124 F900"];
+const MATERIALS = ["FC200", "FC250", "GCD450", "GCD500"];
+const POST_PROCESSING_OPTIONS = [
+  { id: "polish", label: "표면 연마", price: 5000 },
+  { id: "rustProof", label: "방청 코팅", price: 3000 },
+  { id: "zinc", label: "아연 도금", price: 8000 },
+  { id: "logo", label: "로고/문구 삽입", price: 7000 },
+];
+
+const STEPS = [
+  { id: 1, label: "제품 선택", icon: Package },
+  { id: 2, label: "사양 입력", icon: Settings },
+  { id: 3, label: "견적 확인", icon: FileText },
+  { id: 4, label: "주문자 정보", icon: User },
+  { id: 5, label: "주문 완료", icon: CircleCheck },
+];
+
+// ─────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("ko-KR").format(amount) + "원";
+}
+
+function generateOrderNumber(): string {
+  const year = new Date().getFullYear();
+  const seq = Math.floor(Math.random() * 900) + 100;
+  return `ORD-${year}-${seq.toString().padStart(3, "0")}`;
+}
+
+// ─────────────────────────────────────────────
+// Step Indicator Component
+// ─────────────────────────────────────────────
+
+function StepIndicator({ currentStep }: { currentStep: number }) {
+  return (
+    <div className="flex items-center justify-center mb-8">
+      {STEPS.map((step, index) => {
+        const Icon = step.icon;
+        const isCompleted = step.id < currentStep;
+        const isActive = step.id === currentStep;
+
+        return (
+          <div key={step.id} className="flex items-center">
+            <div className="flex flex-col items-center">
+              <div
+                className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
+                  isCompleted
+                    ? "bg-blue-600 text-white"
+                    : isActive
+                    ? "bg-blue-600 text-white ring-4 ring-blue-100"
+                    : "bg-gray-100 text-gray-400"
+                }`}
+              >
+                {isCompleted ? (
+                  <CheckCircle className="w-5 h-5" />
+                ) : (
+                  <Icon className="w-5 h-5" />
+                )}
+              </div>
+              <span
+                className={`mt-1 text-xs font-medium whitespace-nowrap ${
+                  isActive ? "text-blue-600" : isCompleted ? "text-gray-600" : "text-gray-400"
+                }`}
+              >
+                {step.label}
+              </span>
+            </div>
+            {index < STEPS.length - 1 && (
+              <div
+                className={`w-12 sm:w-20 h-0.5 mx-1 mb-5 transition-all ${
+                  step.id < currentStep ? "bg-blue-600" : "bg-gray-200"
+                }`}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Step 1: Product Selection
+// ─────────────────────────────────────────────
+
+function Step1ProductSelection({
+  selectedProduct,
+  onSelect,
+}: {
+  selectedProduct: ProductId | null;
+  onSelect: (id: ProductId) => void;
+}) {
+  return (
+    <div>
+      <h2 className="text-xl font-bold text-gray-900 mb-2">제품 선택</h2>
+      <p className="text-sm text-gray-500 mb-6">주문하실 제품을 선택해 주세요.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {PRODUCTS.map((product) => {
+          const isSelected = selectedProduct === product.id;
+          return (
+            <button
+              key={product.id}
+              onClick={() => onSelect(product.id)}
+              className={`text-left rounded-xl border-2 p-5 transition-all hover:shadow-md ${
+                isSelected
+                  ? "border-blue-600 bg-blue-50 shadow-md"
+                  : "border-gray-200 bg-white hover:border-blue-300"
+              }`}
+            >
+              {/* Placeholder image area */}
+              <div className="w-full h-32 bg-gray-100 rounded-lg flex flex-col items-center justify-center mb-4">
+                <Factory
+                  className={`w-10 h-10 mb-1 ${isSelected ? "text-blue-500" : "text-gray-400"}`}
+                />
+                <span className="text-xs text-gray-400">제품 이미지</span>
+              </div>
+              <h3 className={`font-semibold text-sm mb-1 ${isSelected ? "text-blue-700" : "text-gray-900"}`}>
+                {product.name}
+              </h3>
+              <p className="text-xs text-gray-500 mb-2">{product.spec}</p>
+              <p className={`text-xs font-medium ${isSelected ? "text-blue-600" : "text-gray-400"}`}>
+                기준가 {product.priceRange}
+              </p>
+              {isSelected && (
+                <div className="mt-3 flex items-center gap-1 text-blue-600">
+                  <CheckCircle className="w-4 h-4" />
+                  <span className="text-xs font-medium">선택됨</span>
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Step 2: Specification Input
+// ─────────────────────────────────────────────
+
+function Step2SpecInput({
+  formData,
+  product,
+  onChange,
+  errors,
+}: {
+  formData: FormData;
+  product: Product;
+  onChange: (field: keyof FormData, value: string | string[] | number) => void;
+  errors: Partial<Record<keyof FormData, string>>;
+}) {
+  function togglePostProcessing(id: string) {
+    const current = formData.postProcessing;
+    const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+    onChange("postProcessing", next);
+  }
+
+  return (
+    <div>
+      <h2 className="text-xl font-bold text-gray-900 mb-2">사양 입력</h2>
+      <p className="text-sm text-gray-500 mb-6">선택하신 제품의 상세 사양을 입력해 주세요.</p>
+
+      {/* Selected product info */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-6 flex items-center gap-3">
+        <Factory className="w-5 h-5 text-blue-600 shrink-0" />
+        <div>
+          <p className="text-sm font-semibold text-blue-800">{product.name}</p>
+          <p className="text-xs text-blue-600">{product.spec}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        {/* Diameter */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            규격 (직경) <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={formData.diameter}
+            onChange={(e) => onChange("diameter", e.target.value)}
+            className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              errors.diameter ? "border-red-400 bg-red-50" : "border-gray-300"
+            }`}
+          >
+            <option value="">선택하세요</option>
+            {product.diameterOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+          {errors.diameter && <p className="mt-1 text-xs text-red-500">{errors.diameter}</p>}
+        </div>
+
+        {/* Thickness */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            두께 <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={formData.thickness}
+            onChange={(e) => onChange("thickness", e.target.value)}
+            className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              errors.thickness ? "border-red-400 bg-red-50" : "border-gray-300"
+            }`}
+          >
+            <option value="">선택하세요</option>
+            {product.thicknessOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+          {errors.thickness && <p className="mt-1 text-xs text-red-500">{errors.thickness}</p>}
+        </div>
+
+        {/* Load Class */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            하중 등급 <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={formData.loadClass}
+            onChange={(e) => onChange("loadClass", e.target.value)}
+            className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              errors.loadClass ? "border-red-400 bg-red-50" : "border-gray-300"
+            }`}
+          >
+            <option value="">선택하세요</option>
+            {LOAD_CLASSES.map((cls) => (
+              <option key={cls} value={cls}>
+                {cls}
+              </option>
+            ))}
+          </select>
+          {errors.loadClass && <p className="mt-1 text-xs text-red-500">{errors.loadClass}</p>}
+        </div>
+
+        {/* Material */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            재질 <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={formData.material}
+            onChange={(e) => onChange("material", e.target.value)}
+            className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              errors.material ? "border-red-400 bg-red-50" : "border-gray-300"
+            }`}
+          >
+            <option value="">선택하세요</option>
+            {MATERIALS.map((mat) => (
+              <option key={mat} value={mat}>
+                {mat}
+              </option>
+            ))}
+          </select>
+          {errors.material && <p className="mt-1 text-xs text-red-500">{errors.material}</p>}
+        </div>
+
+        {/* Quantity */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            수량 (최소 10개) <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="number"
+            min={10}
+            value={formData.quantity}
+            onChange={(e) => onChange("quantity", Number(e.target.value))}
+            className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              errors.quantity ? "border-red-400 bg-red-50" : "border-gray-300"
+            }`}
+          />
+          {errors.quantity && <p className="mt-1 text-xs text-red-500">{errors.quantity}</p>}
+        </div>
+
+        {/* Desired Delivery */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            희망 납기일 <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="date"
+            value={formData.desiredDelivery}
+            onChange={(e) => onChange("desiredDelivery", e.target.value)}
+            min={new Date().toISOString().split("T")[0]}
+            className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              errors.desiredDelivery ? "border-red-400 bg-red-50" : "border-gray-300"
+            }`}
+          />
+          {errors.desiredDelivery && (
+            <p className="mt-1 text-xs text-red-500">{errors.desiredDelivery}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Post Processing */}
+      <div className="mt-5">
+        <label className="block text-sm font-medium text-gray-700 mb-2">후처리 (선택)</label>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {POST_PROCESSING_OPTIONS.map((opt) => {
+            const isChecked = formData.postProcessing.includes(opt.id);
+            return (
+              <label
+                key={opt.id}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 cursor-pointer transition-all ${
+                  isChecked
+                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                    : "border-gray-200 hover:border-blue-300 text-gray-700"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => togglePostProcessing(opt.id)}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <div>
+                  <p className="text-xs font-medium">{opt.label}</p>
+                  <p className="text-xs text-gray-400">+{formatCurrency(opt.price)}</p>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div className="mt-5">
+        <label className="block text-sm font-medium text-gray-700 mb-1">비고</label>
+        <textarea
+          value={formData.notes}
+          onChange={(e) => onChange("notes", e.target.value)}
+          rows={3}
+          placeholder="특이사항이나 요청사항을 입력해 주세요."
+          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Step 3: Quote Review
+// ─────────────────────────────────────────────
+
+function Step3QuoteReview({
+  formData,
+  product,
+}: {
+  formData: FormData;
+  product: Product;
+}) {
+  const postProcessingTotal = formData.postProcessing.reduce((sum, id) => {
+    const opt = POST_PROCESSING_OPTIONS.find((o) => o.id === id);
+    return sum + (opt?.price ?? 0);
+  }, 0);
+  const unitPrice = product.basePrice + postProcessingTotal;
+  const totalPrice = unitPrice * formData.quantity;
+
+  const selectedPostProcessing = POST_PROCESSING_OPTIONS.filter((opt) =>
+    formData.postProcessing.includes(opt.id)
+  );
+
+  return (
+    <div>
+      <h2 className="text-xl font-bold text-gray-900 mb-2">견적 확인</h2>
+      <p className="text-sm text-gray-500 mb-6">주문 내용을 확인해 주세요.</p>
+
+      <div className="space-y-4">
+        {/* Product Info */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <Package className="w-4 h-4 text-blue-600" />
+            제품 정보
+          </h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-gray-500">제품명</span>
+              <p className="font-medium text-gray-900 mt-0.5">{product.name}</p>
+            </div>
+            <div>
+              <span className="text-gray-500">기본 사양</span>
+              <p className="font-medium text-gray-900 mt-0.5">{product.spec}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Spec Info */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <Settings className="w-4 h-4 text-blue-600" />
+            사양 정보
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+            <div>
+              <span className="text-gray-500">규격 (직경)</span>
+              <p className="font-medium text-gray-900 mt-0.5">{formData.diameter}</p>
+            </div>
+            <div>
+              <span className="text-gray-500">두께</span>
+              <p className="font-medium text-gray-900 mt-0.5">{formData.thickness}</p>
+            </div>
+            <div>
+              <span className="text-gray-500">하중 등급</span>
+              <p className="font-medium text-gray-900 mt-0.5">{formData.loadClass}</p>
+            </div>
+            <div>
+              <span className="text-gray-500">재질</span>
+              <p className="font-medium text-gray-900 mt-0.5">{formData.material}</p>
+            </div>
+            <div>
+              <span className="text-gray-500">수량</span>
+              <p className="font-medium text-gray-900 mt-0.5">{formData.quantity.toLocaleString()}개</p>
+            </div>
+            <div>
+              <span className="text-gray-500">희망 납기일</span>
+              <p className="font-medium text-gray-900 mt-0.5">{formData.desiredDelivery}</p>
+            </div>
+          </div>
+          {selectedPostProcessing.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <span className="text-gray-500 text-sm">후처리</span>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {selectedPostProcessing.map((opt) => (
+                  <span
+                    key={opt.id}
+                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700"
+                  >
+                    {opt.label} (+{formatCurrency(opt.price)})
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {formData.notes && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <span className="text-gray-500 text-sm">비고</span>
+              <p className="text-sm text-gray-700 mt-0.5">{formData.notes}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Quote */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-blue-600" />
+            예상 견적
+          </h3>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between text-gray-600">
+              <span>기준 단가</span>
+              <span>{formatCurrency(product.basePrice)}</span>
+            </div>
+            {selectedPostProcessing.map((opt) => (
+              <div key={opt.id} className="flex justify-between text-gray-600">
+                <span>{opt.label} 추가</span>
+                <span>+{formatCurrency(opt.price)}</span>
+              </div>
+            ))}
+            <div className="flex justify-between text-gray-600 border-t border-gray-100 pt-2">
+              <span>단가 합계</span>
+              <span>{formatCurrency(unitPrice)}</span>
+            </div>
+            <div className="flex justify-between text-gray-600">
+              <span>수량</span>
+              <span>{formData.quantity.toLocaleString()}개</span>
+            </div>
+            <div className="flex justify-between text-lg font-bold text-gray-900 border-t border-gray-200 pt-3 mt-2">
+              <span>예상 합계</span>
+              <span className="text-blue-600">{formatCurrency(totalPrice)}</span>
+            </div>
+          </div>
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>예상 납기</span>
+              <span className="font-medium">주문 확정 후 약 2-3주</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Warning */}
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+          <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+            <span className="text-white text-xs font-bold">!</span>
+          </div>
+          <p className="text-sm text-amber-800">
+            최종 견적은 관리자 검토 후 확정됩니다. 실제 견적은 위 금액과 다를 수 있습니다.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Step 4: Customer Info
+// ─────────────────────────────────────────────
+
+function Step4CustomerInfo({
+  formData,
+  onChange,
+  errors,
+}: {
+  formData: FormData;
+  onChange: (field: keyof FormData, value: string) => void;
+  errors: Partial<Record<keyof FormData, string>>;
+}) {
+  const fields: {
+    key: keyof FormData;
+    label: string;
+    type: string;
+    placeholder: string;
+    required: boolean;
+  }[] = [
+    {
+      key: "companyName",
+      label: "회사명",
+      type: "text",
+      placeholder: "주식회사 예시",
+      required: true,
+    },
+    {
+      key: "contactPerson",
+      label: "담당자명",
+      type: "text",
+      placeholder: "홍길동",
+      required: true,
+    },
+    {
+      key: "phone",
+      label: "연락처",
+      type: "tel",
+      placeholder: "010-1234-5678",
+      required: true,
+    },
+    {
+      key: "email",
+      label: "이메일",
+      type: "email",
+      placeholder: "example@company.com",
+      required: true,
+    },
+    {
+      key: "address",
+      label: "배송지 주소",
+      type: "text",
+      placeholder: "서울특별시 강남구 ...",
+      required: true,
+    },
+  ];
+
+  return (
+    <div>
+      <h2 className="text-xl font-bold text-gray-900 mb-2">주문자 정보 입력</h2>
+      <p className="text-sm text-gray-500 mb-6">주문자 정보를 입력해 주세요.</p>
+
+      <div className="space-y-4">
+        {fields.map((field) => (
+          <div key={field.key}>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {field.label}
+              {field.required && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <input
+              type={field.type}
+              value={formData[field.key] as string}
+              onChange={(e) => onChange(field.key, e.target.value)}
+              placeholder={field.placeholder}
+              className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                errors[field.key] ? "border-red-400 bg-red-50" : "border-gray-300"
+              }`}
+            />
+            {errors[field.key] && (
+              <p className="mt-1 text-xs text-red-500">{errors[field.key]}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Step 5: Order Complete
+// ─────────────────────────────────────────────
+
+function Step5OrderComplete({
+  formData,
+  product,
+  orderNumber,
+  onRestart,
+}: {
+  formData: FormData;
+  product: Product;
+  orderNumber: string;
+  onRestart: () => void;
+}) {
+  const postProcessingTotal = formData.postProcessing.reduce((sum, id) => {
+    const opt = POST_PROCESSING_OPTIONS.find((o) => o.id === id);
+    return sum + (opt?.price ?? 0);
+  }, 0);
+  const unitPrice = product.basePrice + postProcessingTotal;
+  const totalPrice = unitPrice * formData.quantity;
+
+  return (
+    <div className="text-center">
+      <div className="flex justify-center mb-4">
+        <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center">
+          <CheckCircle className="w-10 h-10 text-green-500" />
+        </div>
+      </div>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">주문이 접수되었습니다</h2>
+      <p className="text-gray-500 mb-6">
+        주문 상태를 이메일로 안내드리겠습니다.
+      </p>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-xl px-6 py-4 mb-6 inline-block">
+        <p className="text-sm text-blue-600 mb-1">주문 번호</p>
+        <p className="text-2xl font-bold text-blue-800">{orderNumber}</p>
+      </div>
+
+      {/* Summary */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 text-left mb-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">주문 요약</h3>
+        <div className="space-y-2.5 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-500">제품</span>
+            <span className="font-medium text-gray-900">{product.name}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">사양</span>
+            <span className="font-medium text-gray-900">
+              {formData.diameter} / {formData.thickness}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">재질 / 하중등급</span>
+            <span className="font-medium text-gray-900">
+              {formData.material} / {formData.loadClass}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">수량</span>
+            <span className="font-medium text-gray-900">
+              {formData.quantity.toLocaleString()}개
+            </span>
+          </div>
+          <div className="flex justify-between border-t border-gray-100 pt-2.5">
+            <span className="text-gray-500">예상 금액</span>
+            <span className="font-bold text-blue-600">{formatCurrency(totalPrice)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">주문자</span>
+            <span className="font-medium text-gray-900">
+              {formData.contactPerson} ({formData.companyName})
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">이메일</span>
+            <span className="font-medium text-gray-900">{formData.email}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">예상 납기</span>
+            <span className="font-medium text-gray-900">주문 확정 후 약 2-3주</span>
+          </div>
+        </div>
+      </div>
+
+      <p className="text-sm text-gray-500 mb-6">
+        담당자가 확인 후 최종 견적을 이메일로 보내드리겠습니다.
+        <br />
+        문의사항은 고객센터(02-1234-5678)로 연락 주세요.
+      </p>
+
+      <button
+        onClick={onRestart}
+        className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+      >
+        <Factory className="w-4 h-4" />
+        새 주문하기
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Main Page Component
+// ─────────────────────────────────────────────
+
+const INITIAL_FORM: FormData = {
+  selectedProduct: null,
+  diameter: "",
+  thickness: "",
+  loadClass: "",
+  material: "",
+  postProcessing: [],
+  quantity: 10,
+  desiredDelivery: "",
+  notes: "",
+  companyName: "",
+  contactPerson: "",
+  phone: "",
+  email: "",
+  address: "",
+};
+
+export default function CustomerOrderPage() {
+  const [step, setStep] = useState(1);
+  const [formData, setFormData] = useState<FormData>(INITIAL_FORM);
+  const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
+  const [orderNumber, setOrderNumber] = useState("");
+
+  const selectedProduct = PRODUCTS.find((p) => p.id === formData.selectedProduct) ?? null;
+
+  function handleChange(field: keyof FormData, value: string | string[] | number) {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
+  }
+
+  function validateStep(currentStep: number): boolean {
+    const newErrors: Partial<Record<keyof FormData, string>> = {};
+
+    if (currentStep === 1) {
+      if (!formData.selectedProduct) {
+        newErrors.selectedProduct = "제품을 선택해 주세요.";
+        return false;
+      }
+    }
+
+    if (currentStep === 2) {
+      if (!formData.diameter) newErrors.diameter = "규격을 선택해 주세요.";
+      if (!formData.thickness) newErrors.thickness = "두께를 선택해 주세요.";
+      if (!formData.loadClass) newErrors.loadClass = "하중 등급을 선택해 주세요.";
+      if (!formData.material) newErrors.material = "재질을 선택해 주세요.";
+      if (!formData.desiredDelivery) newErrors.desiredDelivery = "희망 납기일을 입력해 주세요.";
+      if (formData.quantity < 10) newErrors.quantity = "최소 주문 수량은 10개입니다.";
+    }
+
+    if (currentStep === 4) {
+      if (!formData.companyName) newErrors.companyName = "회사명을 입력해 주세요.";
+      if (!formData.contactPerson) newErrors.contactPerson = "담당자명을 입력해 주세요.";
+      if (!formData.phone) newErrors.phone = "연락처를 입력해 주세요.";
+      if (!formData.email) newErrors.email = "이메일을 입력해 주세요.";
+      if (!formData.address) newErrors.address = "배송지 주소를 입력해 주세요.";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return false;
+    }
+    return true;
+  }
+
+  function handleNext() {
+    if (!validateStep(step)) return;
+
+    if (step === 4) {
+      // Submit order
+      setOrderNumber(generateOrderNumber());
+    }
+    setStep((prev) => Math.min(prev + 1, 5));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handlePrev() {
+    setErrors({});
+    setStep((prev) => Math.max(prev - 1, 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleRestart() {
+    setFormData(INITIAL_FORM);
+    setErrors({});
+    setStep(1);
+    setOrderNumber("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+      {/* Step indicator */}
+      <StepIndicator currentStep={step} />
+
+      {/* Card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
+        {/* Step content */}
+        {step === 1 && (
+          <Step1ProductSelection
+            selectedProduct={formData.selectedProduct}
+            onSelect={(id) => {
+              handleChange("selectedProduct", id);
+              // Reset spec fields when product changes
+              setFormData((prev) => ({
+                ...prev,
+                selectedProduct: id,
+                diameter: "",
+                thickness: "",
+              }));
+            }}
+          />
+        )}
+        {step === 2 && selectedProduct && (
+          <Step2SpecInput
+            formData={formData}
+            product={selectedProduct}
+            onChange={handleChange}
+            errors={errors}
+          />
+        )}
+        {step === 3 && selectedProduct && (
+          <Step3QuoteReview formData={formData} product={selectedProduct} />
+        )}
+        {step === 4 && (
+          <Step4CustomerInfo
+            formData={formData}
+            onChange={(field, value) => handleChange(field, value)}
+            errors={errors}
+          />
+        )}
+        {step === 5 && selectedProduct && (
+          <Step5OrderComplete
+            formData={formData}
+            product={selectedProduct}
+            orderNumber={orderNumber}
+            onRestart={handleRestart}
+          />
+        )}
+
+        {/* Navigation buttons */}
+        {step < 5 && (
+          <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-100">
+            <button
+              onClick={handlePrev}
+              disabled={step === 1}
+              className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all ${
+                step === 1
+                  ? "text-gray-300 cursor-not-allowed"
+                  : "text-gray-600 hover:bg-gray-100 border border-gray-200"
+              }`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+              이전
+            </button>
+
+            <span className="text-xs text-gray-400">
+              {step} / {STEPS.length - 1}단계
+            </span>
+
+            <button
+              onClick={handleNext}
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2.5 rounded-lg transition-all shadow-sm hover:shadow-md"
+            >
+              {step === 4 ? "주문 제출" : "다음"}
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
