@@ -36,6 +36,36 @@ const ANIMATION_STYLES = `
     50%  { transform: translateZ(36px) scale(1.02); }
     100% { transform: translateZ(30px) scale(1); }
   }
+
+  /* 3D 렌더 뷰용 AMR 이동 애니메이션 */
+  @keyframes render-amr-patrol-1 {
+    0%   { left: 20%; top: 48%; }
+    25%  { left: 25%; top: 38%; }
+    50%  { left: 20%; top: 28%; }
+    75%  { left: 15%; top: 38%; }
+    100% { left: 20%; top: 48%; }
+  }
+  @keyframes render-amr-patrol-2 {
+    0%   { left: 48%; top: 58%; }
+    33%  { left: 44%; top: 48%; }
+    66%  { left: 48%; top: 38%; }
+    100% { left: 48%; top: 58%; }
+  }
+  @keyframes render-amr-charge {
+    0%, 100% { box-shadow: 0 0 6px 2px rgba(250, 204, 21, 0.5); }
+    50%      { box-shadow: 0 0 14px 5px rgba(250, 204, 21, 0.8); }
+  }
+
+  /* 3D 렌더 뷰용 Cobot 작업 애니메이션 */
+  @keyframes render-cobot-work {
+    0%   { transform: rotate(-15deg); }
+    50%  { transform: rotate(15deg); }
+    100% { transform: rotate(-15deg); }
+  }
+  @keyframes render-cobot-pulse {
+    0%, 100% { box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0.4); }
+    50%      { box-shadow: 0 0 16px 6px rgba(34, 197, 94, 0.7); }
+  }
 `;
 
 // ----------------------------------------------------------------
@@ -575,8 +605,448 @@ function Legend() {
 // Main Component
 // ----------------------------------------------------------------
 
+// ----------------------------------------------------------------
+// 3D Render View — Blender Photorealistic Factory Scene
+// ----------------------------------------------------------------
+
+// 3D 렌더 이미지 위 인터랙티브 핫스팟 좌표 (이미지 비율 기준 %)
+const HOTSPOTS: { zoneId: string; x: number; y: number; w: number; h: number }[] = [
+  { zoneId: "raw-material", x: 6,  y: 36, w: 16, h: 22 },  // 원자재 보관 (좌상)
+  { zoneId: "melting",      x: 30, y: 20, w: 18, h: 26 },  // 용해 구역 (중앙상)
+  { zoneId: "mold",         x: 55, y: 12, w: 16, h: 22 },  // 주형 구역 (우상)
+  { zoneId: "casting",      x: 6,  y: 56, w: 16, h: 20 },  // 주조 구역 (좌중)
+  { zoneId: "cooling",      x: 28, y: 46, w: 22, h: 18 },  // 냉각 구역 (중앙)
+  { zoneId: "demolding",    x: 55, y: 38, w: 16, h: 20 },  // 탈형 구역 (우중)
+  { zoneId: "post-process", x: 6,  y: 76, w: 16, h: 18 },  // 후처리 구역 (좌하)
+  { zoneId: "inspection",   x: 28, y: 68, w: 18, h: 18 },  // 검사 구역 (중앙하)
+  { zoneId: "loading",      x: 55, y: 60, w: 16, h: 22 },  // 적재/출고 (우하)
+];
+
+// JetCobot280 오버레이 컴포넌트 (3D 렌더 위)
+function CobotOverlay({
+  id,
+  label,
+  x,
+  y,
+}: {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `${x}%`,
+        top: `${y}%`,
+        zIndex: 30,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        pointerEvents: "none",
+      }}
+    >
+      {/* 코봇 바디 */}
+      <div
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: "50%",
+          background: "radial-gradient(circle at 35% 35%, #fcd34d, #d97706)",
+          border: "2px solid #f59e0b",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+          animation: "render-cobot-pulse 2s ease-in-out infinite",
+        }}
+      >
+        <Bot size={14} color="#fff" />
+        {/* 회전하는 로봇 암 */}
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            width: 20,
+            height: 3,
+            background: "linear-gradient(90deg, #f59e0b, #fcd34d)",
+            transformOrigin: "0 50%",
+            marginTop: -1.5,
+            borderRadius: 3,
+            animation: "cobot-arm-rotate 3s linear infinite",
+          }}
+        />
+      </div>
+      {/* 라벨 */}
+      <span
+        style={{
+          marginTop: 3,
+          fontSize: 8,
+          fontWeight: 700,
+          color: "#fcd34d",
+          textShadow: "0 1px 4px rgba(0,0,0,0.9)",
+          whiteSpace: "nowrap",
+          letterSpacing: "0.04em",
+        }}
+      >
+        {label}
+      </span>
+      {/* 상태 표시 */}
+      <span
+        style={{
+          fontSize: 7,
+          color: "#4ade80",
+          textShadow: "0 1px 3px rgba(0,0,0,0.9)",
+        }}
+      >
+        작업 중
+      </span>
+    </div>
+  );
+}
+
+// AMR 오버레이 컴포넌트 (3D 렌더 위)
+function AMROverlay({
+  id,
+  label,
+  x,
+  y,
+  status,
+  animationName,
+}: {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  status: "moving" | "idle" | "charging";
+  animationName?: string;
+}) {
+  const bgColor =
+    status === "moving"
+      ? "linear-gradient(135deg, #164e63, #0e7490)"
+      : status === "charging"
+      ? "linear-gradient(135deg, #422006, #a16207)"
+      : "linear-gradient(135deg, #1f2937, #374151)";
+
+  const borderColor =
+    status === "moving" ? "#22d3ee" : status === "charging" ? "#fde047" : "#6b7280";
+
+  const dotColor =
+    status === "moving" ? "#67e8f9" : status === "charging" ? "#fde047" : "#94a3b8";
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `${x}%`,
+        top: `${y}%`,
+        zIndex: 25,
+        animation: animationName ? `${animationName} 8s ease-in-out infinite` : undefined,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        pointerEvents: "none",
+      }}
+    >
+      {/* AMR 바디 */}
+      <div
+        style={{
+          width: 36,
+          height: 24,
+          background: bgColor,
+          border: `2px solid ${borderColor}`,
+          borderRadius: 5,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow:
+            status === "charging"
+              ? undefined
+              : `0 2px 8px rgba(0,0,0,0.5)`,
+          animation:
+            status === "charging" ? "render-amr-charge 1.5s ease-in-out infinite" : undefined,
+        }}
+      >
+        {/* 인디케이터 도트 */}
+        <div
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: "50%",
+            background: dotColor,
+            boxShadow: status === "moving" ? `0 0 6px ${dotColor}` : undefined,
+          }}
+        />
+      </div>
+      {/* 라벨 */}
+      <span
+        style={{
+          marginTop: 2,
+          fontSize: 7,
+          fontWeight: 700,
+          color: borderColor,
+          textShadow: "0 1px 4px rgba(0,0,0,0.9)",
+          whiteSpace: "nowrap",
+          letterSpacing: "0.03em",
+        }}
+      >
+        {label}
+      </span>
+      {/* 상태 텍스트 */}
+      <span
+        style={{
+          fontSize: 6,
+          color: dotColor,
+          textShadow: "0 1px 3px rgba(0,0,0,0.9)",
+        }}
+      >
+        {status === "moving" ? "이동 중" : status === "charging" ? "충전 중" : "대기"}
+      </span>
+    </div>
+  );
+}
+
+function Render3DView({
+  selectedId,
+  onSelect,
+}: {
+  selectedId: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div style={{ position: "relative", borderRadius: 10, overflow: "hidden" }}>
+      {/* 3D 렌더 이미지 */}
+      <img
+        src="/factory-3d.png"
+        alt="주조 공장 3D 렌더링"
+        style={{
+          width: "100%",
+          height: "auto",
+          display: "block",
+          borderRadius: 10,
+        }}
+      />
+
+      {/* === JetCobot280 2대 === */}
+      {/* COBOT-001: 주조 구역 (좌중) */}
+      <CobotOverlay id="COBOT-001" label="COBOT-001" x={11} y={58} />
+      {/* COBOT-002: 후처리 구역 (좌하) */}
+      <CobotOverlay id="COBOT-002" label="COBOT-002" x={11} y={78} />
+
+      {/* === AMR 3대 === */}
+      {/* AMR-001: 이동 중 (용해→주조 경로) */}
+      <AMROverlay id="AMR-001" label="AMR-001" x={20} y={48}
+                  status="moving" animationName="render-amr-patrol-1" />
+      {/* AMR-002: 이동 중 (냉각→검사 경로) */}
+      <AMROverlay id="AMR-002" label="AMR-002" x={48} y={58}
+                  status="moving" animationName="render-amr-patrol-2" />
+      {/* AMR-003: 충전 중 (출고 구역) */}
+      <AMROverlay id="AMR-003" label="AMR-003" x={62} y={68}
+                  status="charging" />
+
+      {/* 인터랙티브 핫스팟 오버레이 */}
+      {HOTSPOTS.map((hs) => {
+        const zone = ZONES.find((z) => z.id === hs.zoneId);
+        if (!zone) return null;
+        const isSelected = selectedId === zone.id;
+        const colors = zoneColor(zone.status);
+
+        return (
+          <div
+            key={zone.id}
+            onClick={() => onSelect(zone.id)}
+            style={{
+              position: "absolute",
+              left: `${hs.x}%`,
+              top: `${hs.y}%`,
+              width: `${hs.w}%`,
+              height: `${hs.h}%`,
+              cursor: "pointer",
+              border: isSelected
+                ? `2px solid ${colors.border}`
+                : "1.5px solid rgba(255,255,255,0.15)",
+              borderRadius: 6,
+              background: isSelected
+                ? "rgba(0,0,0,0.5)"
+                : "rgba(0,0,0,0.15)",
+              transition: "all 0.2s ease",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "flex-end",
+              padding: "4px 6px",
+            }}
+            title={zone.detail}
+          >
+            {/* 구역명 + 상태 */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: statusDotColor(zone.status),
+                  boxShadow: `0 0 4px ${statusDotColor(zone.status)}`,
+                  flexShrink: 0,
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: "#fff",
+                  textShadow: "0 1px 3px rgba(0,0,0,0.8)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {zone.name}
+              </span>
+            </div>
+
+            {/* 온도 표시 */}
+            {zone.temp !== undefined && (
+              <span
+                style={{
+                  fontSize: 8,
+                  color: "#fb923c",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.9)",
+                  marginTop: 1,
+                }}
+              >
+                {zone.temp}°C
+              </span>
+            )}
+
+            {/* 장비 표시 */}
+            {zone.equipment && (
+              <span
+                style={{
+                  fontSize: 7,
+                  color: "#fcd34d",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.9)",
+                  marginTop: 1,
+                }}
+              >
+                {zone.equipment}
+              </span>
+            )}
+
+            {/* 선택 시 상세 팝업 */}
+            {isSelected && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "calc(100% + 8px)",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  background: "rgba(17, 24, 39, 0.95)",
+                  border: "1px solid #4b5563",
+                  borderRadius: 6,
+                  padding: "8px 12px",
+                  minWidth: 180,
+                  maxWidth: 240,
+                  zIndex: 100,
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.7)",
+                  pointerEvents: "none",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#f9fafb",
+                    marginBottom: 4,
+                  }}
+                >
+                  {zone.name}
+                </div>
+                <div style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.5 }}>
+                  {zone.detail}
+                </div>
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: -6,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    width: 0,
+                    height: 0,
+                    borderLeft: "5px solid transparent",
+                    borderRight: "5px solid transparent",
+                    borderTop: "6px solid #4b5563",
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------
+// View Toggle Button
+// ----------------------------------------------------------------
+
+function ViewToggle({
+  mode,
+  onToggle,
+}: {
+  mode: "3d" | "interactive";
+  onToggle: (m: "3d" | "interactive") => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 2,
+        background: "#1f2937",
+        borderRadius: 6,
+        padding: 2,
+        border: "1px solid #374151",
+      }}
+    >
+      {[
+        { key: "3d" as const, label: "3D 렌더" },
+        { key: "interactive" as const, label: "인터랙티브 맵" },
+      ].map((item) => (
+        <button
+          key={item.key}
+          onClick={() => onToggle(item.key)}
+          style={{
+            padding: "4px 12px",
+            fontSize: 10,
+            fontWeight: 600,
+            borderRadius: 4,
+            border: "none",
+            cursor: "pointer",
+            background: mode === item.key ? "#3b82f6" : "transparent",
+            color: mode === item.key ? "#fff" : "#9ca3af",
+            transition: "all 0.15s ease",
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------
+// Main Component
+// ----------------------------------------------------------------
+
 export default function FactoryMap() {
   const [selectedId, setSelectedId] = useState<string>("");
+  const [viewMode, setViewMode] = useState<"3d" | "interactive">("3d");
 
   function handleSelect(id: string) {
     setSelectedId((prev) => (prev === id ? "" : id));
@@ -586,8 +1056,6 @@ export default function FactoryMap() {
     <div
       style={{
         width: "100%",
-        maxWidth: 960,
-        margin: "0 auto",
         fontFamily: "'Inter', 'Segoe UI', sans-serif",
       }}
     >
@@ -629,6 +1097,7 @@ export default function FactoryMap() {
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <ViewToggle mode={viewMode} onToggle={setViewMode} />
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <Cpu size={10} color="#4ade80" />
               <span style={{ fontSize: 9, color: "#4ade80" }}>시스템 정상</span>
@@ -649,7 +1118,14 @@ export default function FactoryMap() {
           {/* Monitor Bar — flat 2D display */}
           <MonitorBar />
 
-          {/* 3D Isometric view container */}
+          {/* === 3D Render View === */}
+          {viewMode === "3d" && (
+            <Render3DView selectedId={selectedId} onSelect={handleSelect} />
+          )}
+
+          {/* === Interactive Isometric Map View === */}
+          {viewMode !== "3d" && (
+          /* 3D Isometric view container */
           <div
             style={{
               perspective: "1200px",
@@ -759,6 +1235,7 @@ export default function FactoryMap() {
               </div>
             </div>
           </div>
+          )}
 
           {/* Legend — flat 2D */}
           <Legend />
