@@ -9,18 +9,15 @@ from pydantic import BaseModel, ConfigDict
 
 class OrderCreate(BaseModel):
     id: str
+    customer_id: str
     customer_name: str
     company_name: str
-    product_name: str
-    product_spec: Optional[str] = None
-    material: Optional[str] = None
-    quantity: int = 0
-    unit_price: int = 0
-    total_price: int = 0
+    contact: Optional[str] = None
+    shipping_address: Optional[str] = None
+    total_amount: float = 0.0
     status: str = "pending"
-    post_processing: Optional[str] = None
     requested_delivery: Optional[str] = None
-    estimated_delivery: Optional[str] = None
+    confirmed_delivery: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -32,21 +29,80 @@ class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    customer_id: str
     customer_name: str
     company_name: str
-    product_name: str
-    product_spec: Optional[str] = None
-    material: Optional[str] = None
-    quantity: int
-    unit_price: int
-    total_price: int
+    contact: Optional[str] = None
+    shipping_address: Optional[str] = None
+    total_amount: float
     status: str
-    post_processing: Optional[str] = None
     requested_delivery: Optional[str] = None
-    estimated_delivery: Optional[str] = None
+    confirmed_delivery: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     notes: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# OrderDetail schemas
+# ---------------------------------------------------------------------------
+
+class OrderDetailCreate(BaseModel):
+    id: str
+    order_id: str
+    product_id: str
+    product_name: str
+    quantity: int = 0
+    spec: Optional[str] = None
+    material: Optional[str] = None
+    post_processing: Optional[str] = None
+    logo_data: Optional[str] = None
+    unit_price: float = 0.0
+    subtotal: float = 0.0
+
+
+class OrderDetailResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    order_id: str
+    product_id: str
+    product_name: str
+    quantity: int
+    spec: Optional[str] = None
+    material: Optional[str] = None
+    post_processing: Optional[str] = None
+    logo_data: Optional[str] = None
+    unit_price: float
+    subtotal: float
+
+
+# ---------------------------------------------------------------------------
+# Product schemas
+# ---------------------------------------------------------------------------
+
+class ProductCreate(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    id: str
+    name: str
+    category: Optional[str] = None
+    base_price: float = 0.0
+    option_pricing: Optional[dict] = None
+    design_image_url: Optional[str] = None
+    model_3d_path: Optional[str] = None
+
+
+class ProductResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
+
+    id: str
+    name: str
+    category: Optional[str] = None
+    base_price: float
+    option_pricing: Optional[dict] = None
+    design_image_url: Optional[str] = None
+    model_3d_path: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -60,9 +116,15 @@ class ProcessStageCreate(BaseModel):
     temperature: Optional[float] = None
     target_temperature: Optional[float] = None
     progress: int = 0
+    start_time: Optional[str] = None
+    estimated_end: Optional[str] = None
     equipment_id: Optional[str] = None
     order_id: Optional[str] = None
     job_id: Optional[str] = None
+    pressure: Optional[float] = None
+    pour_angle: Optional[float] = None
+    heating_power: Optional[float] = None
+    cooling_progress: Optional[float] = None
 
 
 class ProcessStageResponse(BaseModel):
@@ -75,9 +137,15 @@ class ProcessStageResponse(BaseModel):
     temperature: Optional[float] = None
     target_temperature: Optional[float] = None
     progress: int
+    start_time: Optional[str] = None
+    estimated_end: Optional[str] = None
     equipment_id: Optional[str] = None
     order_id: Optional[str] = None
     job_id: Optional[str] = None
+    pressure: Optional[float] = None
+    pour_angle: Optional[float] = None
+    heating_power: Optional[float] = None
+    cooling_progress: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -88,8 +156,15 @@ class EquipmentCreate(BaseModel):
     id: str
     name: str
     type: str
+    comm_id: Optional[str] = None
+    install_location: Optional[str] = None
     status: str = "idle"
-    zone: Optional[str] = None
+    pos_x: float = 0.0
+    pos_y: float = 0.0
+    pos_z: float = 0.0
+    battery: Optional[float] = None
+    speed: Optional[float] = None
+    last_update: Optional[str] = None
     last_maintenance: Optional[str] = None
     operating_hours: int = 0
     error_count: int = 0
@@ -97,6 +172,11 @@ class EquipmentCreate(BaseModel):
 
 class EquipmentStatusUpdate(BaseModel):
     status: str
+    battery: Optional[float] = None
+    speed: Optional[float] = None
+    pos_x: Optional[float] = None
+    pos_y: Optional[float] = None
+    pos_z: Optional[float] = None
 
 
 class EquipmentResponse(BaseModel):
@@ -105,72 +185,18 @@ class EquipmentResponse(BaseModel):
     id: str
     name: str
     type: str
+    comm_id: Optional[str] = None
+    install_location: Optional[str] = None
     status: str
-    zone: Optional[str] = None
+    pos_x: float
+    pos_y: float
+    pos_z: float
+    battery: Optional[float] = None
+    speed: Optional[float] = None
+    last_update: Optional[str] = None
     last_maintenance: Optional[str] = None
     operating_hours: int
     error_count: int
-
-
-# ---------------------------------------------------------------------------
-# TransportRequest schemas
-# ---------------------------------------------------------------------------
-
-class TransportRequestCreate(BaseModel):
-    id: str
-    from_zone: str
-    to_zone: str
-    item_type: str
-    quantity: int = 1
-    assigned_amr_id: Optional[str] = None
-
-
-class TransportStatusUpdate(BaseModel):
-    status: str
-    assigned_amr_id: Optional[str] = None
-    failure_reason: Optional[str] = None
-
-
-class TransportRequestResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    from_zone: str
-    to_zone: str
-    item_type: str
-    quantity: int
-    status: str
-    assigned_amr_id: Optional[str] = None
-    requested_at: datetime
-    completed_at: Optional[datetime] = None
-    failure_reason: Optional[str] = None
-
-
-# ---------------------------------------------------------------------------
-# InspectionRecord schemas
-# ---------------------------------------------------------------------------
-
-class InspectionRecordCreate(BaseModel):
-    id: str
-    casting_id: str
-    order_id: Optional[str] = None
-    result: str
-    confidence: float = 0.0
-    image_id: Optional[str] = None
-    defect_type: Optional[str] = None
-
-
-class InspectionRecordResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    casting_id: str
-    order_id: Optional[str] = None
-    result: str
-    confidence: float
-    image_id: Optional[str] = None
-    inspected_at: datetime
-    defect_type: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -179,9 +205,12 @@ class InspectionRecordResponse(BaseModel):
 
 class AlertCreate(BaseModel):
     id: str
+    equipment_id: Optional[str] = None
     type: str
     severity: str = "info"
+    error_code: Optional[str] = None
     message: str
+    abnormal_value: Optional[str] = None
     zone: Optional[str] = None
 
 
@@ -189,12 +218,193 @@ class AlertResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    equipment_id: Optional[str] = None
     type: str
     severity: str
+    error_code: Optional[str] = None
     message: str
+    abnormal_value: Optional[str] = None
     zone: Optional[str] = None
     timestamp: datetime
+    resolved_at: Optional[datetime] = None
     acknowledged: bool
+
+
+# ---------------------------------------------------------------------------
+# InspectionRecord schemas
+# ---------------------------------------------------------------------------
+
+class InspectionRecordCreate(BaseModel):
+    id: str
+    product_id: Optional[str] = None
+    casting_id: str
+    order_id: Optional[str] = None
+    result: str
+    defect_type_code: Optional[str] = None
+    confidence: float = 0.0
+    inspector_id: Optional[str] = None
+    image_id: Optional[str] = None
+    defect_type: Optional[str] = None
+    defect_detail: Optional[str] = None
+
+
+class InspectionRecordResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    product_id: Optional[str] = None
+    casting_id: str
+    order_id: Optional[str] = None
+    result: str
+    defect_type_code: Optional[str] = None
+    confidence: float
+    inspector_id: Optional[str] = None
+    image_id: Optional[str] = None
+    inspected_at: datetime
+    defect_type: Optional[str] = None
+    defect_detail: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# InspectionStandard schemas
+# ---------------------------------------------------------------------------
+
+class InspectionStandardCreate(BaseModel):
+    product_id: str
+    product_name: str
+    tolerance_range: Optional[str] = None
+    target_dimension: Optional[str] = None
+    threshold: float = 0.0
+
+
+class InspectionStandardResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    product_id: str
+    product_name: str
+    tolerance_range: Optional[str] = None
+    target_dimension: Optional[str] = None
+    threshold: float
+
+
+# ---------------------------------------------------------------------------
+# SorterLog schemas
+# ---------------------------------------------------------------------------
+
+class SorterLogCreate(BaseModel):
+    inspection_id: str
+    sort_direction: str  # "pass_line" | "fail_line"
+    sorter_angle: float = 0.0
+    success: bool = True
+
+
+class SorterLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    inspection_id: str
+    sort_direction: str
+    sorter_angle: float
+    success: bool
+
+
+# ---------------------------------------------------------------------------
+# TransportTask schemas (replaces TransportRequest)
+# ---------------------------------------------------------------------------
+
+class TransportTaskCreate(BaseModel):
+    id: str
+    from_name: str
+    from_coord: Optional[str] = None
+    to_name: str
+    to_coord: Optional[str] = None
+    item_id: Optional[str] = None
+    item_name: Optional[str] = None
+    quantity: int = 1
+    priority: str = "medium"  # "high" | "medium" | "low"
+    assigned_robot_id: Optional[str] = None
+
+
+class TransportStatusUpdate(BaseModel):
+    status: str
+    assigned_robot_id: Optional[str] = None
+
+
+class TransportTaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    from_name: str
+    from_coord: Optional[str] = None
+    to_name: str
+    to_coord: Optional[str] = None
+    item_id: Optional[str] = None
+    item_name: Optional[str] = None
+    quantity: int
+    priority: str
+    status: str
+    assigned_robot_id: Optional[str] = None
+    requested_at: datetime
+    completed_at: Optional[datetime] = None
+
+
+# ---------------------------------------------------------------------------
+# WarehouseRack schemas
+# ---------------------------------------------------------------------------
+
+class WarehouseRackCreate(BaseModel):
+    id: str
+    zone: str
+    rack_number: str
+    status: str = "empty"  # "empty" | "occupied" | "reserved" | "unavailable"
+    item_id: Optional[str] = None
+    item_name: Optional[str] = None
+    quantity: Optional[int] = None
+    row: int = 0
+    col: int = 0
+
+
+class WarehouseRackResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    zone: str
+    rack_number: str
+    status: str
+    item_id: Optional[str] = None
+    item_name: Optional[str] = None
+    quantity: Optional[int] = None
+    last_inbound_at: Optional[datetime] = None
+    row: int
+    col: int
+
+
+# ---------------------------------------------------------------------------
+# OutboundOrder schemas
+# ---------------------------------------------------------------------------
+
+class OutboundOrderCreate(BaseModel):
+    id: str
+    product_id: str
+    product_name: str
+    quantity: int = 0
+    destination: Optional[str] = None
+    policy: str = "FIFO"  # "LIFO" | "FIFO"
+    completed: bool = False
+
+
+class OutboundOrderResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    product_id: str
+    product_name: str
+    quantity: int
+    destination: Optional[str] = None
+    policy: str
+    completed: bool
+    created_at: datetime
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +438,8 @@ class QualityStats(BaseModel):
     failed: int
     defect_rate: float
     defect_types: dict
+    defect_type_codes: Optional[dict] = None
+    inspector_stats: Optional[dict] = None
 
 
 # ---------------------------------------------------------------------------
@@ -235,11 +447,11 @@ class QualityStats(BaseModel):
 # ---------------------------------------------------------------------------
 
 class DashboardStats(BaseModel):
-    total_orders: int
-    active_orders: int
-    equipment_running: int
-    equipment_total: int
-    pending_transports: int
-    active_alerts: int
-    today_production: int
-    defect_rate: float
+    production_goal_rate: float = 0.0
+    active_robots: int = 0
+    pending_orders: int = 0
+    today_alarms: int = 0
+    today_production: int = 0
+    defect_rate: float = 0.0
+    equipment_utilization: float = 0.0
+    completed_today: int = 0

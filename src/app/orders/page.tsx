@@ -2,470 +2,558 @@
 
 import { useState } from "react";
 import {
-  ChevronDown,
-  ChevronUp,
-  ChevronsUpDown,
-  X,
   Package,
   Clock,
   Factory,
   CheckCircle,
+  Search,
+  FileText,
+  User,
+  MapPin,
+  Phone,
+  CalendarDays,
+  Calculator,
+  Truck,
+  ThumbsUp,
+  ThumbsDown,
+  ChevronRight,
+  StickyNote,
+  Layers,
 } from "lucide-react";
-import { mockOrders } from "@/lib/mock-data";
-import { orderStatusMap, formatDate, formatCurrency } from "@/lib/utils";
-import type { Order } from "@/lib/types";
+import { mockOrders, mockOrderDetails } from "@/lib/mock-data";
+import { orderStatusMap, formatDate, formatCurrency, cn } from "@/lib/utils";
+import type { Order, OrderStatus, OrderDetail } from "@/lib/types";
 
-// 통계 카드 컴포넌트
-interface StatCardProps {
-  title: string;
-  value: number;
+// ────────────────────────────────────────
+// 상태 탭 정의
+// ────────────────────────────────────────
+
+interface StatusTab {
+  key: OrderStatus | "all";
+  label: string;
   icon: React.ReactNode;
-  colorClass: string;
 }
 
-function StatCard({ title, value, icon, colorClass }: StatCardProps) {
+const STATUS_TABS: StatusTab[] = [
+  { key: "all", label: "전체", icon: <Package size={15} /> },
+  { key: "pending", label: "신규 주문", icon: <Clock size={15} /> },
+  { key: "reviewing", label: "검토 중", icon: <Search size={15} /> },
+  { key: "approved", label: "승인", icon: <ThumbsUp size={15} /> },
+  { key: "in_production", label: "생산 중", icon: <Factory size={15} /> },
+  { key: "completed", label: "완료", icon: <CheckCircle size={15} /> },
+];
+
+// ────────────────────────────────────────
+// 견적/납기 계산 유틸
+// ────────────────────────────────────────
+
+function calcEstimatedDays(details: OrderDetail[]): number {
+  // 수량 기반 생산 일수 추정: 기본 3일 + 50개당 1일
+  const totalQty = details.reduce((sum, d) => sum + d.quantity, 0);
+  return 3 + Math.ceil(totalQty / 50);
+}
+
+function calcEstimatedDelivery(order: Order, details: OrderDetail[]): string {
+  const days = calcEstimatedDays(details);
+  const base = new Date(order.createdAt);
+  base.setDate(base.getDate() + days);
+  return base.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+// ────────────────────────────────────────
+// 주문 카드 컴포넌트
+// ────────────────────────────────────────
+
+interface OrderCardProps {
+  order: Order;
+  isSelected: boolean;
+  onClick: () => void;
+}
+
+function OrderCard({ order, isSelected, onClick }: OrderCardProps) {
+  const statusInfo = orderStatusMap[order.status];
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-5 flex items-center gap-4">
-      <div className={`p-3 rounded-full ${colorClass}`}>{icon}</div>
-      <div>
-        <p className="text-sm text-gray-500">{title}</p>
-        <p className="text-2xl font-bold text-gray-900">{value}</p>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "w-full text-left px-4 py-3 border-b border-gray-100 transition-colors",
+        isSelected
+          ? "bg-blue-50 border-l-4 border-l-blue-500"
+          : "hover:bg-gray-50 border-l-4 border-l-transparent"
+      )}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-mono text-gray-400">{order.id}</span>
+        <span
+          className={cn(
+            "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium",
+            statusInfo.color
+          )}
+        >
+          {statusInfo.label}
+        </span>
       </div>
-    </div>
+      <p className="text-sm font-semibold text-gray-900 truncate">
+        {order.companyName}
+      </p>
+      <div className="flex items-center justify-between mt-1.5">
+        <span className="text-xs text-gray-500">
+          {formatDate(order.createdAt)}
+        </span>
+        <span className="text-sm font-bold text-gray-800">
+          {formatCurrency(order.totalAmount)}
+        </span>
+      </div>
+    </button>
   );
 }
 
+// ────────────────────────────────────────
 // 주문 상세 패널 컴포넌트
+// ────────────────────────────────────────
+
 interface OrderDetailPanelProps {
   order: Order;
-  onClose: () => void;
+  details: OrderDetail[];
 }
 
-function OrderDetailPanel({ order, onClose }: OrderDetailPanelProps) {
+function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
   const statusInfo = orderStatusMap[order.status];
+  const estimatedDays = calcEstimatedDays(details);
+  const estimatedDelivery = calcEstimatedDelivery(order, details);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      {/* 배경 오버레이 */}
-      <div
-        className="absolute inset-0 bg-black/30"
-        onClick={onClose}
-        aria-label="닫기"
-      />
-
-      {/* 슬라이드 패널 */}
-      <div className="relative z-10 bg-white w-full max-w-lg h-full shadow-xl overflow-y-auto flex flex-col">
-        {/* 패널 헤더 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-semibold text-gray-900">
-            주문 상세 - {order.id}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            aria-label="패널 닫기"
+    <div className="flex-1 overflow-y-auto">
+      {/* 상단 헤더 */}
+      <div className="px-6 py-5 border-b border-gray-200 bg-white sticky top-0 z-10">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">{order.id}</h2>
+            <p className="text-sm text-gray-500 mt-0.5">{order.companyName}</p>
+          </div>
+          <span
+            className={cn(
+              "inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold",
+              statusInfo.color
+            )}
           >
-            <X size={20} />
-          </button>
+            {statusInfo.label}
+          </span>
         </div>
-
-        {/* 패널 본문 */}
-        <div className="flex-1 px-6 py-5 space-y-6">
-          {/* 상태 배지 */}
-          <div className="flex items-center gap-2">
-            <span
-              className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusInfo.color}`}
-            >
-              {statusInfo.label}
-            </span>
-          </div>
-
-          {/* 기본 정보 */}
-          <section>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-100">
-              기본 정보
-            </h3>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-              <div>
-                <dt className="text-gray-500">주문번호</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">{order.id}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">고객사</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">{order.companyName}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">담당자</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">{order.customerName}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">주문일</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">{formatDate(order.createdAt)}</dd>
-              </div>
-            </dl>
-          </section>
-
-          {/* 제품 정보 */}
-          <section>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-100">
-              제품 정보
-            </h3>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-              <div className="col-span-2">
-                <dt className="text-gray-500">제품명</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">{order.productName}</dd>
-              </div>
-              <div className="col-span-2">
-                <dt className="text-gray-500">규격</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">{order.productSpec}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">재질</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">{order.material}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">수량</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">{order.quantity.toLocaleString()}개</dd>
-              </div>
-              <div className="col-span-2">
-                <dt className="text-gray-500">후처리</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">
-                  {order.postProcessing || "-"}
-                </dd>
-              </div>
-            </dl>
-          </section>
-
-          {/* 금액 정보 */}
-          <section>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-100">
-              금액 정보
-            </h3>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-              <div>
-                <dt className="text-gray-500">단가</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">{formatCurrency(order.unitPrice)}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">총 금액</dt>
-                <dd className="font-bold text-gray-900 mt-0.5 text-base">{formatCurrency(order.totalPrice)}</dd>
-              </div>
-            </dl>
-          </section>
-
-          {/* 납기 정보 */}
-          <section>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-100">
-              납기 정보
-            </h3>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-              <div>
-                <dt className="text-gray-500">요청 납기일</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">
-                  {order.requestedDelivery || "-"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">예상 납기일</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">
-                  {order.estimatedDelivery || "-"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">최종 수정일</dt>
-                <dd className="font-medium text-gray-900 mt-0.5">{formatDate(order.updatedAt)}</dd>
-              </div>
-            </dl>
-          </section>
-
-          {/* 비고 */}
-          {order.notes && (
-            <section>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1 border-b border-gray-100">
-                비고
-              </h3>
-              <p className="text-sm text-gray-700 bg-gray-50 rounded-md p-3">
-                {order.notes}
-              </p>
-            </section>
-          )}
-        </div>
-
-        {/* 액션 버튼 (검토 중 상태일 때만 표시) */}
-        {order.status === "reviewing" && (
-          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex gap-3">
-            <button className="flex-1 py-2 px-4 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 transition-colors">
-              승인
-            </button>
-            <button className="flex-1 py-2 px-4 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 transition-colors">
-              반려
-            </button>
-            <button className="flex-1 py-2 px-4 bg-amber-500 text-white text-sm font-medium rounded-md hover:bg-amber-600 transition-colors">
-              수정 요청
-            </button>
-          </div>
-        )}
       </div>
-    </div>
-  );
-}
 
-// 정렬 키 타입
-type SortKey = "id" | "companyName" | "productName" | "quantity" | "totalPrice" | "status" | "createdAt";
-type SortDir = "asc" | "desc";
-
-// 정렬 헤더 컴포넌트
-interface SortableHeaderProps {
-  label: string;
-  sortKey: SortKey;
-  currentKey: SortKey;
-  currentDir: SortDir;
-  onSort: (key: SortKey) => void;
-}
-
-function SortableHeader({ label, sortKey, currentKey, currentDir, onSort }: SortableHeaderProps) {
-  const isActive = currentKey === sortKey;
-  return (
-    <th
-      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:bg-gray-100 transition-colors"
-      onClick={() => onSort(sortKey)}
-    >
-      <span className="flex items-center gap-1">
-        {label}
-        {isActive ? (
-          currentDir === "asc" ? (
-            <ChevronUp size={14} className="text-blue-500" />
-          ) : (
-            <ChevronDown size={14} className="text-blue-500" />
-          )
-        ) : (
-          <ChevronsUpDown size={14} className="text-gray-300" />
-        )}
-      </span>
-    </th>
-  );
-}
-
-// 메인 페이지
-export default function OrdersPage() {
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("createdAt");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-
-  // 통계 계산
-  const totalCount = mockOrders.length;
-  const newCount = mockOrders.filter(
-    (o) => o.status === "pending" || o.status === "reviewing"
-  ).length;
-  const inProductionCount = mockOrders.filter(
-    (o) => o.status === "in_production"
-  ).length;
-  const completedCount = mockOrders.filter(
-    (o) => o.status === "completed"
-  ).length;
-
-  // 정렬 핸들러
-  function handleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-  }
-
-  // 정렬된 주문 목록
-  const sortedOrders = [...mockOrders].sort((a, b) => {
-    const aVal: string | number = a[sortKey] as string | number;
-    const bVal: string | number = b[sortKey] as string | number;
-
-    if (typeof aVal === "string" && typeof bVal === "string") {
-      const cmp = aVal.localeCompare(bVal, "ko");
-      return sortDir === "asc" ? cmp : -cmp;
-    }
-    if (typeof aVal === "number" && typeof bVal === "number") {
-      return sortDir === "asc" ? aVal - bVal : bVal - aVal;
-    }
-    return 0;
-  });
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 페이지 헤더 */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">주문 관리</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            전체 주문 현황을 확인하고 관리합니다.
-          </p>
-        </div>
-
-        {/* 요약 통계 카드 */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard
-            title="전체 주문"
-            value={totalCount}
-            icon={<Package size={20} className="text-gray-600" />}
-            colorClass="bg-gray-100"
-          />
-          <StatCard
-            title="신규 주문"
-            value={newCount}
-            icon={<Clock size={20} className="text-blue-600" />}
-            colorClass="bg-blue-100"
-          />
-          <StatCard
-            title="생산 중"
-            value={inProductionCount}
-            icon={<Factory size={20} className="text-yellow-600" />}
-            colorClass="bg-yellow-100"
-          />
-          <StatCard
-            title="완료"
-            value={completedCount}
-            icon={<CheckCircle size={20} className="text-emerald-600" />}
-            colorClass="bg-emerald-100"
-          />
-        </div>
-
-        {/* 주문 목록 테이블 */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-base font-semibold text-gray-900">주문 목록</h2>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+      <div className="px-6 py-5 space-y-6">
+        {/* 제품 상세 */}
+        <section>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+            <Layers size={16} className="text-gray-400" />
+            제품 상세
+          </h3>
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-100">
               <thead className="bg-gray-50">
                 <tr>
-                  <SortableHeader
-                    label="주문번호"
-                    sortKey="id"
-                    currentKey={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="고객사"
-                    sortKey="companyName"
-                    currentKey={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="제품명"
-                    sortKey="productName"
-                    currentKey={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">
+                    제품명
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">
                     규격
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">
                     재질
                   </th>
-                  <SortableHeader
-                    label="수량"
-                    sortKey="quantity"
-                    currentKey={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="금액"
-                    sortKey="totalPrice"
-                    currentKey={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="상태"
-                    sortKey="status"
-                    currentKey={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="주문일"
-                    sortKey="createdAt"
-                    currentKey={sortKey}
-                    currentDir={sortDir}
-                    onSort={handleSort}
-                  />
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">
+                    수량
+                  </th>
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">
+                    단가
+                  </th>
+                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">
+                    소계
+                  </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-100">
-                {sortedOrders.map((order, idx) => {
-                  const statusInfo = orderStatusMap[order.status];
-                  const isSelected = selectedOrder?.id === order.id;
-                  return (
-                    <tr
-                      key={order.id}
-                      onClick={() => setSelectedOrder(order)}
-                      className={`cursor-pointer transition-colors ${
-                        isSelected
-                          ? "bg-blue-50"
-                          : idx % 2 === 0
-                          ? "bg-white hover:bg-gray-50"
-                          : "bg-gray-50/50 hover:bg-gray-100"
-                      }`}
-                    >
-                      <td className="px-4 py-3 text-sm font-mono font-medium text-blue-600 whitespace-nowrap">
-                        {order.id}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
-                        <div className="font-medium">{order.companyName}</div>
-                        <div className="text-xs text-gray-400">{order.customerName}</div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap max-w-[160px] truncate">
-                        {order.productName}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap max-w-[140px] truncate">
-                        {order.productSpec}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                        {order.material}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap text-right">
-                        {order.quantity.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap text-right font-medium">
-                        {formatCurrency(order.totalPrice)}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}
-                        >
-                          {statusInfo.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
-                        {formatDate(order.createdAt)}
-                      </td>
-                    </tr>
-                  );
-                })}
+              <tbody className="divide-y divide-gray-50">
+                {details.map((d) => (
+                  <tr key={d.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                      {d.productName}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {d.spec}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {d.material}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                      {d.quantity.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 text-right">
+                      {formatCurrency(d.unitPrice)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
+                      {formatCurrency(d.subtotal)}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
+              <tfoot>
+                <tr className="bg-gray-50">
+                  <td
+                    colSpan={5}
+                    className="px-4 py-3 text-sm font-semibold text-gray-700 text-right"
+                  >
+                    합계
+                  </td>
+                  <td className="px-4 py-3 text-sm font-bold text-blue-700 text-right">
+                    {formatCurrency(order.totalAmount)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
 
-          {/* 테이블 푸터 */}
-          <div className="px-6 py-3 border-t border-gray-100 bg-gray-50">
+          {/* 후처리 / 로고 정보 */}
+          {details.some((d) => d.postProcessing || d.logoData) && (
+            <div className="mt-3 space-y-2">
+              {details.map((d) => (
+                <div
+                  key={d.id}
+                  className="text-xs text-gray-500 bg-gray-50 rounded-md px-3 py-2"
+                >
+                  <span className="font-medium text-gray-700">
+                    {d.productName}
+                  </span>
+                  {d.postProcessing && (
+                    <span className="ml-2">
+                      후처리: <span className="text-gray-700">{d.postProcessing}</span>
+                    </span>
+                  )}
+                  {d.logoData && (
+                    <span className="ml-2">
+                      로고: <span className="text-gray-700">{d.logoData}</span>
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* 견적/납기 계산기 */}
+        <section>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+            <Calculator size={16} className="text-gray-400" />
+            견적 / 납기 계산
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+              <p className="text-xs text-blue-600 font-medium mb-1">총 견적 금액</p>
+              <p className="text-xl font-bold text-blue-800">
+                {formatCurrency(order.totalAmount)}
+              </p>
+              <p className="text-[11px] text-blue-500 mt-1">
+                {details.reduce((s, d) => s + d.quantity, 0)}개 제품 기준
+              </p>
+            </div>
+            <div className="bg-amber-50 border border-amber-100 rounded-lg p-4">
+              <p className="text-xs text-amber-600 font-medium mb-1">
+                예상 생산 기간
+              </p>
+              <p className="text-xl font-bold text-amber-800">
+                {estimatedDays}일
+              </p>
+              <p className="text-[11px] text-amber-500 mt-1">
+                예상 완료: {estimatedDelivery}
+              </p>
+            </div>
+            <div className="bg-green-50 border border-green-100 rounded-lg p-4">
+              <div className="flex items-center gap-1.5 mb-1">
+                <CalendarDays size={13} className="text-green-600" />
+                <p className="text-xs text-green-600 font-medium">요청 납기</p>
+              </div>
+              <p className="text-sm font-semibold text-green-800">
+                {order.requestedDelivery || "-"}
+              </p>
+            </div>
+            <div className="bg-purple-50 border border-purple-100 rounded-lg p-4">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Truck size={13} className="text-purple-600" />
+                <p className="text-xs text-purple-600 font-medium">확정 납기</p>
+              </div>
+              <p className="text-sm font-semibold text-purple-800">
+                {order.confirmedDelivery || "미정"}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* 고객 정보 */}
+        <section>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+            <User size={16} className="text-gray-400" />
+            고객 정보
+          </h3>
+          <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <User size={15} className="text-gray-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs text-gray-500">담당자</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {order.customerName}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <Phone size={15} className="text-gray-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs text-gray-500">연락처</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {order.contact}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3">
+              <MapPin size={15} className="text-gray-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs text-gray-500">배송 주소</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {order.shippingAddress}
+                </p>
+              </div>
+            </div>
+            {order.notes && (
+              <div className="flex items-start gap-3">
+                <StickyNote
+                  size={15}
+                  className="text-gray-400 mt-0.5 shrink-0"
+                />
+                <div>
+                  <p className="text-xs text-gray-500">비고</p>
+                  <p className="text-sm text-gray-700 bg-gray-50 rounded-md p-2 mt-1">
+                    {order.notes}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* 주문 이력 */}
+        <section>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
+            <FileText size={16} className="text-gray-400" />
+            주문 이력
+          </h3>
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm">
+                <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                <span className="text-gray-500 w-32 shrink-0">
+                  {formatDate(order.createdAt)}
+                </span>
+                <span className="text-gray-900">주문 접수</span>
+              </div>
+              {order.status !== "pending" && (
+                <div className="flex items-center gap-3 text-sm">
+                  <div className="w-2 h-2 rounded-full bg-yellow-500 shrink-0" />
+                  <span className="text-gray-500 w-32 shrink-0">
+                    {formatDate(order.updatedAt)}
+                  </span>
+                  <span className="text-gray-900">
+                    상태 변경:{" "}
+                    <span className="font-medium">{statusInfo.label}</span>
+                  </span>
+                </div>
+              )}
+              {order.confirmedDelivery && (
+                <div className="flex items-center gap-3 text-sm">
+                  <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                  <span className="text-gray-500 w-32 shrink-0">
+                    {formatDate(order.updatedAt)}
+                  </span>
+                  <span className="text-gray-900">
+                    납기 확정: {order.confirmedDelivery}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* 하단 액션 버튼 */}
+      {(order.status === "pending" ||
+        order.status === "reviewing" ||
+        order.status === "approved") && (
+        <div className="px-6 py-4 border-t border-gray-200 bg-white sticky bottom-0">
+          <div className="flex gap-3">
+            {(order.status === "pending" || order.status === "reviewing") && (
+              <>
+                <button
+                  type="button"
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <ThumbsUp size={16} />
+                  승인
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <ThumbsDown size={16} />
+                  반려
+                </button>
+              </>
+            )}
+            {order.status === "approved" && (
+              <button
+                type="button"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Factory size={16} />
+                생산 시작
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────
+// 메인 페이지
+// ────────────────────────────────────────
+
+export default function OrdersPage() {
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [activeTab, setActiveTab] = useState<OrderStatus | "all">("all");
+
+  // 탭 필터
+  const filteredOrders =
+    activeTab === "all"
+      ? mockOrders
+      : mockOrders.filter((o) => o.status === activeTab);
+
+  // 선택된 주문의 상세 정보
+  const selectedDetails = selectedOrder
+    ? mockOrderDetails.filter((d) => d.orderId === selectedOrder.id)
+    : [];
+
+  // 탭별 카운트
+  const tabCounts: Record<string, number> = {
+    all: mockOrders.length,
+  };
+  for (const tab of STATUS_TABS) {
+    if (tab.key !== "all") {
+      tabCounts[tab.key] = mockOrders.filter(
+        (o) => o.status === tab.key
+      ).length;
+    }
+  }
+
+  return (
+    <div className="h-screen flex flex-col bg-gray-50">
+      {/* 페이지 헤더 */}
+      <div className="px-6 py-4 bg-white border-b border-gray-200 shrink-0">
+        <h1 className="text-xl font-bold text-gray-900">주문 관리</h1>
+        <p className="text-sm text-gray-500 mt-0.5">
+          전체 주문 현황을 확인하고 관리합니다.
+        </p>
+      </div>
+
+      {/* 메인 콘텐츠 영역 (좌측 목록 + 우측 상세) */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* ── 좌측: 주문 목록 ── */}
+        <div className="w-[380px] shrink-0 border-r border-gray-200 bg-white flex flex-col">
+          {/* 상태 탭 */}
+          <div className="px-3 pt-3 pb-2 border-b border-gray-100 shrink-0">
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_TABS.map((tab) => {
+                const isActive = activeTab === tab.key;
+                const count = tabCounts[tab.key] || 0;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(tab.key);
+                      setSelectedOrder(null);
+                    }}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
+                      isActive
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    )}
+                  >
+                    {tab.icon}
+                    {tab.label}
+                    <span
+                      className={cn(
+                        "ml-0.5 px-1.5 py-0.5 rounded-full text-[10px]",
+                        isActive
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-200 text-gray-500"
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 주문 카드 목록 */}
+          <div className="flex-1 overflow-y-auto">
+            {filteredOrders.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                <Package size={40} strokeWidth={1.5} />
+                <p className="mt-2 text-sm">해당 상태의 주문이 없습니다.</p>
+              </div>
+            ) : (
+              filteredOrders.map((order) => (
+                <OrderCard
+                  key={order.id}
+                  order={order}
+                  isSelected={selectedOrder?.id === order.id}
+                  onClick={() => setSelectedOrder(order)}
+                />
+              ))
+            )}
+          </div>
+
+          {/* 목록 푸터 */}
+          <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 shrink-0">
             <p className="text-xs text-gray-500">
-              총 {mockOrders.length}건의 주문
+              총 {filteredOrders.length}건
+              {activeTab !== "all" && ` / 전체 ${mockOrders.length}건`}
             </p>
           </div>
         </div>
-      </div>
 
-      {/* 주문 상세 패널 */}
-      {selectedOrder && (
-        <OrderDetailPanel
-          order={selectedOrder}
-          onClose={() => setSelectedOrder(null)}
-        />
-      )}
+        {/* ── 우측: 주문 상세 ── */}
+        <div className="flex-1 bg-gray-50 flex flex-col">
+          {selectedOrder ? (
+            <OrderDetailPanel
+              order={selectedOrder}
+              details={selectedDetails}
+            />
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+              <ChevronRight size={48} strokeWidth={1.5} />
+              <p className="mt-3 text-sm">좌측 목록에서 주문을 선택하세요.</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

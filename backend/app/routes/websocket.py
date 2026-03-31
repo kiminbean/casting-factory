@@ -7,13 +7,13 @@ from typing import List
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.database import SessionLocal
-from app.models.models import Alert, Equipment, Order, ProcessStage, ProductionMetric
+from app.models.models import Alert, Equipment, Order, ProcessStage, ProductionMetric, TransportTask
 
 router = APIRouter(tags=["websocket"])
 
 
 class ConnectionManager:
-    """Manages active WebSocket connections and broadcasts messages."""
+    """활성 WebSocket 연결 관리 및 브로드캐스트."""
 
     def __init__(self):
         self.active_connections: List[WebSocket] = []
@@ -47,28 +47,25 @@ manager = ConnectionManager()
 
 
 def _get_dashboard_stats() -> dict:
-    """Query the database and build a dashboard stats payload."""
+    """DB 조회 후 대시보드 통계 페이로드 생성."""
     db = SessionLocal()
     try:
-        total_orders = db.query(Order).count()
-        active_statuses = ["pending", "approved", "in_production", "reviewing"]
-        active_orders = db.query(Order).filter(Order.status.in_(active_statuses)).count()
+        pending_statuses = ["pending", "reviewing", "approved"]
+        pending_orders = db.query(Order).filter(Order.status.in_(pending_statuses)).count()
 
         equipment_total = db.query(Equipment).count()
         equipment_running = db.query(Equipment).filter(Equipment.status == "running").count()
+        equipment_utilization = (
+            round(equipment_running / equipment_total * 100, 1) if equipment_total > 0 else 0.0
+        )
 
-        pending_transports = 0
-        try:
-            from app.models.models import TransportRequest
-            pending_transports = (
-                db.query(TransportRequest)
-                .filter(TransportRequest.status.in_(["requested", "assigned", "moving_to_dest"]))
-                .count()
-            )
-        except Exception:
-            pass
+        active_robots = (
+            db.query(Equipment)
+            .filter(Equipment.type == "amr", Equipment.status == "running")
+            .count()
+        )
 
-        active_alerts = db.query(Alert).filter(Alert.acknowledged == False).count()
+        today_alarms = db.query(Alert).filter(Alert.acknowledged == False).count()  # noqa: E712
 
         latest_metric = (
             db.query(ProductionMetric)
@@ -78,17 +75,24 @@ def _get_dashboard_stats() -> dict:
         today_production = latest_metric.production if latest_metric else 0
         defect_rate = latest_metric.defect_rate if latest_metric else 0.0
 
+        completed_today = db.query(Order).filter(Order.status == "completed").count()
+
+        production_goal = 100
+        production_goal_rate = (
+            round(today_production / production_goal * 100, 1) if production_goal > 0 else 0.0
+        )
+
         return {
             "type": "dashboard_stats",
             "data": {
-                "total_orders": total_orders,
-                "active_orders": active_orders,
-                "equipment_running": equipment_running,
-                "equipment_total": equipment_total,
-                "pending_transports": pending_transports,
-                "active_alerts": active_alerts,
+                "production_goal_rate": production_goal_rate,
+                "active_robots": active_robots,
+                "pending_orders": pending_orders,
+                "today_alarms": today_alarms,
                 "today_production": today_production,
                 "defect_rate": defect_rate,
+                "equipment_utilization": equipment_utilization,
+                "completed_today": completed_today,
             },
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -97,13 +101,13 @@ def _get_dashboard_stats() -> dict:
 
 
 def _get_production_update() -> dict:
-    """Build a simulated production update payload with slight random variation."""
+    """공정 단계 진행 시뮬레이션 페이로드 생성."""
     db = SessionLocal()
     try:
         stages = db.query(ProcessStage).order_by(ProcessStage.id).all()
         stage_data = []
         for stage in stages:
-            # Simulate small progress changes for running stages
+            # running 상태에서 미세 진행률 변동 시뮬레이션
             if stage.status == "running" and stage.progress < 100:
                 stage.progress = min(stage.progress + random.randint(0, 3), 100)
                 if stage.temperature is not None and stage.target_temperature is not None:
@@ -117,9 +121,15 @@ def _get_production_update() -> dict:
                 "temperature": stage.temperature,
                 "target_temperature": stage.target_temperature,
                 "progress": stage.progress,
+                "start_time": stage.start_time,
+                "estimated_end": stage.estimated_end,
                 "equipment_id": stage.equipment_id,
                 "order_id": stage.order_id,
                 "job_id": stage.job_id,
+                "pressure": stage.pressure,
+                "pour_angle": stage.pour_angle,
+                "heating_power": stage.heating_power,
+                "cooling_progress": stage.cooling_progress,
             })
         db.commit()
         return {
@@ -132,18 +142,26 @@ def _get_production_update() -> dict:
 
 
 def _get_alert_update() -> dict:
-    """Build an alert update payload with unacknowledged alerts."""
+    """미확인 알람 페이로드 생성."""
     db = SessionLocal()
     try:
-        unacked = db.query(Alert).filter(Alert.acknowledged == False).order_by(Alert.timestamp.desc()).all()
+        unacked = (
+            db.query(Alert)
+            .filter(Alert.acknowledged == False)  # noqa: E712
+            .order_by(Alert.timestamp.desc())
+            .all()
+        )
         alert_data = [
             {
                 "id": a.id,
+                "equipment_id": a.equipment_id,
                 "type": a.type,
                 "severity": a.severity,
+                "error_code": a.error_code,
                 "message": a.message,
+                "abnormal_value": a.abnormal_value,
                 "zone": a.zone,
-                "timestamp": a.timestamp.isoformat() if a.timestamp else None,
+                "timestamp": a.timestamp if a.timestamp else None,
                 "acknowledged": a.acknowledged,
             }
             for a in unacked
@@ -161,7 +179,7 @@ def _get_alert_update() -> dict:
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
 
-    # Send initial dashboard stats immediately on connection
+    # 연결 직후 초기 데이터 전송
     try:
         initial_stats = _get_dashboard_stats()
         await manager.send_personal(initial_stats, websocket)
@@ -177,16 +195,16 @@ async def websocket_endpoint(websocket: WebSocket):
             await asyncio.sleep(5)
             tick += 1
 
-            # Broadcast production stage update every 5 seconds
+            # 5초마다 공정 진행 업데이트 브로드캐스트
             production_msg = _get_production_update()
             await manager.broadcast(production_msg)
 
-            # Broadcast dashboard stats every 10 seconds (every 2 ticks)
+            # 10초마다 대시보드 통계 브로드캐스트
             if tick % 2 == 0:
                 stats_msg = _get_dashboard_stats()
                 await manager.broadcast(stats_msg)
 
-            # Broadcast alert update every 15 seconds (every 3 ticks)
+            # 15초마다 알람 업데이트 브로드캐스트
             if tick % 3 == 0:
                 alert_msg = _get_alert_update()
                 await manager.broadcast(alert_msg)

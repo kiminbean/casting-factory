@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Factory, Bot, Cpu, Zap, Battery, MapPin } from "lucide-react";
 
 // ----------------------------------------------------------------
@@ -37,23 +37,96 @@ const ANIMATION_STYLES = `
     100% { transform: translateZ(30px) scale(1); }
   }
 
-  /* 3D 렌더 뷰용 AMR 이동 애니메이션 */
+  /* === AMR 이동 애니메이션 — 복도 전용 경로 (물리 법칙 준수) === */
+
+  /*
+   * 투영 좌표: 카메라(21,-19,11), 렌즈28mm 기준
+   *
+   * 구역 중심:
+   *   원자재(52,25)  용해(67,39)  주형(89,60)
+   *   주조(36,36)    냉각(50,56)  탈형(72,86)
+   *   후처리(14,52)  검사(25,79)  적재(44,127-화면밖)
+   *
+   * 복도 교차점 (AMR 회전 노드):
+   *   N1=(51,38)  N2=(69,57)
+   *   N3=(32,54)  N4=(48,82)
+   *
+   * 물리 규칙:
+   *   - AMR은 구역 내부를 절대 가로지르지 않음
+   *   - 구역 사이 1.5m 갭(복도) 중심선만 이동
+   *   - 교차점(N1~N4)에서만 방향 전환
+   *   - 구역 가장자리에서 적재/하역
+   */
+
+  /* AMR-001: 원자재(1,1) → V12 복도 → 용해(2,1) 왕복
+     구간: 원자재 →edge(57.5,30) → 복도 → 용해 ←edge(61,33)
+     짧은 인접 구역 이동 — V12 복도만 사용 */
   @keyframes render-amr-patrol-1 {
-    0%   { left: 20%; top: 48%; }
-    25%  { left: 25%; top: 38%; }
-    50%  { left: 20%; top: 28%; }
-    75%  { left: 15%; top: 38%; }
-    100% { left: 20%; top: 48%; }
+    0%   { left: 57.5%; top: 30%; }  /* 원자재(1,1) 오른쪽 가장자리 — 적재 */
+    10%  { left: 57.5%; top: 30%; }  /* 적재 대기 */
+    18%  { left: 59%; top: 31%; }    /* V12 복도 진입 */
+    32%  { left: 61%; top: 33%; }    /* 용해(2,1) 왼쪽 가장자리 도착 */
+    48%  { left: 61%; top: 33%; }    /* 하역 대기 */
+    56%  { left: 59%; top: 31%; }    /* V12 복도 복귀 */
+    70%  { left: 57.5%; top: 30%; }  /* 원자재 가장자리 복귀 */
+    100% { left: 57.5%; top: 30%; }  /* 다음 배치 적재 대기 */
   }
+
+  /* AMR-002: 탈형(3,2) → 복도경유 → 후처리(1,3) → 검사(2,3) → 복귀
+     경로: 탈형←edge → V23↗N2 → H12↖N1 → V12↙N3 → 후처리→edge
+           후처리→edge → V12↘ → 검사←edge
+           검사↑edge → N3↗ → N1↗ → N2↘ → 탈형←edge
+     복도 교차점 4개를 모두 경유하는 긴 순환 경로 */
   @keyframes render-amr-patrol-2 {
-    0%   { left: 48%; top: 58%; }
-    33%  { left: 44%; top: 48%; }
-    66%  { left: 48%; top: 38%; }
-    100% { left: 48%; top: 58%; }
+    0%   { left: 62%; top: 72%; }    /* 탈형(3,2) 왼쪽 가장자리 — 주물 적재 */
+    4%   { left: 62%; top: 72%; }    /* 적재 대기 */
+    8%   { left: 65%; top: 65%; }    /* V23 복도 북행 ↗ */
+    13%  { left: 69%; top: 57%; }    /* N2 교차점 도착 */
+    14%  { left: 69%; top: 57%; }    /* 방향 전환 */
+    20%  { left: 60%; top: 47%; }    /* H12 복도 서행 ↖ */
+    25%  { left: 51%; top: 38%; }    /* N1 교차점 도착 */
+    26%  { left: 51%; top: 38%; }    /* 방향 전환 */
+    33%  { left: 41%; top: 46%; }    /* V12 복도 남행 ↙ */
+    38%  { left: 32%; top: 54%; }    /* N3 교차점 도착 */
+    39%  { left: 32%; top: 54%; }    /* 방향 전환 */
+    44%  { left: 18%; top: 61%; }    /* 후처리(1,3) 오른쪽 가장자리 도착 */
+    52%  { left: 18%; top: 61%; }    /* 후처리 대기 */
+    55%  { left: 19%; top: 64%; }    /* V12 복도 진입 ↘ */
+    59%  { left: 20%; top: 67%; }    /* 검사(2,3) 왼쪽 가장자리 도착 */
+    65%  { left: 20%; top: 67%; }    /* 검사 인계 대기 */
+    /* 복귀: 검사 → N3 → N1 → N2 → 탈형 */
+    69%  { left: 32%; top: 54%; }    /* N3 교차점 (↗ 북행) */
+    74%  { left: 51%; top: 38%; }    /* N1 교차점 (↗ 동행) */
+    79%  { left: 69%; top: 57%; }    /* N2 교차점 (↘ 남행) */
+    84%  { left: 65%; top: 63%; }    /* V23 복도 남행 ↙ */
+    90%  { left: 62%; top: 72%; }    /* 탈형 가장자리 복귀 */
+    100% { left: 62%; top: 72%; }    /* 다음 배치 대기 */
   }
+
+  /* AMR-003: 검사(2,3) → V23 복도 → 적재(3,3) 방향 왕복
+     경로: 검사→edge → N4 교차점 → 적재 방향(화면 하단)
+     적재(3,3)가 화면 밖이므로 화면 하단까지만 표시 */
+  @keyframes render-amr-patrol-3 {
+    0%   { left: 31%; top: 79%; }    /* 검사(2,3) 오른쪽 가장자리 — 완제품 적재 */
+    10%  { left: 31%; top: 79%; }    /* 적재 대기 */
+    20%  { left: 36%; top: 80%; }    /* V23 복도 진입 (↘) */
+    35%  { left: 42%; top: 82%; }    /* N4 교차점 경유 */
+    50%  { left: 48%; top: 86%; }    /* 적재/출고 방향 (화면 하단) */
+    65%  { left: 48%; top: 86%; }    /* 하역 대기 */
+    75%  { left: 42%; top: 83%; }    /* 복귀 (↖) */
+    88%  { left: 34%; top: 80%; }    /* 복도 복귀 */
+    100% { left: 31%; top: 79%; }    /* 검사 가장자리 복귀 */
+  }
+
   @keyframes render-amr-charge {
     0%, 100% { box-shadow: 0 0 6px 2px rgba(250, 204, 21, 0.5); }
     50%      { box-shadow: 0 0 14px 5px rgba(250, 204, 21, 0.8); }
+  }
+
+  /* 프로세스 흐름 화살표 펄스 */
+  @keyframes flow-pulse {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 0.9; }
   }
 
   /* 3D 렌더 뷰용 Cobot 작업 애니메이션 */
@@ -610,16 +683,18 @@ function Legend() {
 // ----------------------------------------------------------------
 
 // 3D 렌더 이미지 위 인터랙티브 핫스팟 좌표 (이미지 비율 기준 %)
+// 카메라 (21,-19,11), 타겟 (9,-9,0.8), 렌즈 28mm 기준 수학적 투영
+// 행(Row) 이동 = 이미지 ↘ 대각선, 열(Col) 이동 = 이미지 ↙ 대각선
 const HOTSPOTS: { zoneId: string; x: number; y: number; w: number; h: number }[] = [
-  { zoneId: "raw-material", x: 6,  y: 36, w: 16, h: 22 },  // 원자재 보관 (좌상)
-  { zoneId: "melting",      x: 30, y: 20, w: 18, h: 26 },  // 용해 구역 (중앙상)
-  { zoneId: "mold",         x: 55, y: 12, w: 16, h: 22 },  // 주형 구역 (우상)
-  { zoneId: "casting",      x: 6,  y: 56, w: 16, h: 20 },  // 주조 구역 (좌중)
-  { zoneId: "cooling",      x: 28, y: 46, w: 22, h: 18 },  // 냉각 구역 (중앙)
-  { zoneId: "demolding",    x: 55, y: 38, w: 16, h: 20 },  // 탈형 구역 (우중)
-  { zoneId: "post-process", x: 6,  y: 76, w: 16, h: 18 },  // 후처리 구역 (좌하)
-  { zoneId: "inspection",   x: 28, y: 68, w: 18, h: 18 },  // 검사 구역 (중앙하)
-  { zoneId: "loading",      x: 55, y: 60, w: 16, h: 22 },  // 적재/출고 (우하)
+  { zoneId: "raw-material", x: 46, y: 19, w: 12, h: 11 },  // 원자재 (1,1) center≈(52,25)
+  { zoneId: "melting",      x: 60, y: 31, w: 14, h: 14 },  // 용해   (2,1) center≈(67,39)
+  { zoneId: "mold",         x: 79, y: 49, w: 14, h: 16 },  // 주형   (3,1) center≈(89,60)
+  { zoneId: "casting",      x: 30, y: 28, w: 12, h: 14 },  // 주조   (1,2) center≈(36,36)
+  { zoneId: "cooling",      x: 42, y: 46, w: 15, h: 16 },  // 냉각   (2,2) center≈(50,56)
+  { zoneId: "demolding",    x: 62, y: 70, w: 16, h: 18 },  // 탈형   (3,2) center≈(72,86)
+  { zoneId: "post-process", x: 7,  y: 42, w: 14, h: 16 },  // 후처리 (1,3) center≈(14,52)
+  { zoneId: "inspection",   x: 16, y: 64, w: 16, h: 18 },  // 검사   (2,3) center≈(25,79)
+  { zoneId: "loading",      x: 35, y: 82, w: 16, h: 16 },  // 적재   (3,3) 하단 부분만 표시
 ];
 
 // JetCobot280 오버레이 컴포넌트 (3D 렌더 위)
@@ -715,6 +790,8 @@ function AMROverlay({
   y,
   status,
   animationName,
+  task,
+  animationDuration,
 }: {
   id: string;
   label: string;
@@ -722,6 +799,8 @@ function AMROverlay({
   y: number;
   status: "moving" | "idle" | "charging";
   animationName?: string;
+  task?: string;
+  animationDuration?: number;
 }) {
   const bgColor =
     status === "moving"
@@ -743,7 +822,7 @@ function AMROverlay({
         left: `${x}%`,
         top: `${y}%`,
         zIndex: 25,
-        animation: animationName ? `${animationName} 8s ease-in-out infinite` : undefined,
+        animation: animationName ? `${animationName} ${animationDuration || 12}s ease-in-out infinite` : undefined,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -804,9 +883,24 @@ function AMROverlay({
       >
         {status === "moving" ? "이동 중" : status === "charging" ? "충전 중" : "대기"}
       </span>
+      {/* 임무 설명 */}
+      {task && (
+        <span
+          style={{
+            fontSize: 6,
+            color: "#94a3b8",
+            textShadow: "0 1px 3px rgba(0,0,0,0.9)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {task}
+        </span>
+      )}
     </div>
   );
 }
+
+
 
 function Render3DView({
   selectedId,
@@ -815,8 +909,71 @@ function Render3DView({
   selectedId: string;
   onSelect: (id: string) => void;
 }) {
+  const [debugMode, setDebugMode] = useState(false);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [clickLog, setClickLog] = useState<{ x: number; y: number }[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!debugMode || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setMousePos({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 });
+  }, [debugMode]);
+
+  const handleDebugClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!debugMode || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * 100 * 10) / 10;
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * 100 * 10) / 10;
+    setClickLog((prev) => [...prev.slice(-19), { x, y }]);
+  }, [debugMode]);
+
   return (
-    <div style={{ position: "relative", borderRadius: 10, overflow: "hidden" }}>
+    <div style={{ position: "relative" }}>
+      {/* 디버그 모드 토글 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <button
+          onClick={() => { setDebugMode((v) => !v); setMousePos(null); }}
+          style={{
+            padding: "3px 10px",
+            fontSize: 9,
+            fontWeight: 700,
+            borderRadius: 4,
+            border: debugMode ? "1px solid #f59e0b" : "1px solid #374151",
+            background: debugMode ? "#422006" : "#1f2937",
+            color: debugMode ? "#fde047" : "#6b7280",
+            cursor: "pointer",
+          }}
+        >
+          {debugMode ? "DEBUG ON" : "DEBUG OFF"}
+        </button>
+        {debugMode && mousePos && (
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#fde047", fontFamily: "monospace" }}>
+            x: {mousePos.x}% &nbsp; y: {mousePos.y}%
+          </span>
+        )}
+        {debugMode && clickLog.length > 0 && (
+          <button
+            onClick={() => setClickLog([])}
+            style={{
+              padding: "2px 8px", fontSize: 8, borderRadius: 3,
+              border: "1px solid #374151", background: "#1f2937", color: "#9ca3af", cursor: "pointer",
+            }}
+          >
+            로그 초기화
+          </button>
+        )}
+      </div>
+
+      <div
+        ref={containerRef}
+        style={{ position: "relative", borderRadius: 10, overflow: "hidden", cursor: debugMode ? "crosshair" : "default" }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setMousePos(null)}
+        onClick={handleDebugClick}
+      >
       {/* 3D 렌더 이미지 */}
       <img
         src="/factory-3d.png"
@@ -829,22 +986,70 @@ function Render3DView({
         }}
       />
 
-      {/* === JetCobot280 2대 === */}
-      {/* COBOT-001: 주조 구역 (좌중) */}
-      <CobotOverlay id="COBOT-001" label="COBOT-001" x={11} y={58} />
-      {/* COBOT-002: 후처리 구역 (좌하) */}
-      <CobotOverlay id="COBOT-002" label="COBOT-002" x={11} y={78} />
+      {/* 디버그: 십자선 + 좌표 표시 */}
+      {debugMode && mousePos && (
+        <>
+          {/* 수평선 */}
+          <div style={{
+            position: "absolute", left: 0, top: `${mousePos.y}%`,
+            width: "100%", height: 1, background: "rgba(253, 224, 71, 0.4)", pointerEvents: "none", zIndex: 50,
+          }} />
+          {/* 수직선 */}
+          <div style={{
+            position: "absolute", left: `${mousePos.x}%`, top: 0,
+            width: 1, height: "100%", background: "rgba(253, 224, 71, 0.4)", pointerEvents: "none", zIndex: 50,
+          }} />
+          {/* 좌표 라벨 */}
+          <div style={{
+            position: "absolute",
+            left: `${mousePos.x}%`, top: `${mousePos.y}%`,
+            transform: "translate(12px, -28px)",
+            background: "rgba(0,0,0,0.85)", border: "1px solid #fde047",
+            borderRadius: 4, padding: "2px 6px", pointerEvents: "none", zIndex: 60, whiteSpace: "nowrap",
+          }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#fde047", fontFamily: "monospace" }}>
+              ({mousePos.x}, {mousePos.y})
+            </span>
+          </div>
+        </>
+      )}
 
-      {/* === AMR 3대 === */}
-      {/* AMR-001: 이동 중 (용해→주조 경로) */}
-      <AMROverlay id="AMR-001" label="AMR-001" x={20} y={48}
-                  status="moving" animationName="render-amr-patrol-1" />
-      {/* AMR-002: 이동 중 (냉각→검사 경로) */}
-      <AMROverlay id="AMR-002" label="AMR-002" x={48} y={58}
-                  status="moving" animationName="render-amr-patrol-2" />
-      {/* AMR-003: 충전 중 (출고 구역) */}
-      <AMROverlay id="AMR-003" label="AMR-003" x={62} y={68}
-                  status="charging" />
+      {/* 디버그: 클릭 기록 마커 */}
+      {debugMode && clickLog.map((pt, i) => (
+        <div key={i} style={{
+          position: "absolute", left: `${pt.x}%`, top: `${pt.y}%`,
+          width: 8, height: 8, borderRadius: "50%",
+          background: "#ef4444", border: "1.5px solid #fff",
+          transform: "translate(-4px, -4px)", pointerEvents: "none", zIndex: 55,
+        }}>
+          <span style={{
+            position: "absolute", left: 12, top: -3,
+            fontSize: 8, color: "#fca5a5", fontFamily: "monospace", whiteSpace: "nowrap",
+          }}>
+            {i + 1}. ({pt.x}, {pt.y})
+          </span>
+        </div>
+      ))}
+
+      {/* === JetCobot280 2대 (투영 좌표 기반) === */}
+      {/* COBOT-001: 주조 구역 (1,2) center≈(36,36) */}
+      <CobotOverlay id="COBOT-001" label="COBOT-001" x={34} y={33} />
+      {/* COBOT-002: 후처리 구역 (1,3) center≈(14,52) */}
+      <CobotOverlay id="COBOT-002" label="COBOT-002" x={12} y={49} />
+
+      {/* === AMR 3대 — 복도 전용 경로 (구역 내부 진입 불가) === */}
+      {/* AMR-001: V12 복도에서 원자재↔용해 왕복 */}
+      <AMROverlay id="AMR-001" label="AMR-001" x={57.5} y={30}
+                  status="moving" animationName="render-amr-patrol-1"
+                  task="원자재→용해" animationDuration={10} />
+      {/* AMR-002: N1→N2→N3 교차점 경유 탈형→후처리→검사 순환 */}
+      <AMROverlay id="AMR-002" label="AMR-002" x={62} y={72}
+                  status="moving" animationName="render-amr-patrol-2"
+                  task="탈형→후처리→검사" animationDuration={24} />
+      {/* AMR-003: V23 복도에서 검사→적재 왕복 */}
+      <AMROverlay id="AMR-003" label="AMR-003" x={31} y={79}
+                  status="moving" animationName="render-amr-patrol-3"
+                  task="검사→출고" animationDuration={10} />
 
       {/* 인터랙티브 핫스팟 오버레이 */}
       {HOTSPOTS.map((hs) => {
@@ -866,11 +1071,11 @@ function Render3DView({
               cursor: "pointer",
               border: isSelected
                 ? `2px solid ${colors.border}`
-                : "1.5px solid rgba(255,255,255,0.15)",
+                : "none",
               borderRadius: 6,
               background: isSelected
                 ? "rgba(0,0,0,0.5)"
-                : "rgba(0,0,0,0.15)",
+                : "transparent",
               transition: "all 0.2s ease",
               display: "flex",
               flexDirection: "column",
@@ -988,6 +1193,26 @@ function Render3DView({
           </div>
         );
       })}
+    </div>
+
+      {/* 디버그: 클릭 로그 패널 */}
+      {debugMode && clickLog.length > 0 && (
+        <div style={{
+          marginTop: 6, background: "#111827", border: "1px solid #374151",
+          borderRadius: 6, padding: "8px 10px", maxHeight: 120, overflowY: "auto",
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: "#fde047", marginBottom: 4 }}>
+            클릭 좌표 로그 (최근 {clickLog.length}개)
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px" }}>
+            {clickLog.map((pt, i) => (
+              <span key={i} style={{ fontSize: 9, color: "#9ca3af", fontFamily: "monospace" }}>
+                {i + 1}. x:{pt.x} y:{pt.y}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

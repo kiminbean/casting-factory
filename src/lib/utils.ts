@@ -21,6 +21,7 @@ export const processStatusMap: Record<ProcessStatus, { label: string; color: str
   completed: { label: "완료", color: "text-green-600", dot: "bg-green-500" },
   error: { label: "오류", color: "text-red-600", dot: "bg-red-500 animate-pulse" },
   waiting: { label: "대기 중", color: "text-amber-600", dot: "bg-amber-500" },
+  stopped: { label: "중단", color: "text-red-500", dot: "bg-red-400" },
 };
 
 export const equipmentStatusMap: Record<EquipmentStatus, { label: string; color: string }> = {
@@ -32,7 +33,7 @@ export const equipmentStatusMap: Record<EquipmentStatus, { label: string; color:
 };
 
 export const transportStatusMap: Record<TransportStatus, { label: string; color: string }> = {
-  requested: { label: "요청됨", color: "bg-gray-100 text-gray-700" },
+  unassigned: { label: "배정 전", color: "bg-gray-100 text-gray-700" },
   assigned: { label: "배정됨", color: "bg-blue-100 text-blue-700" },
   moving_to_pickup: { label: "출발지 이동", color: "bg-indigo-100 text-indigo-700" },
   arrived_pickup: { label: "출발지 도착", color: "bg-cyan-100 text-cyan-700" },
@@ -54,7 +55,6 @@ export const storageSlotColorMap: Record<StorageSlotStatus, string> = {
   empty: "bg-gray-100 border-gray-300",
   occupied: "bg-blue-200 border-blue-400",
   reserved: "bg-amber-200 border-amber-400",
-  working: "bg-green-200 border-green-400",
   unavailable: "bg-red-200 border-red-400",
 };
 

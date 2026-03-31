@@ -1,233 +1,328 @@
-from datetime import datetime
+"""Seed database with mock data matching frontend mock-data.ts."""
+
+import json
+import os
+
 from sqlalchemy.orm import Session
 
 from app.models.models import (
     Alert,
     Equipment,
     InspectionRecord,
+    InspectionStandard,
     Order,
+    OrderDetail,
+    OutboundOrder,
     ProcessStage,
+    Product,
     ProductionMetric,
-    TransportRequest,
+    SorterLog,
+    TransportTask,
+    WarehouseRack,
 )
 
 
 def seed_database(db: Session) -> None:
-    """Populate the database with realistic mock data if tables are empty."""
+    """모든 테이블에 mock 데이터 삽입 (중복 방지)."""
     _seed_orders(db)
+    _seed_order_details(db)
+    _seed_products(db)
     _seed_process_stages(db)
     _seed_equipment(db)
-    _seed_transport_requests(db)
+    _seed_transport_tasks(db)
+    _seed_warehouse_racks(db)
+    _seed_outbound_orders(db)
     _seed_inspection_records(db)
+    _seed_inspection_standards(db)
+    _seed_sorter_logs(db)
     _seed_alerts(db)
     _seed_production_metrics(db)
 
 
+# ────────────────────────────────────────
+# 1. 주문 관리
+# ────────────────────────────────────────
+
 def _seed_orders(db: Session) -> None:
     if db.query(Order).count() > 0:
         return
-    orders = [
-        Order(
-            id="ORD-2026-001",
-            customer_name="김철수",
-            company_name="(주)한국도로공사",
-            product_name="맨홀 뚜껑 KS D-600",
-            product_spec="600mm / 두께 50mm / EN124 D400",
-            material="GCD450 (구상흑연주철)",
-            quantity=50,
-            unit_price=85000,
-            total_price=4250000,
-            status="in_production",
-            post_processing="표면 연마 + 방청 코팅",
-            requested_delivery="2026-04-15",
-            estimated_delivery="2026-04-12",
-            created_at=datetime(2026, 3, 25, 9, 0, 0),
-            updated_at=datetime(2026, 3, 28, 14, 30, 0),
-            notes="로고 삽입 요청",
-        ),
-        Order(
-            id="ORD-2026-002",
-            customer_name="이영희",
-            company_name="(주)서울시설공단",
-            product_name="맨홀 뚜껑 KS D-800",
-            product_spec="800mm / 두께 60mm / EN124 E600",
-            material="GCD500 (구상흑연주철)",
-            quantity=30,
-            unit_price=120000,
-            total_price=3600000,
-            status="approved",
-            post_processing="표면 연마",
-            requested_delivery="2026-04-20",
-            estimated_delivery="2026-04-18",
-            created_at=datetime(2026, 3, 26, 10, 0, 0),
-            updated_at=datetime(2026, 3, 27, 11, 0, 0),
-            notes="",
-        ),
-        Order(
-            id="ORD-2026-003",
-            customer_name="박민수",
-            company_name="(주)대한건설",
-            product_name="맨홀 뚜껑 KS D-450",
-            product_spec="450mm / 두께 40mm / EN124 C250",
-            material="FC250 (회주철)",
-            quantity=100,
-            unit_price=55000,
-            total_price=5500000,
-            status="pending",
-            post_processing="방청 코팅",
-            requested_delivery="2026-05-01",
-            estimated_delivery="",
-            created_at=datetime(2026, 3, 29, 8, 30, 0),
-            updated_at=datetime(2026, 3, 29, 8, 30, 0),
-            notes="대량 주문 할인 요청",
-        ),
-        Order(
-            id="ORD-2026-004",
-            customer_name="정수빈",
-            company_name="(주)경기도시공사",
-            product_name="맨홀 뚜껑 KS D-600",
-            product_spec="600mm / 두께 50mm / EN124 D400",
-            material="GCD450 (구상흑연주철)",
-            quantity=20,
-            unit_price=85000,
-            total_price=1700000,
-            status="completed",
-            post_processing="표면 연마 + 방청 코팅 + 문구 삽입",
-            requested_delivery="2026-03-28",
-            estimated_delivery="2026-03-27",
-            created_at=datetime(2026, 3, 15, 9, 0, 0),
-            updated_at=datetime(2026, 3, 27, 16, 0, 0),
-            notes="납기 완료",
-        ),
-        Order(
-            id="ORD-2026-005",
-            customer_name="최동현",
-            company_name="(주)부산항만공사",
-            product_name="배수구 그레이팅",
-            product_spec="500x300mm / 두께 30mm",
-            material="FC200 (회주철)",
-            quantity=200,
-            unit_price=35000,
-            total_price=7000000,
-            status="reviewing",
-            post_processing="아연 도금",
-            requested_delivery="2026-04-25",
-            estimated_delivery="",
-            created_at=datetime(2026, 3, 30, 7, 0, 0),
-            updated_at=datetime(2026, 3, 30, 7, 0, 0),
-            notes="항만용 내식성 강화 요청",
-        ),
+    rows = [
+        Order(id="ORD-2026-001", customer_id="CUST-001", customer_name="김철수", company_name="(주)한국도로공사", contact="02-1234-5678", shipping_address="서울특별시 성동구 용답동 123-4", total_amount=4250000, status="in_production", requested_delivery="2026-04-15", confirmed_delivery="2026-04-12", created_at="2026-03-25T09:00:00", updated_at="2026-03-28T14:30:00", notes="로고 삽입 요청"),
+        Order(id="ORD-2026-002", customer_id="CUST-002", customer_name="이영희", company_name="(주)서울시설공단", contact="02-2345-6789", shipping_address="서울특별시 중구 세종대로 110", total_amount=3600000, status="approved", requested_delivery="2026-04-20", confirmed_delivery="2026-04-18", created_at="2026-03-26T10:00:00", updated_at="2026-03-27T11:00:00", notes=""),
+        Order(id="ORD-2026-003", customer_id="CUST-003", customer_name="박민수", company_name="(주)대한건설", contact="031-345-6789", shipping_address="경기도 수원시 장안구 정조로 123", total_amount=5500000, status="pending", requested_delivery="2026-05-01", confirmed_delivery="", created_at="2026-03-29T08:30:00", updated_at="2026-03-29T08:30:00", notes="대량 주문 할인 요청"),
+        Order(id="ORD-2026-004", customer_id="CUST-004", customer_name="정수빈", company_name="(주)경기도시공사", contact="031-456-7890", shipping_address="경기도 성남시 분당구 정자동 45-6", total_amount=1700000, status="completed", requested_delivery="2026-03-28", confirmed_delivery="2026-03-27", created_at="2026-03-15T09:00:00", updated_at="2026-03-27T16:00:00", notes="납기 완료"),
+        Order(id="ORD-2026-005", customer_id="CUST-005", customer_name="최동현", company_name="(주)부산항만공사", contact="051-567-8901", shipping_address="부산광역시 중구 충장대로 206", total_amount=7000000, status="reviewing", requested_delivery="2026-04-25", confirmed_delivery="", created_at="2026-03-30T07:00:00", updated_at="2026-03-30T07:00:00", notes="항만용 내식성 강화 요청"),
     ]
-    db.add_all(orders)
+    db.add_all(rows)
     db.commit()
 
+
+def _seed_order_details(db: Session) -> None:
+    if db.query(OrderDetail).count() > 0:
+        return
+    rows = [
+        OrderDetail(id="OD-001", order_id="ORD-2026-001", product_id="PRD-001", product_name="맨홀 뚜껑 KS D-600", quantity=50, spec="600mm / 두께 50mm / EN124 D400", material="GCD450 (구상흑연주철)", post_processing="표면 연마 + 방청 코팅", logo_data="한국도로공사 로고", unit_price=85000, subtotal=4250000),
+        OrderDetail(id="OD-002", order_id="ORD-2026-002", product_id="PRD-002", product_name="맨홀 뚜껑 KS D-800", quantity=30, spec="800mm / 두께 60mm / EN124 E600", material="GCD500 (구상흑연주철)", post_processing="표면 연마", logo_data="", unit_price=120000, subtotal=3600000),
+        OrderDetail(id="OD-003", order_id="ORD-2026-003", product_id="PRD-003", product_name="맨홀 뚜껑 KS D-450", quantity=100, spec="450mm / 두께 40mm / EN124 C250", material="FC250 (회주철)", post_processing="방청 코팅", logo_data="", unit_price=55000, subtotal=5500000),
+        OrderDetail(id="OD-004", order_id="ORD-2026-004", product_id="PRD-001", product_name="맨홀 뚜껑 KS D-600", quantity=20, spec="600mm / 두께 50mm / EN124 D400", material="GCD450 (구상흑연주철)", post_processing="표면 연마 + 방청 코팅 + 문구 삽입", logo_data="경기도시공사 문구", unit_price=85000, subtotal=1700000),
+        OrderDetail(id="OD-005", order_id="ORD-2026-005", product_id="PRD-005", product_name="배수구 그레이팅", quantity=200, spec="500x300mm / 두께 30mm", material="FC200 (회주철)", post_processing="아연 도금", logo_data="", unit_price=35000, subtotal=7000000),
+    ]
+    db.add_all(rows)
+    db.commit()
+
+
+def _seed_products(db: Session) -> None:
+    if db.query(Product).count() > 0:
+        return
+    rows = [
+        Product(id="PRD-001", name="맨홀 뚜껑 KS D-600", category="맨홀 뚜껑", base_price=85000, option_pricing_json=json.dumps({"표면 연마": 5000, "방청 코팅": 3000, "로고 삽입": 8000}, ensure_ascii=False), design_image_url="/images/products/manhole-600.png", model_3d_path="/models/manhole-600.glb"),
+        Product(id="PRD-002", name="맨홀 뚜껑 KS D-800", category="맨홀 뚜껑", base_price=120000, option_pricing_json=json.dumps({"표면 연마": 7000, "방청 코팅": 4000, "로고 삽입": 10000}, ensure_ascii=False), design_image_url="/images/products/manhole-800.png", model_3d_path="/models/manhole-800.glb"),
+        Product(id="PRD-003", name="맨홀 뚜껑 KS D-450", category="맨홀 뚜껑", base_price=55000, option_pricing_json=json.dumps({"표면 연마": 3000, "방청 코팅": 2000}, ensure_ascii=False), design_image_url="/images/products/manhole-450.png", model_3d_path="/models/manhole-450.glb"),
+        Product(id="PRD-004", name="빗물받이 KS D-300", category="빗물받이", base_price=42000, option_pricing_json=json.dumps({"방청 코팅": 2500, "아연 도금": 6000}, ensure_ascii=False), design_image_url="/images/products/drain-300.png", model_3d_path="/models/drain-300.glb"),
+        Product(id="PRD-005", name="배수구 그레이팅", category="그레이팅", base_price=35000, option_pricing_json=json.dumps({"아연 도금": 5000, "내식 코팅": 7000}, ensure_ascii=False), design_image_url="/images/products/grating-500.png", model_3d_path="/models/grating-500.glb"),
+    ]
+    db.add_all(rows)
+    db.commit()
+
+
+# ────────────────────────────────────────
+# 2. 생산 모니터링
+# ────────────────────────────────────────
 
 def _seed_process_stages(db: Session) -> None:
     if db.query(ProcessStage).count() > 0:
         return
-    stages = [
-        ProcessStage(stage="melting", label="용해", status="running", temperature=1420.0, target_temperature=1450.0, progress=85, equipment_id="FRN-001", order_id="ORD-2026-001", job_id="JOB-0301"),
-        ProcessStage(stage="molding", label="주형 제작", status="completed", progress=100, equipment_id="MLD-001", order_id="ORD-2026-001", job_id="JOB-0301"),
-        ProcessStage(stage="pouring", label="주탕", status="waiting", temperature=1400.0, target_temperature=1400.0, progress=0, equipment_id="ARM-001", order_id="ORD-2026-001", job_id="JOB-0301"),
-        ProcessStage(stage="cooling", label="냉각", status="running", temperature=320.0, target_temperature=25.0, progress=60, equipment_id="CLZ-001", order_id="ORD-2026-001", job_id="JOB-0300"),
+    rows = [
+        ProcessStage(stage="melting", label="용해", status="running", temperature=1420.0, target_temperature=1450.0, progress=85, start_time="2026-03-30T08:00:00", estimated_end="2026-03-30T09:30:00", equipment_id="FRN-001", order_id="ORD-2026-001", job_id="JOB-0301", heating_power=92.0),
+        ProcessStage(stage="molding", label="주형 제작", status="completed", progress=100, start_time="2026-03-30T07:00:00", estimated_end="2026-03-30T08:00:00", equipment_id="MLD-001", order_id="ORD-2026-001", job_id="JOB-0301", pressure=85.0),
+        ProcessStage(stage="pouring", label="주탕", status="waiting", temperature=1400.0, target_temperature=1400.0, progress=0, equipment_id="ARM-001", order_id="ORD-2026-001", job_id="JOB-0301", pour_angle=45.0),
+        ProcessStage(stage="cooling", label="냉각", status="running", temperature=320.0, target_temperature=25.0, progress=60, start_time="2026-03-30T06:00:00", estimated_end="2026-03-30T10:00:00", equipment_id="CLZ-001", order_id="ORD-2026-001", job_id="JOB-0300", cooling_progress=60.0),
         ProcessStage(stage="demolding", label="탈형", status="idle", progress=0, equipment_id="ARM-002", order_id="ORD-2026-001", job_id="JOB-0300"),
-        ProcessStage(stage="post_processing", label="후처리", status="running", progress=45, equipment_id="ARM-003", order_id="ORD-2026-001", job_id="JOB-0299"),
-        ProcessStage(stage="inspection", label="검사", status="running", progress=70, equipment_id="CAM-001", order_id="ORD-2026-001", job_id="JOB-0298"),
-        ProcessStage(stage="classification", label="분류", status="idle", progress=0, equipment_id="CVR-001", order_id="ORD-2026-001", job_id="JOB-0298"),
+        ProcessStage(stage="post_processing", label="후처리", status="running", progress=45, start_time="2026-03-30T09:00:00", estimated_end="2026-03-30T10:30:00", equipment_id="ARM-003", order_id="ORD-2026-001", job_id="JOB-0299"),
+        ProcessStage(stage="inspection", label="검사", status="running", progress=70, start_time="2026-03-30T09:30:00", estimated_end="2026-03-30T10:00:00", equipment_id="CAM-001", order_id="ORD-2026-001", job_id="JOB-0298"),
+        ProcessStage(stage="classification", label="분류", status="idle", progress=0, equipment_id="SRT-001", order_id="ORD-2026-001", job_id="JOB-0298"),
     ]
-    db.add_all(stages)
+    db.add_all(rows)
     db.commit()
 
+
+# ────────────────────────────────────────
+# 3. 설비 관리
+# ────────────────────────────────────────
 
 def _seed_equipment(db: Session) -> None:
     if db.query(Equipment).count() > 0:
         return
-    equipment_list = [
-        Equipment(id="FRN-001", name="용해로 #1", type="furnace", status="running", zone="용해 구역", last_maintenance="2026-03-20", operating_hours=1250, error_count=0),
-        Equipment(id="FRN-002", name="용해로 #2", type="furnace", status="idle", zone="용해 구역", last_maintenance="2026-03-18", operating_hours=980, error_count=1),
-        Equipment(id="MLD-001", name="조형기 #1", type="mold_press", status="running", zone="주형 구역", last_maintenance="2026-03-22", operating_hours=890, error_count=0),
-        Equipment(id="ARM-001", name="로봇암 #1 (주탕)", type="robot_arm", status="idle", zone="주조 구역", last_maintenance="2026-03-25", operating_hours=650, error_count=0),
-        Equipment(id="ARM-002", name="로봇암 #2 (탈형)", type="robot_arm", status="idle", zone="냉각 구역", last_maintenance="2026-03-24", operating_hours=720, error_count=2),
-        Equipment(id="ARM-003", name="로봇암 #3 (후처리)", type="robot_arm", status="running", zone="후처리 구역", last_maintenance="2026-03-26", operating_hours=540, error_count=0),
-        Equipment(id="AMR-001", name="AMR #1", type="amr", status="running", zone="이송 중", last_maintenance="2026-03-28", operating_hours=320, error_count=0),
-        Equipment(id="AMR-002", name="AMR #2", type="amr", status="idle", zone="대기 장소", last_maintenance="2026-03-27", operating_hours=280, error_count=0),
-        Equipment(id="AMR-003", name="AMR #3", type="amr", status="charging", zone="충전소", last_maintenance="2026-03-29", operating_hours=410, error_count=1),
-        Equipment(id="CVR-001", name="컨베이어 #1", type="conveyor", status="running", zone="검사 구역", last_maintenance="2026-03-21", operating_hours=1100, error_count=0),
-        Equipment(id="CAM-001", name="검사 카메라 #1", type="camera", status="running", zone="검사 구역", last_maintenance="2026-03-23", operating_hours=800, error_count=0),
+    rows = [
+        Equipment(id="FRN-001", name="용해로 #1", type="furnace", comm_id="192.168.1.101", install_location="용해 구역 A동", status="running", pos_x=2.0, pos_y=1.0, pos_z=0.0, last_update="2026-03-30T10:00:00", last_maintenance="2026-03-20", operating_hours=1250, error_count=0),
+        Equipment(id="FRN-002", name="용해로 #2", type="furnace", comm_id="192.168.1.102", install_location="용해 구역 A동", status="idle", pos_x=4.0, pos_y=1.0, pos_z=0.0, last_update="2026-03-30T09:45:00", last_maintenance="2026-03-18", operating_hours=980, error_count=1),
+        Equipment(id="MLD-001", name="조형기 #1", type="mold_press", comm_id="192.168.1.110", install_location="주형 구역 B동", status="running", pos_x=8.0, pos_y=1.0, pos_z=0.0, last_update="2026-03-30T10:00:00", last_maintenance="2026-03-22", operating_hours=890, error_count=0),
+        Equipment(id="ARM-001", name="로봇암 #1 (주탕)", type="robot_arm", comm_id="192.168.1.120", install_location="주조 구역 C동", status="idle", pos_x=12.0, pos_y=2.0, pos_z=0.0, last_update="2026-03-30T09:50:00", last_maintenance="2026-03-25", operating_hours=650, error_count=0),
+        Equipment(id="ARM-002", name="로봇암 #2 (탈형)", type="robot_arm", comm_id="192.168.1.121", install_location="냉각 구역 D동", status="idle", pos_x=16.0, pos_y=2.0, pos_z=0.0, last_update="2026-03-30T09:48:00", last_maintenance="2026-03-24", operating_hours=720, error_count=2),
+        Equipment(id="ARM-003", name="로봇암 #3 (후처리)", type="robot_arm", comm_id="192.168.1.122", install_location="후처리 구역 E동", status="running", pos_x=20.0, pos_y=2.0, pos_z=0.0, last_update="2026-03-30T10:00:00", last_maintenance="2026-03-26", operating_hours=540, error_count=0),
+        Equipment(id="AMR-001", name="AMR #1", type="amr", comm_id="ros2://amr_01/cmd_vel", install_location="이송 구역", status="running", pos_x=14.0, pos_y=5.0, pos_z=0.0, battery=78, speed=1.2, last_update="2026-03-30T10:01:00", last_maintenance="2026-03-28", operating_hours=320, error_count=0),
+        Equipment(id="AMR-002", name="AMR #2", type="amr", comm_id="ros2://amr_02/cmd_vel", install_location="대기 장소", status="idle", pos_x=6.0, pos_y=8.0, pos_z=0.0, battery=95, speed=0.0, last_update="2026-03-30T09:55:00", last_maintenance="2026-03-27", operating_hours=280, error_count=0),
+        Equipment(id="AMR-003", name="AMR #3", type="amr", comm_id="ros2://amr_03/cmd_vel", install_location="충전소", status="charging", pos_x=1.0, pos_y=8.0, pos_z=0.0, battery=12, speed=0.0, last_update="2026-03-30T09:40:00", last_maintenance="2026-03-29", operating_hours=410, error_count=1),
+        Equipment(id="CVR-001", name="컨베이어 #1", type="conveyor", comm_id="192.168.1.130", install_location="검사 구역 F동", status="running", pos_x=24.0, pos_y=3.0, pos_z=0.0, last_update="2026-03-30T10:00:00", last_maintenance="2026-03-21", operating_hours=1100, error_count=0),
+        Equipment(id="CAM-001", name="검사 카메라 #1", type="camera", comm_id="192.168.1.140", install_location="검사 구역 F동", status="running", pos_x=25.0, pos_y=3.0, pos_z=1.5, last_update="2026-03-30T10:00:00", last_maintenance="2026-03-23", operating_hours=800, error_count=0),
+        Equipment(id="SRT-001", name="분류기 #1", type="sorter", comm_id="192.168.1.150", install_location="분류 구역 F동", status="running", pos_x=28.0, pos_y=3.0, pos_z=0.0, last_update="2026-03-30T10:00:00", last_maintenance="2026-03-19", operating_hours=950, error_count=0),
     ]
-    db.add_all(equipment_list)
+    db.add_all(rows)
     db.commit()
 
 
-def _seed_transport_requests(db: Session) -> None:
-    if db.query(TransportRequest).count() > 0:
+# ────────────────────────────────────────
+# 4. 이송 / 물류
+# ────────────────────────────────────────
+
+def _seed_transport_tasks(db: Session) -> None:
+    if db.query(TransportTask).count() > 0:
         return
-    transports = [
-        TransportRequest(id="TRN-001", from_zone="주조 구역", to_zone="후처리 구역", item_type="주물 (팔레트)", quantity=5, status="moving_to_dest", assigned_amr_id="AMR-001", requested_at=datetime(2026, 3, 30, 9, 15, 0)),
-        TransportRequest(id="TRN-002", from_zone="후처리 구역", to_zone="검사 구역", item_type="후처리 완료 주물", quantity=3, status="requested", requested_at=datetime(2026, 3, 30, 9, 30, 0)),
-        TransportRequest(id="TRN-003", from_zone="검사 구역", to_zone="적재 구역", item_type="양품 팔레트", quantity=10, status="completed", assigned_amr_id="AMR-002", requested_at=datetime(2026, 3, 30, 8, 0, 0), completed_at=datetime(2026, 3, 30, 8, 25, 0)),
-        TransportRequest(id="TRN-004", from_zone="검사 구역", to_zone="폐기물 구역", item_type="불량품 박스", quantity=2, status="completed", assigned_amr_id="AMR-001", requested_at=datetime(2026, 3, 30, 8, 30, 0), completed_at=datetime(2026, 3, 30, 8, 45, 0)),
-        TransportRequest(id="TRN-005", from_zone="적재 구역", to_zone="출하 구역", item_type="출고 팔레트", quantity=8, status="assigned", assigned_amr_id="AMR-002", requested_at=datetime(2026, 3, 30, 9, 45, 0)),
+    rows = [
+        TransportTask(id="TRN-001", from_name="주조 구역 C동", from_coord="12,2", to_name="후처리 구역 E동", to_coord="20,2", item_id="CST-0301-B1", item_name="주물 팔레트", quantity=5, priority="high", status="moving_to_dest", assigned_robot_id="AMR-001", requested_at="2026-03-30T09:15:00"),
+        TransportTask(id="TRN-002", from_name="후처리 구역 E동", from_coord="20,2", to_name="검사 구역 F동", to_coord="24,3", item_id="CST-0300-PP", item_name="후처리 완료 주물", quantity=3, priority="medium", status="unassigned", assigned_robot_id="", requested_at="2026-03-30T09:30:00"),
+        TransportTask(id="TRN-003", from_name="검사 구역 F동", from_coord="24,3", to_name="적재 구역 G동", to_coord="30,5", item_id="CST-0298-OK", item_name="양품 팔레트", quantity=10, priority="medium", status="completed", assigned_robot_id="AMR-002", requested_at="2026-03-30T08:00:00", completed_at="2026-03-30T08:25:00"),
+        TransportTask(id="TRN-004", from_name="검사 구역 F동", from_coord="24,3", to_name="폐기물 구역 H동", to_coord="32,8", item_id="CST-0298-NG", item_name="불량품 박스", quantity=2, priority="low", status="completed", assigned_robot_id="AMR-001", requested_at="2026-03-30T08:30:00", completed_at="2026-03-30T08:45:00"),
+        TransportTask(id="TRN-005", from_name="적재 구역 G동", from_coord="30,5", to_name="출하 구역 I동", to_coord="34,1", item_id="CST-0295-SHP", item_name="출고 팔레트", quantity=8, priority="high", status="assigned", assigned_robot_id="AMR-002", requested_at="2026-03-30T09:45:00"),
     ]
-    db.add_all(transports)
+    db.add_all(rows)
     db.commit()
 
+
+# ────────────────────────────────────────
+# 5. 창고 랙
+# ────────────────────────────────────────
+
+def _seed_warehouse_racks(db: Session) -> None:
+    if db.query(WarehouseRack).count() > 0:
+        return
+
+    rack_statuses = [
+        "occupied", "empty", "occupied", "reserved", "empty", "occupied",
+        "occupied", "empty", "unavailable", "occupied", "empty", "occupied",
+        "occupied", "occupied", "empty", "empty", "occupied", "reserved",
+        "empty", "occupied", "empty", "empty", "occupied", "occupied",
+    ]
+    rack_items = [
+        ("PRD-001", "맨홀 뚜껑 KS D-600", 8),
+        ("PRD-002", "맨홀 뚜껑 KS D-800", 4),
+        ("PRD-003", "맨홀 뚜껑 KS D-450", 12),
+        ("PRD-004", "빗물받이 KS D-300", 6),
+        ("PRD-005", "배수구 그레이팅", 15),
+        ("PRD-001", "맨홀 뚜껑 KS D-600", 5),
+        ("PRD-002", "맨홀 뚜껑 KS D-800", 3),
+        ("PRD-003", "맨홀 뚜껑 KS D-450", 10),
+        ("PRD-005", "배수구 그레이팅", 7),
+        ("PRD-001", "맨홀 뚜껑 KS D-600", 9),
+        ("PRD-004", "빗물받이 KS D-300", 4),
+        ("PRD-003", "맨홀 뚜껑 KS D-450", 6),
+        ("PRD-005", "배수구 그레이팅", 11),
+        ("PRD-002", "맨홀 뚜껑 KS D-800", 2),
+    ]
+
+    rows = []
+    for i in range(24):
+        row = (i // 6) + 1
+        col = (i % 6) + 1
+        status = rack_statuses[i]
+        rack_id = f"RCK-{row:02d}-{col:02d}"
+        zone = "A구역" if row <= 2 else "B구역"
+        rack_number = f"{row:02d}-{col:02d}"
+
+        rack = WarehouseRack(
+            id=rack_id, zone=zone, rack_number=rack_number,
+            status=status, row=row, col=col,
+        )
+        if status in ("occupied", "reserved"):
+            item_idx = i % len(rack_items)
+            item_id, item_name, qty = rack_items[item_idx]
+            rack.item_id = item_id
+            rack.item_name = item_name
+            rack.quantity = qty
+            rack.last_inbound_at = "2026-03-30T09:00:00"
+
+        rows.append(rack)
+
+    db.add_all(rows)
+    db.commit()
+
+
+# ────────────────────────────────────────
+# 6. 출고 주문
+# ────────────────────────────────────────
+
+def _seed_outbound_orders(db: Session) -> None:
+    if db.query(OutboundOrder).count() > 0:
+        return
+    rows = [
+        OutboundOrder(id="OUT-001", product_id="PRD-001", product_name="맨홀 뚜껑 KS D-600", quantity=20, destination="(주)경기도시공사", policy="FIFO", completed=True, created_at="2026-03-27T10:00:00"),
+        OutboundOrder(id="OUT-002", product_id="PRD-002", product_name="맨홀 뚜껑 KS D-800", quantity=10, destination="(주)서울시설공단", policy="FIFO", completed=False, created_at="2026-03-30T08:00:00"),
+        OutboundOrder(id="OUT-003", product_id="PRD-005", product_name="배수구 그레이팅", quantity=50, destination="(주)부산항만공사", policy="LIFO", completed=False, created_at="2026-03-30T09:00:00"),
+        OutboundOrder(id="OUT-004", product_id="PRD-003", product_name="맨홀 뚜껑 KS D-450", quantity=30, destination="(주)대한건설", policy="FIFO", completed=False, created_at="2026-03-30T11:00:00"),
+        OutboundOrder(id="OUT-005", product_id="PRD-004", product_name="빗물받이 KS D-300", quantity=15, destination="(주)인천항만공사", policy="FIFO", completed=True, created_at="2026-03-28T14:00:00"),
+    ]
+    db.add_all(rows)
+    db.commit()
+
+
+# ────────────────────────────────────────
+# 7. 품질 검사
+# ────────────────────────────────────────
 
 def _seed_inspection_records(db: Session) -> None:
     if db.query(InspectionRecord).count() > 0:
         return
-    records = [
-        # ORD-2026-004 inspection records
-        InspectionRecord(id="INS-001", casting_id="CST-0298-01", order_id="ORD-2026-004", result="pass", confidence=98.5, image_id="IMG-001", inspected_at=datetime(2026, 3, 30, 9, 31, 0)),
-        InspectionRecord(id="INS-002", casting_id="CST-0298-02", order_id="ORD-2026-004", result="pass", confidence=97.2, image_id="IMG-002", inspected_at=datetime(2026, 3, 30, 9, 32, 0)),
-        InspectionRecord(id="INS-003", casting_id="CST-0298-03", order_id="ORD-2026-004", result="fail", confidence=95.8, image_id="IMG-003", inspected_at=datetime(2026, 3, 30, 9, 33, 0), defect_type="표면 균열"),
-        InspectionRecord(id="INS-004", casting_id="CST-0298-04", order_id="ORD-2026-004", result="pass", confidence=99.1, image_id="IMG-004", inspected_at=datetime(2026, 3, 30, 9, 34, 0)),
-        InspectionRecord(id="INS-005", casting_id="CST-0298-05", order_id="ORD-2026-004", result="pass", confidence=96.7, image_id="IMG-005", inspected_at=datetime(2026, 3, 30, 9, 35, 0)),
-        InspectionRecord(id="INS-006", casting_id="CST-0298-06", order_id="ORD-2026-004", result="fail", confidence=94.3, image_id="IMG-006", inspected_at=datetime(2026, 3, 30, 9, 36, 0), defect_type="기포 불량"),
-        InspectionRecord(id="INS-007", casting_id="CST-0298-07", order_id="ORD-2026-004", result="pass", confidence=98.0, image_id="IMG-007", inspected_at=datetime(2026, 3, 30, 9, 37, 0)),
-        InspectionRecord(id="INS-008", casting_id="CST-0298-08", order_id="ORD-2026-004", result="pass", confidence=97.5, image_id="IMG-008", inspected_at=datetime(2026, 3, 30, 9, 38, 0)),
-        # ORD-2026-001 inspection records (in production)
-        InspectionRecord(id="INS-009", casting_id="CST-0301-01", order_id="ORD-2026-001", result="pass", confidence=98.8, image_id="IMG-009", inspected_at=datetime(2026, 3, 30, 10, 1, 0)),
-        InspectionRecord(id="INS-010", casting_id="CST-0301-02", order_id="ORD-2026-001", result="fail", confidence=92.1, image_id="IMG-010", inspected_at=datetime(2026, 3, 30, 10, 2, 30), defect_type="수축 결함"),
-        InspectionRecord(id="INS-011", casting_id="CST-0301-03", order_id="ORD-2026-001", result="pass", confidence=97.9, image_id="IMG-011", inspected_at=datetime(2026, 3, 30, 10, 4, 0)),
-        InspectionRecord(id="INS-012", casting_id="CST-0301-04", order_id="ORD-2026-001", result="pass", confidence=99.3, image_id="IMG-012", inspected_at=datetime(2026, 3, 30, 10, 5, 30)),
-        InspectionRecord(id="INS-013", casting_id="CST-0301-05", order_id="ORD-2026-001", result="fail", confidence=96.4, image_id="IMG-013", inspected_at=datetime(2026, 3, 30, 10, 7, 0), defect_type="표면 균열"),
-        InspectionRecord(id="INS-014", casting_id="CST-0301-06", order_id="ORD-2026-001", result="pass", confidence=98.2, image_id="IMG-014", inspected_at=datetime(2026, 3, 30, 10, 8, 30)),
-        InspectionRecord(id="INS-015", casting_id="CST-0301-07", order_id="ORD-2026-001", result="pass", confidence=97.0, image_id="IMG-015", inspected_at=datetime(2026, 3, 30, 10, 10, 0)),
-        InspectionRecord(id="INS-016", casting_id="CST-0301-08", order_id="ORD-2026-001", result="fail", confidence=93.7, image_id="IMG-016", inspected_at=datetime(2026, 3, 30, 10, 11, 30), defect_type="주탕 불량"),
-        InspectionRecord(id="INS-017", casting_id="CST-0301-09", order_id="ORD-2026-001", result="pass", confidence=98.6, image_id="IMG-017", inspected_at=datetime(2026, 3, 30, 10, 13, 0)),
-        InspectionRecord(id="INS-018", casting_id="CST-0301-10", order_id="ORD-2026-001", result="pass", confidence=99.0, image_id="IMG-018", inspected_at=datetime(2026, 3, 30, 10, 14, 30)),
-        # Historical inspection records with various defect types
-        InspectionRecord(id="INS-019", casting_id="CST-0295-01", order_id="ORD-2026-004", result="fail", confidence=91.5, image_id="IMG-019", inspected_at=datetime(2026, 3, 29, 14, 20, 0), defect_type="치수 불량"),
-        InspectionRecord(id="INS-020", casting_id="CST-0295-02", order_id="ORD-2026-004", result="pass", confidence=98.3, image_id="IMG-020", inspected_at=datetime(2026, 3, 29, 14, 21, 30)),
-        InspectionRecord(id="INS-021", casting_id="CST-0295-03", order_id="ORD-2026-004", result="fail", confidence=89.8, image_id="IMG-021", inspected_at=datetime(2026, 3, 29, 14, 23, 0), defect_type="기포 불량"),
-        InspectionRecord(id="INS-022", casting_id="CST-0295-04", order_id="ORD-2026-004", result="pass", confidence=97.6, image_id="IMG-022", inspected_at=datetime(2026, 3, 29, 14, 24, 30)),
-        InspectionRecord(id="INS-023", casting_id="CST-0295-05", order_id="ORD-2026-004", result="fail", confidence=93.2, image_id="IMG-023", inspected_at=datetime(2026, 3, 29, 14, 26, 0), defect_type="냉각 균열"),
-        InspectionRecord(id="INS-024", casting_id="CST-0295-06", order_id="ORD-2026-004", result="pass", confidence=99.4, image_id="IMG-024", inspected_at=datetime(2026, 3, 29, 14, 27, 30)),
-        InspectionRecord(id="INS-025", casting_id="CST-0295-07", order_id="ORD-2026-004", result="fail", confidence=90.1, image_id="IMG-025", inspected_at=datetime(2026, 3, 29, 14, 29, 0), defect_type="주형 결함"),
-        InspectionRecord(id="INS-026", casting_id="CST-0295-08", order_id="ORD-2026-004", result="pass", confidence=96.9, image_id="IMG-026", inspected_at=datetime(2026, 3, 29, 14, 30, 30)),
-        InspectionRecord(id="INS-027", casting_id="CST-0295-09", order_id="ORD-2026-004", result="fail", confidence=88.7, image_id="IMG-027", inspected_at=datetime(2026, 3, 29, 14, 32, 0), defect_type="표면 균열"),
-        InspectionRecord(id="INS-028", casting_id="CST-0295-10", order_id="ORD-2026-004", result="pass", confidence=98.1, image_id="IMG-028", inspected_at=datetime(2026, 3, 29, 14, 33, 30)),
-        InspectionRecord(id="INS-029", casting_id="CST-0296-01", order_id="ORD-2026-004", result="fail", confidence=91.9, image_id="IMG-029", inspected_at=datetime(2026, 3, 29, 15, 10, 0), defect_type="수축 결함"),
-        InspectionRecord(id="INS-030", casting_id="CST-0296-02", order_id="ORD-2026-004", result="fail", confidence=87.3, image_id="IMG-030", inspected_at=datetime(2026, 3, 29, 15, 11, 30), defect_type="기포 불량"),
+    rows = [
+        # ORD-2026-004 검사 기록
+        InspectionRecord(id="INS-001", product_id="PRD-001", casting_id="CST-0298-01", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=98.5, inspector_id="CAM-001", image_id="IMG-001", inspected_at="2026-03-30T09:31:00"),
+        InspectionRecord(id="INS-002", product_id="PRD-001", casting_id="CST-0298-02", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=97.2, inspector_id="CAM-001", image_id="IMG-002", inspected_at="2026-03-30T09:32:00"),
+        InspectionRecord(id="INS-003", product_id="PRD-001", casting_id="CST-0298-03", order_id="ORD-2026-004", result="fail", defect_type_code="D01", confidence=95.8, inspector_id="CAM-001", image_id="IMG-003", inspected_at="2026-03-30T09:33:00", defect_type="표면 균열", defect_detail="뚜껑 외곽부 0.3mm 크랙"),
+        InspectionRecord(id="INS-004", product_id="PRD-001", casting_id="CST-0298-04", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=99.1, inspector_id="CAM-001", image_id="IMG-004", inspected_at="2026-03-30T09:34:00"),
+        InspectionRecord(id="INS-005", product_id="PRD-001", casting_id="CST-0298-05", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=96.7, inspector_id="CAM-001", image_id="IMG-005", inspected_at="2026-03-30T09:35:00"),
+        InspectionRecord(id="INS-006", product_id="PRD-001", casting_id="CST-0298-06", order_id="ORD-2026-004", result="fail", defect_type_code="D02", confidence=94.3, inspector_id="CAM-001", image_id="IMG-006", inspected_at="2026-03-30T09:36:00", defect_type="기포 불량", defect_detail="내부 기포 2개 감지 (직경 1.5mm)"),
+        InspectionRecord(id="INS-007", product_id="PRD-001", casting_id="CST-0298-07", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=98.0, inspector_id="CAM-001", image_id="IMG-007", inspected_at="2026-03-30T09:37:00"),
+        InspectionRecord(id="INS-008", product_id="PRD-001", casting_id="CST-0298-08", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=97.5, inspector_id="CAM-001", image_id="IMG-008", inspected_at="2026-03-30T09:38:00"),
+        # ORD-2026-001 검사 기록 (생산 중)
+        InspectionRecord(id="INS-009", product_id="PRD-001", casting_id="CST-0301-01", order_id="ORD-2026-001", result="pass", defect_type_code="", confidence=98.8, inspector_id="CAM-001", image_id="IMG-009", inspected_at="2026-03-30T10:01:00"),
+        InspectionRecord(id="INS-010", product_id="PRD-001", casting_id="CST-0301-02", order_id="ORD-2026-001", result="fail", defect_type_code="D03", confidence=92.1, inspector_id="CAM-001", image_id="IMG-010", inspected_at="2026-03-30T10:02:30", defect_type="수축 결함", defect_detail="중앙부 수축 3mm 초과"),
+        InspectionRecord(id="INS-011", product_id="PRD-001", casting_id="CST-0301-03", order_id="ORD-2026-001", result="pass", defect_type_code="", confidence=97.9, inspector_id="CAM-001", image_id="IMG-011", inspected_at="2026-03-30T10:04:00"),
+        InspectionRecord(id="INS-012", product_id="PRD-001", casting_id="CST-0301-04", order_id="ORD-2026-001", result="pass", defect_type_code="", confidence=99.3, inspector_id="CAM-001", image_id="IMG-012", inspected_at="2026-03-30T10:05:30"),
+        InspectionRecord(id="INS-013", product_id="PRD-001", casting_id="CST-0301-05", order_id="ORD-2026-001", result="fail", defect_type_code="D01", confidence=96.4, inspector_id="CAM-001", image_id="IMG-013", inspected_at="2026-03-30T10:07:00", defect_type="표면 균열", defect_detail="테두리 미세 균열 0.2mm"),
+        InspectionRecord(id="INS-014", product_id="PRD-001", casting_id="CST-0301-06", order_id="ORD-2026-001", result="pass", defect_type_code="", confidence=98.2, inspector_id="CAM-001", image_id="IMG-014", inspected_at="2026-03-30T10:08:30"),
+        InspectionRecord(id="INS-015", product_id="PRD-001", casting_id="CST-0301-07", order_id="ORD-2026-001", result="pass", defect_type_code="", confidence=97.0, inspector_id="CAM-001", image_id="IMG-015", inspected_at="2026-03-30T10:10:00"),
+        InspectionRecord(id="INS-016", product_id="PRD-001", casting_id="CST-0301-08", order_id="ORD-2026-001", result="fail", defect_type_code="D06", confidence=93.7, inspector_id="CAM-001", image_id="IMG-016", inspected_at="2026-03-30T10:11:30", defect_type="주탕 불량", defect_detail="미충전 부위 발생"),
+        InspectionRecord(id="INS-017", product_id="PRD-001", casting_id="CST-0301-09", order_id="ORD-2026-001", result="pass", defect_type_code="", confidence=98.6, inspector_id="CAM-001", image_id="IMG-017", inspected_at="2026-03-30T10:13:00"),
+        InspectionRecord(id="INS-018", product_id="PRD-001", casting_id="CST-0301-10", order_id="ORD-2026-001", result="pass", defect_type_code="", confidence=99.0, inspector_id="CAM-001", image_id="IMG-018", inspected_at="2026-03-30T10:14:30"),
+        # 이전 주문 검사 기록
+        InspectionRecord(id="INS-019", product_id="PRD-001", casting_id="CST-0295-01", order_id="ORD-2026-004", result="fail", defect_type_code="D04", confidence=91.5, inspector_id="CAM-001", image_id="IMG-019", inspected_at="2026-03-29T14:20:00", defect_type="치수 불량", defect_detail="외경 601.5mm (허용 +-0.5mm)"),
+        InspectionRecord(id="INS-020", product_id="PRD-001", casting_id="CST-0295-02", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=98.3, inspector_id="CAM-001", image_id="IMG-020", inspected_at="2026-03-29T14:21:30"),
+        InspectionRecord(id="INS-021", product_id="PRD-001", casting_id="CST-0295-03", order_id="ORD-2026-004", result="fail", defect_type_code="D02", confidence=89.8, inspector_id="CAM-001", image_id="IMG-021", inspected_at="2026-03-29T14:23:00", defect_type="기포 불량", defect_detail="표면 기포 다수 (5개 이상)"),
+        InspectionRecord(id="INS-022", product_id="PRD-001", casting_id="CST-0295-04", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=97.6, inspector_id="CAM-001", image_id="IMG-022", inspected_at="2026-03-29T14:24:30"),
+        InspectionRecord(id="INS-023", product_id="PRD-001", casting_id="CST-0295-05", order_id="ORD-2026-004", result="fail", defect_type_code="D05", confidence=93.2, inspector_id="CAM-001", image_id="IMG-023", inspected_at="2026-03-29T14:26:00", defect_type="냉각 균열", defect_detail="급속 냉각 열응력 균열"),
+        InspectionRecord(id="INS-024", product_id="PRD-001", casting_id="CST-0295-06", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=99.4, inspector_id="CAM-001", image_id="IMG-024", inspected_at="2026-03-29T14:27:30"),
+        InspectionRecord(id="INS-025", product_id="PRD-001", casting_id="CST-0295-07", order_id="ORD-2026-004", result="fail", defect_type_code="D07", confidence=90.1, inspector_id="CAM-001", image_id="IMG-025", inspected_at="2026-03-29T14:29:00", defect_type="주형 결함", defect_detail="주형 파손에 의한 형상 이상"),
+        InspectionRecord(id="INS-026", product_id="PRD-001", casting_id="CST-0295-08", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=96.9, inspector_id="CAM-001", image_id="IMG-026", inspected_at="2026-03-29T14:30:30"),
+        InspectionRecord(id="INS-027", product_id="PRD-001", casting_id="CST-0295-09", order_id="ORD-2026-004", result="fail", defect_type_code="D01", confidence=88.7, inspector_id="CAM-001", image_id="IMG-027", inspected_at="2026-03-29T14:32:00", defect_type="표면 균열", defect_detail="하부면 균열 0.5mm"),
+        InspectionRecord(id="INS-028", product_id="PRD-001", casting_id="CST-0295-10", order_id="ORD-2026-004", result="pass", defect_type_code="", confidence=98.1, inspector_id="CAM-001", image_id="IMG-028", inspected_at="2026-03-29T14:33:30"),
+        InspectionRecord(id="INS-029", product_id="PRD-001", casting_id="CST-0296-01", order_id="ORD-2026-004", result="fail", defect_type_code="D03", confidence=91.9, inspector_id="CAM-001", image_id="IMG-029", inspected_at="2026-03-29T15:10:00", defect_type="수축 결함", defect_detail="냉각 수축률 기준 초과"),
+        InspectionRecord(id="INS-030", product_id="PRD-001", casting_id="CST-0296-02", order_id="ORD-2026-004", result="fail", defect_type_code="D02", confidence=87.3, inspector_id="CAM-001", image_id="IMG-030", inspected_at="2026-03-29T15:11:30", defect_type="기포 불량", defect_detail="내부 기포 밀집 구간"),
     ]
-    db.add_all(records)
+    db.add_all(rows)
     db.commit()
 
+
+def _seed_inspection_standards(db: Session) -> None:
+    if db.query(InspectionStandard).count() > 0:
+        return
+    rows = [
+        InspectionStandard(product_id="PRD-001", product_name="맨홀 뚜껑 KS D-600", tolerance_range="+-0.5mm", target_dimension="외경 600mm / 두께 50mm", threshold=95.0),
+        InspectionStandard(product_id="PRD-002", product_name="맨홀 뚜껑 KS D-800", tolerance_range="+-0.8mm", target_dimension="외경 800mm / 두께 60mm", threshold=95.0),
+        InspectionStandard(product_id="PRD-003", product_name="맨홀 뚜껑 KS D-450", tolerance_range="+-0.4mm", target_dimension="외경 450mm / 두께 40mm", threshold=93.0),
+    ]
+    db.add_all(rows)
+    db.commit()
+
+
+def _seed_sorter_logs(db: Session) -> None:
+    if db.query(SorterLog).count() > 0:
+        return
+    rows = [
+        SorterLog(inspection_id="INS-001", sort_direction="pass_line", sorter_angle=0.0, success=True),
+        SorterLog(inspection_id="INS-002", sort_direction="pass_line", sorter_angle=0.0, success=True),
+        SorterLog(inspection_id="INS-003", sort_direction="fail_line", sorter_angle=45.0, success=True),
+        SorterLog(inspection_id="INS-004", sort_direction="pass_line", sorter_angle=0.0, success=True),
+        SorterLog(inspection_id="INS-005", sort_direction="pass_line", sorter_angle=0.0, success=True),
+        SorterLog(inspection_id="INS-006", sort_direction="fail_line", sorter_angle=45.0, success=True),
+        SorterLog(inspection_id="INS-007", sort_direction="pass_line", sorter_angle=0.0, success=True),
+        SorterLog(inspection_id="INS-008", sort_direction="pass_line", sorter_angle=0.0, success=False),
+        SorterLog(inspection_id="INS-009", sort_direction="pass_line", sorter_angle=0.0, success=True),
+        SorterLog(inspection_id="INS-010", sort_direction="fail_line", sorter_angle=45.0, success=True),
+    ]
+    db.add_all(rows)
+    db.commit()
+
+
+# ────────────────────────────────────────
+# 8. 알림
+# ────────────────────────────────────────
 
 def _seed_alerts(db: Session) -> None:
     if db.query(Alert).count() > 0:
         return
-    alerts = [
-        Alert(id="ALT-001", type="equipment_error", severity="critical", message="AMR #3 배터리 부족 - 충전 필요 (12%)", zone="이송 구역", timestamp=datetime(2026, 3, 30, 9, 40, 0), acknowledged=False),
-        Alert(id="ALT-002", type="defect_rate", severity="warning", message="불량률 상승 감지 - 현재 25% (기준: 10%)", zone="검사 구역", timestamp=datetime(2026, 3, 30, 9, 35, 0), acknowledged=False),
-        Alert(id="ALT-003", type="process_delay", severity="warning", message="용해 공정 지연 - 예상 시간 초과 15분", zone="용해 구역", timestamp=datetime(2026, 3, 30, 9, 20, 0), acknowledged=True),
-        Alert(id="ALT-004", type="system", severity="info", message="정기 점검 예정 - 용해로 #2 (2026-04-01)", zone="용해 구역", timestamp=datetime(2026, 3, 30, 8, 0, 0), acknowledged=True),
-        Alert(id="ALT-005", type="transport_failure", severity="warning", message="이송 경로 장애물 감지 - AMR #1 우회 경로 사용", zone="이송 구역", timestamp=datetime(2026, 3, 30, 9, 18, 0), acknowledged=True),
+    rows = [
+        Alert(id="ALT-001", equipment_id="AMR-003", type="equipment_error", severity="critical", error_code="E-AMR-BAT-LOW", message="AMR #3 배터리 부족 - 충전 필요 (12%)", abnormal_value="배터리 12% (임계값 15%)", zone="이송 구역", timestamp="2026-03-30T09:40:00", acknowledged=False),
+        Alert(id="ALT-002", equipment_id="CAM-001", type="defect_rate", severity="warning", error_code="W-QC-RATE-HIGH", message="불량률 상승 감지 - 현재 25% (기준: 10%)", abnormal_value="불량률 25.0%", zone="검사 구역", timestamp="2026-03-30T09:35:00", acknowledged=False),
+        Alert(id="ALT-003", equipment_id="FRN-001", type="process_delay", severity="warning", error_code="W-MELT-DELAY", message="용해 공정 지연 - 예상 시간 초과 15분", abnormal_value="지연 15분", zone="용해 구역", timestamp="2026-03-30T09:20:00", acknowledged=True),
+        Alert(id="ALT-004", equipment_id="FRN-002", type="system", severity="info", error_code="I-SYS-MAINT", message="정기 점검 예정 - 용해로 #2 (2026-04-01)", abnormal_value="", zone="용해 구역", timestamp="2026-03-30T08:00:00", acknowledged=True),
+        Alert(id="ALT-005", equipment_id="AMR-001", type="transport_failure", severity="warning", error_code="W-AMR-OBSTACLE", message="이송 경로 장애물 감지 - AMR #1 우회 경로 사용", abnormal_value="장애물 거리 0.3m", zone="이송 구역", timestamp="2026-03-30T09:18:00", acknowledged=True),
     ]
-    db.add_all(alerts)
+    db.add_all(rows)
     db.commit()
 
+
+# ────────────────────────────────────────
+# 9. 생산 통계
+# ────────────────────────────────────────
 
 def _seed_production_metrics(db: Session) -> None:
     if db.query(ProductionMetric).count() > 0:
@@ -264,9 +359,9 @@ def _seed_production_metrics(db: Session) -> None:
         ("03/29", 52, 2, 3.8),
         ("03/30", 47, 2, 4.3),
     ]
-    metrics = [
+    rows = [
         ProductionMetric(date=d, production=p, defects=def_, defect_rate=dr)
         for d, p, def_, dr in metrics_data
     ]
-    db.add_all(metrics)
+    db.add_all(rows)
     db.commit()
