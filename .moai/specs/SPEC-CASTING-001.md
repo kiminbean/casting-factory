@@ -7,8 +7,10 @@ Casting factory production monitoring dashboard with real-time process tracking,
 - Frontend: Next.js 16 (App Router) + TypeScript + Tailwind CSS
 - Charts: Recharts (dynamic import, ssr: false)
 - Icons: Lucide React
-- Backend: Mock data (Phase 1), FastAPI (Phase 2)
-- DB: PostgreSQL + pgvector (Phase 2)
+- Backend: FastAPI 0.115 + SQLAlchemy 2.0 + Pydantic v2
+- DB: SQLite (casting_factory.db)
+- WebSocket: /ws/dashboard (실시간 브로드캐스트)
+- Python: 3.11 (venv)
 - Network: allowedDevOrigins for LAN access
 
 ## Requirements Source
@@ -124,11 +126,15 @@ Casting factory production monitoring dashboard with real-time process tracking,
 - [x] Responsive layout for control room monitors
 - [x] Korean language UI
 - [x] LAN network access (allowedDevOrigins)
+- [x] FastAPI REST API 22개 엔드포인트 (Phase 2)
+- [x] SQLite DB with auto-seed data (Phase 2)
+- [x] WebSocket /ws/dashboard 실시간 브로드캐스트 (Phase 3)
+- [x] Swagger API 문서 (http://localhost:8000/docs)
 
 ## Phase Plan
 - Phase 1: Frontend dashboard with mock data (DONE)
-- Phase 2: FastAPI backend + PostgreSQL integration
-- Phase 3: Real-time WebSocket updates + sensor integration
+- Phase 2: FastAPI backend + SQLite DB + REST API 22개 (DONE)
+- Phase 3: WebSocket 실시간 브로드캐스트 /ws/dashboard (DONE)
 
 ## Changelog
 - v1.0 (2026-03-30): Initial implementation based on UR + SR v2
@@ -136,3 +142,4 @@ Casting factory production monitoring dashboard with real-time process tracking,
 - v1.2 (2026-03-30): Customer order page (/customer) with standalone layout
 - v2.0 (2026-03-30): SR v3 updates - Factory Map, conveyor/classification control, shipping management
 - v2.1 (2026-03-30): ESLint fixes, process flow card size unification
+- v3.0 (2026-03-31): Phase 2+3 - FastAPI + SQLite DB + WebSocket 실시간 업데이트
