@@ -42,9 +42,9 @@ const priorityOrder: Record<TransportTask["priority"], number> = {
 };
 
 const priorityBadge: Record<TransportTask["priority"], { label: string; color: string }> = {
-  high: { label: "긴급", color: "bg-red-100 text-red-700 border-red-200" },
-  medium: { label: "보통", color: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-  low: { label: "낮음", color: "bg-gray-100 text-gray-600 border-gray-200" },
+  high: { label: "긴급", color: "bg-red-100 text-red-700" },
+  medium: { label: "보통", color: "bg-yellow-100 text-yellow-700" },
+  low: { label: "낮음", color: "bg-gray-100 text-gray-600" },
 };
 
 // AMR 목록
@@ -56,15 +56,21 @@ const sortedTransports = [...mockTransports].sort(
 );
 
 function getBatteryColor(level: number): string {
-  if (level >= 60) return "bg-green-500";
-  if (level >= 30) return "bg-amber-500";
+  if (level > 50) return "bg-green-500";
+  if (level >= 20) return "bg-yellow-500";
   return "bg-red-500";
 }
 
 function getBatteryTextColor(level: number): string {
-  if (level >= 60) return "text-green-600";
-  if (level >= 30) return "text-amber-600";
+  if (level > 50) return "text-green-600";
+  if (level >= 20) return "text-yellow-600";
   return "text-red-600";
+}
+
+function getBatteryBgColor(level: number): string {
+  if (level > 50) return "bg-green-100";
+  if (level >= 20) return "bg-yellow-100";
+  return "bg-red-100";
 }
 
 export default function LogisticsPage() {
@@ -102,10 +108,10 @@ export default function LogisticsPage() {
           {/* ============================== */}
           <div className="lg:col-span-3 space-y-0">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-blue-600" />
-                <h2 className="text-sm font-semibold text-gray-800">이송 작업 큐</h2>
-                <span className="ml-auto text-xs text-gray-400">
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-blue-600" />
+                <h2 className="text-lg font-bold text-gray-900">이송 작업 큐</h2>
+                <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
                   {sortedTransports.length}건
                 </span>
               </div>
@@ -141,7 +147,7 @@ export default function LogisticsPage() {
                         <span className="text-xs font-mono text-gray-500">{task.id}</span>
                         <span
                           className={cn(
-                            "px-1.5 py-0.5 rounded text-[10px] font-semibold border",
+                            "px-2.5 py-0.5 rounded-full text-xs font-semibold",
                             prioInfo.color
                           )}
                         >
@@ -149,7 +155,7 @@ export default function LogisticsPage() {
                         </span>
                         <span
                           className={cn(
-                            "ml-auto px-2 py-0.5 rounded-full text-[10px] font-medium",
+                            "ml-auto px-2.5 py-0.5 rounded-full text-xs font-semibold",
                             statusInfo.color
                           )}
                         >
@@ -193,10 +199,10 @@ export default function LogisticsPage() {
           {/* ============================== */}
           <div className="lg:col-span-4 space-y-0">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-                <Bot className="w-4 h-4 text-purple-600" />
-                <h2 className="text-sm font-semibold text-gray-800">AMR 플릿 관리</h2>
-                <span className="ml-auto text-xs text-gray-400">{amrList.length}대</span>
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Bot className="w-5 h-5 text-purple-600" />
+                <h2 className="text-lg font-bold text-gray-900">AMR 플릿 관리</h2>
+                <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-700">{amrList.length}대</span>
               </div>
 
               <div className="p-4 space-y-3 max-h-[600px] overflow-y-auto">
@@ -242,7 +248,7 @@ export default function LogisticsPage() {
                         </div>
                         <span
                           className={cn(
-                            "px-2 py-0.5 rounded-full text-xs font-medium",
+                            "px-2.5 py-0.5 rounded-full text-xs font-semibold",
                             statusInfo.color
                           )}
                         >
@@ -269,17 +275,17 @@ export default function LogisticsPage() {
                       )}
 
                       {/* 배터리 프로그레스 바 */}
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1 text-gray-500">
-                            <Battery className="w-3 h-3" />
+                            <Battery className="w-3.5 h-3.5" />
                             <span>배터리</span>
                           </div>
-                          <span className={cn("font-bold", batteryText)}>{battery}%</span>
+                          <span className={cn("px-2 py-0.5 rounded-full text-xs font-bold", batteryText, getBatteryBgColor(battery))}>{battery}%</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="w-full bg-gray-200 rounded-full h-2.5">
                           <div
-                            className={cn(batteryColor, "h-2 rounded-full transition-all")}
+                            className={cn(batteryColor, "h-2.5 rounded-full transition-all duration-300")}
                             style={{ width: `${battery}%` }}
                           />
                         </div>
@@ -302,7 +308,7 @@ export default function LogisticsPage() {
 
                       {/* 적재 물품 / 배정 작업 */}
                       {assignedTask && (
-                        <div className="rounded-md bg-white border border-gray-200 p-2.5 space-y-1">
+                        <div className="rounded-lg bg-white border border-gray-200 p-3 space-y-1.5 shadow-sm">
                           <div className="flex items-center gap-1.5 text-xs">
                             <Package className="w-3 h-3 text-blue-500" />
                             <span className="font-medium text-gray-700">
@@ -315,7 +321,7 @@ export default function LogisticsPage() {
                             <span>Task: {assignedTask.id}</span>
                             <span
                               className={cn(
-                                "ml-auto px-1.5 py-0.5 rounded-full font-medium",
+                                "ml-auto px-2 py-0.5 rounded-full text-xs font-semibold",
                                 transportStatusMap[assignedTask.status].color
                               )}
                             >
@@ -336,15 +342,15 @@ export default function LogisticsPage() {
           {/* ============================== */}
           <div className="lg:col-span-5 space-y-0">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-                <Grid3X3 className="w-4 h-4 text-teal-600" />
-                <h2 className="text-sm font-semibold text-gray-800">창고 랙 맵</h2>
-                <span className="ml-auto text-xs text-gray-400">4행 x 6열</span>
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Grid3X3 className="w-5 h-5 text-teal-600" />
+                <h2 className="text-lg font-bold text-gray-900">창고 랙 맵</h2>
+                <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-100 text-teal-700">4행 x 6열</span>
               </div>
 
-              <div className="p-5 space-y-4">
+              <div className="p-5 space-y-5">
                 {/* 랙 그리드 (4행 x 6열) */}
-                <div className="grid grid-cols-6 gap-2">
+                <div className="grid grid-cols-6 gap-2.5">
                   {mockWarehouseRacks.map((rack) => {
                     const colorClass = storageSlotColorMap[rack.status];
                     const isHovered = hoveredRack?.id === rack.id;
@@ -355,11 +361,11 @@ export default function LogisticsPage() {
                         onMouseEnter={() => setHoveredRack(rack)}
                         onMouseLeave={() => setHoveredRack(null)}
                         className={cn(
-                          "relative border-2 rounded-lg p-2 min-h-[80px]",
+                          "relative border-2 rounded-xl p-2.5 min-h-[84px]",
                           "flex flex-col items-center justify-center",
-                          "text-center transition-all cursor-default",
+                          "text-center transition-all duration-200 cursor-default shadow-sm",
                           colorClass,
-                          isHovered && "ring-2 ring-blue-400 scale-105"
+                          isHovered && "ring-2 ring-blue-400 scale-[1.05] shadow-md"
                         )}
                       >
                         {/* 구역 표시 */}
@@ -403,7 +409,7 @@ export default function LogisticsPage() {
 
                 {/* 호버 시 상세 정보 */}
                 {hoveredRack && (
-                  <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 text-xs space-y-1">
+                  <div className="rounded-xl bg-gray-50 border border-gray-200 p-4 text-xs space-y-1.5 shadow-sm">
                     <div className="flex items-center gap-2 text-gray-800 font-semibold">
                       <Warehouse className="w-3.5 h-3.5" />
                       <span>
@@ -438,27 +444,27 @@ export default function LogisticsPage() {
                 )}
 
                 {/* 범례 */}
-                <div className="flex flex-wrap gap-4 pt-2 border-t border-gray-100">
+                <div className="flex flex-wrap gap-5 pt-3 border-t border-gray-100">
                   {[
                     { status: "empty" as const, label: "비어있음" },
                     { status: "occupied" as const, label: "점유" },
                     { status: "reserved" as const, label: "예약" },
                     { status: "unavailable" as const, label: "사용불가" },
                   ].map((item) => (
-                    <div key={item.status} className="flex items-center gap-1.5">
+                    <div key={item.status} className="flex items-center gap-2">
                       <div
                         className={cn(
-                          "w-4 h-4 rounded border-2",
+                          "w-4 h-4 rounded-md border-2",
                           storageSlotColorMap[item.status]
                         )}
                       />
-                      <span className="text-xs text-gray-600">{item.label}</span>
+                      <span className="text-xs font-medium text-gray-600">{item.label}</span>
                     </div>
                   ))}
                 </div>
 
                 {/* 통계 요약 */}
-                <div className="grid grid-cols-4 gap-2 pt-2 border-t border-gray-100">
+                <div className="grid grid-cols-4 gap-3 pt-3 border-t border-gray-100">
                   {[
                     {
                       label: "비어있음",
@@ -497,9 +503,9 @@ export default function LogisticsPage() {
         {/* ============================== */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
-            <Package className="w-4 h-4 text-indigo-600" />
-            <h2 className="text-sm font-semibold text-gray-800">출고 주문</h2>
-            <span className="ml-auto text-xs text-gray-400">
+            <Package className="w-5 h-5 text-indigo-600" />
+            <h2 className="text-lg font-bold text-gray-900">출고 주문</h2>
+            <span className="ml-auto px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700">
               {outboundOrders.length}건
             </span>
           </div>
@@ -507,20 +513,20 @@ export default function LogisticsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">주문ID</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">제품명</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-500">수량</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">납품처</th>
-                  <th className="px-4 py-3 text-center font-medium text-gray-500">정책</th>
-                  <th className="px-4 py-3 text-center font-medium text-gray-500">상태</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-500">생성일</th>
-                  <th className="px-4 py-3 text-center font-medium text-gray-500">액션</th>
+                <tr className="bg-gray-100">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">주문ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">제품명</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">수량</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">납품처</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">정책</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">상태</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">생성일</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">액션</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-gray-100">
                 {outboundOrders.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={order.id} className="even:bg-gray-50 hover:bg-blue-50 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs text-gray-600">
                       {order.id}
                     </td>
@@ -537,10 +543,10 @@ export default function LogisticsPage() {
                     <td className="px-4 py-3 text-center">
                       <span
                         className={cn(
-                          "px-2 py-0.5 rounded text-[10px] font-bold",
+                          "px-2.5 py-0.5 rounded-full text-xs font-semibold",
                           order.policy === "FIFO"
-                            ? "bg-blue-50 text-blue-700 border border-blue-200"
-                            : "bg-orange-50 text-orange-700 border border-orange-200"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-orange-100 text-orange-700"
                         )}
                       >
                         {order.policy}
@@ -548,13 +554,13 @@ export default function LogisticsPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {order.completed ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                          <CheckCircle2 className="w-3 h-3" />
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
                           완료
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
-                          <Circle className="w-3 h-3" />
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-700">
+                          <Circle className="w-3.5 h-3.5" />
                           대기
                         </span>
                       )}
@@ -567,7 +573,7 @@ export default function LogisticsPage() {
                         <button
                           type="button"
                           onClick={() => handleCompleteOrder(order.id)}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                          className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm hover:shadow"
                         >
                           완료 처리
                         </button>

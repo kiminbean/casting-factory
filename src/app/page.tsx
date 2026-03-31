@@ -9,13 +9,17 @@ import {
   AlertTriangle,
   Clock,
   CheckCircle2,
+  LayoutDashboard,
+  Factory,
+  BellRing,
+  TrendingUp,
+  ClipboardList,
 } from "lucide-react";
 import {
   mockDashboardStats,
   mockAlerts,
   mockEquipment,
   mockOrders,
-  mockWeeklyMetrics,
 } from "@/lib/mock-data";
 import {
   alertSeverityMap,
@@ -62,11 +66,16 @@ function StatCard({
   return (
     <div
       className={cn(
-        "bg-white rounded-xl shadow-sm border p-5 flex items-center gap-4 transition-shadow hover:shadow-md",
-        accent ? "border-red-200" : "border-gray-100"
+        "bg-white rounded-xl shadow-sm border p-5 flex items-center gap-4 transition-all hover:shadow-md",
+        accent ? "border-red-200" : "border-gray-200"
       )}
     >
-      <div className={cn("p-3 rounded-lg", iconBg)}>
+      <div
+        className={cn(
+          "w-12 h-12 rounded-xl flex items-center justify-center",
+          iconBg
+        )}
+      >
         <Icon className={cn("w-6 h-6", iconColor)} />
       </div>
       <div>
@@ -120,7 +129,8 @@ export default function DashboardPage() {
       <div className="max-w-screen-2xl mx-auto space-y-6">
         {/* ── 헤더 ── */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <LayoutDashboard className="w-7 h-7 text-blue-600" />
             통합 대시보드
           </h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -129,7 +139,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ── 요약 카드 4종 ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           <StatCard
             title="생산 목표 달성률"
             value={stats.productionGoalRate}
@@ -166,11 +176,12 @@ export default function DashboardPage() {
         </div>
 
         {/* ── 공장 Map + 실시간 알림 ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
           {/* 공장 레이아웃 (2/3 폭) */}
-          <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-gray-800">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Factory className="w-5 h-5 text-blue-600" />
                 공장 레이아웃
               </h2>
               {/* 장비 상태 범례 */}
@@ -197,8 +208,9 @@ export default function DashboardPage() {
           </div>
 
           {/* 실시간 알림 피드 (1/3 폭) */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col">
-            <h2 className="text-base font-semibold text-gray-800 mb-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+              <BellRing className="w-5 h-5 text-amber-500" />
               실시간 알림
             </h2>
             <div className="space-y-3 overflow-y-auto flex-1 max-h-[520px] pr-1">
@@ -228,7 +240,7 @@ export default function DashboardPage() {
                           )}
                           <span
                             className={cn(
-                              "text-xs font-semibold px-1.5 py-0.5 rounded-full",
+                              "px-2.5 py-0.5 rounded-full text-xs font-semibold",
                               sev.color,
                               sev.bg
                             )}
@@ -274,69 +286,71 @@ export default function DashboardPage() {
         </div>
 
         {/* ── 주간 생산 차트 + 최근 주문 ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
           {/* 주간 생산 추이 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="text-base font-semibold text-gray-800 mb-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+              <TrendingUp className="w-5 h-5 text-emerald-500" />
               주간 생산 추이
             </h2>
             <WeeklyProductionChart />
           </div>
 
           {/* 최근 주문 테이블 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="text-base font-semibold text-gray-800 mb-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+              <ClipboardList className="w-5 h-5 text-indigo-500" />
               최근 주문
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left text-xs font-semibold text-gray-500 pb-2 pr-3">
+                  <tr className="bg-gray-100">
+                    <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3 rounded-tl-lg">
                       주문번호
                     </th>
-                    <th className="text-left text-xs font-semibold text-gray-500 pb-2 pr-3">
+                    <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
                       고객사
                     </th>
-                    <th className="text-right text-xs font-semibold text-gray-500 pb-2 pr-3">
+                    <th className="text-right text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
                       금액
                     </th>
-                    <th className="text-left text-xs font-semibold text-gray-500 pb-2 pr-3">
+                    <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
                       납기
                     </th>
-                    <th className="text-center text-xs font-semibold text-gray-500 pb-2">
+                    <th className="text-center text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3 rounded-tr-lg">
                       상태
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody>
                   {recentOrders.map((order) => {
                     const statusInfo = orderStatusMap[order.status];
                     return (
                       <tr
                         key={order.id}
-                        className="hover:bg-gray-50 transition-colors"
+                        className="border-b border-gray-100 even:bg-gray-50 hover:bg-blue-50 transition-colors"
                       >
-                        <td className="py-2.5 pr-3">
+                        <td className="py-2.5 px-3">
                           <span className="font-mono text-xs text-gray-600">
                             {order.id}
                           </span>
                         </td>
-                        <td className="py-2.5 pr-3">
+                        <td className="py-2.5 px-3">
                           <span className="text-gray-800 truncate block max-w-[160px]">
                             {order.companyName}
                           </span>
                         </td>
-                        <td className="py-2.5 pr-3 text-right text-gray-700 font-medium whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-right text-gray-700 font-medium whitespace-nowrap">
                           {formatCurrency(order.totalAmount)}
                         </td>
-                        <td className="py-2.5 pr-3 text-gray-600 text-xs whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-gray-600 text-xs whitespace-nowrap">
                           {order.requestedDelivery || "-"}
                         </td>
-                        <td className="py-2.5 text-center">
+                        <td className="py-2.5 px-3 text-center">
                           <span
                             className={cn(
-                              "inline-block text-xs font-medium px-2 py-0.5 rounded-full",
+                              "inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold",
                               statusInfo.color
                             )}
                           >

@@ -10,7 +10,6 @@ import {
   Wind,
   Wrench,
   ChevronRight,
-  Power,
   OctagonX,
   Timer,
   Gauge,
@@ -19,6 +18,8 @@ import {
   MapPin,
   Activity,
   Settings,
+  Zap,
+  ClipboardList,
 } from "lucide-react";
 import {
   mockProcessStages,
@@ -189,11 +190,11 @@ export default function ProductionPage() {
   const pouringStage = stageDataMap["pouring"];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 space-y-4">
+    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
       {/* ====== 페이지 헤더 ====== */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-          <Activity className="w-6 h-6 text-blue-600" />
+          <Activity className="w-7 h-7 text-blue-600" />
           생산 모니터링
         </h1>
         <span className="text-sm text-gray-500">
@@ -202,9 +203,10 @@ export default function ProductionPage() {
       </div>
 
       {/* ====== 1. 공정 흐름 (Process Flow) ====== */}
-      <section className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-sm font-semibold text-gray-600 mb-4 uppercase tracking-wider">
-          공정 흐름 (Process Flow)
+      <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+          <Zap className="w-5 h-5 text-amber-500" />
+          공정 흐름
         </h2>
         <div className="flex items-center justify-between gap-1 overflow-x-auto pb-2">
           {PROCESS_FLOW.map((step, idx) => {
@@ -260,16 +262,14 @@ export default function ProductionPage() {
       </section>
 
       {/* ====== 2. 메인 3-컬럼 레이아웃 ====== */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* ── 좌측: 공정 상세 데이터 (비워서 center로 이동) ── */}
-
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         {/* ── 중앙: 라이브 데이터 차트 ── */}
-        <div className="lg:col-span-8 space-y-4">
+        <div className="lg:col-span-8 space-y-5">
           {/* 용해로 실시간 온도 그래프 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                <Thermometer className="w-4 h-4 text-red-500" />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <Thermometer className="w-5 h-5 text-red-500" />
                 용해로 실시간 온도
               </h3>
               <div className="flex items-center gap-3 text-xs">
@@ -335,11 +335,11 @@ export default function ProductionPage() {
           </div>
 
           {/* 조형/주탕 실시간 수치 + 시간별 생산량 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* 조형/주탕 현재 공정 수치 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-4">
-                <Layers className="w-4 h-4 text-indigo-500" />
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                <Layers className="w-5 h-5 text-indigo-500" />
                 조형 / 주탕 공정 데이터
               </h3>
               <div className="space-y-4">
@@ -414,9 +414,9 @@ export default function ProductionPage() {
             </div>
 
             {/* 시간별 생산량 차트 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-3">
-                <BarChart3 className="w-4 h-4 text-emerald-500" />
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+                <BarChart3 className="w-5 h-5 text-emerald-500" />
                 시간별 생산량
               </h3>
               <div className="h-52">
@@ -447,7 +447,7 @@ export default function ProductionPage() {
                   </BarChartComponent>
                 </ResponsiveContainer>
               </div>
-              <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+              <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
                 <span>
                   금일 총 생산:{" "}
                   <strong className="text-gray-800">
@@ -474,11 +474,11 @@ export default function ProductionPage() {
         </div>
 
         {/* ── 우측: 설비 제어 패널 ── */}
-        <div className="lg:col-span-4 space-y-4">
+        <div className="lg:col-span-4 space-y-5">
           {/* 비상 정지 버튼 */}
           <button
             type="button"
-            className="w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl border-2 border-red-700 p-4 flex items-center justify-center gap-3 shadow-lg shadow-red-200 transition-all"
+            className="w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl border-2 border-red-700 p-5 flex items-center justify-center gap-3 shadow-lg shadow-red-200 transition-all"
             onClick={() => alert("비상 정지가 요청되었습니다.")}
           >
             <OctagonX className="w-7 h-7" />
@@ -488,9 +488,9 @@ export default function ProductionPage() {
           </button>
 
           {/* 냉각 진행률 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-3">
-              <Wind className="w-4 h-4 text-cyan-500" />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+              <Wind className="w-5 h-5 text-cyan-500" />
               냉각 진행률
             </h3>
             <div className="flex items-center gap-4">
@@ -547,9 +547,9 @@ export default function ProductionPage() {
           </div>
 
           {/* 설비별 자동/수동 토글 */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-3">
-              <Settings className="w-4 h-4 text-gray-500" />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+              <Settings className="w-5 h-5 text-gray-500" />
               설비 제어
             </h3>
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -560,7 +560,7 @@ export default function ProductionPage() {
                 return (
                   <div
                     key={eq.id}
-                    className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2.5 hover:bg-gray-100 transition-colors"
+                    className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2.5 hover:bg-blue-50 transition-colors"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -569,7 +569,7 @@ export default function ProductionPage() {
                         </span>
                         <span
                           className={cn(
-                            "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                            "px-2.5 py-0.5 rounded-full text-xs font-semibold",
                             statusInfo.color
                           )}
                         >
@@ -616,26 +616,27 @@ export default function ProductionPage() {
       </div>
 
       {/* ====== 3. 하단: 공정 파라미터 이력 테이블 ====== */}
-      <section className="bg-white rounded-xl border border-gray-200 p-5">
-        <h2 className="text-sm font-semibold text-gray-600 mb-3 uppercase tracking-wider">
+      <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+          <ClipboardList className="w-5 h-5 text-indigo-500" />
           공정 파라미터 이력
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-gray-200 text-gray-500">
-                <th className="text-left py-2 px-3 font-medium">공정</th>
-                <th className="text-left py-2 px-3 font-medium">설비 ID</th>
-                <th className="text-left py-2 px-3 font-medium">상태</th>
-                <th className="text-right py-2 px-3 font-medium">온도 (°C)</th>
-                <th className="text-right py-2 px-3 font-medium">목표 온도 (°C)</th>
-                <th className="text-right py-2 px-3 font-medium">압력 (bar)</th>
-                <th className="text-right py-2 px-3 font-medium">주탕 각도 (°)</th>
-                <th className="text-right py-2 px-3 font-medium">가열 출력 (%)</th>
-                <th className="text-right py-2 px-3 font-medium">냉각률 (%)</th>
-                <th className="text-right py-2 px-3 font-medium">진행률</th>
-                <th className="text-left py-2 px-3 font-medium">시작 시간</th>
-                <th className="text-left py-2 px-3 font-medium">예상 완료</th>
+              <tr className="bg-gray-100">
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider rounded-tl-lg">공정</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">설비 ID</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">상태</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">온도 (°C)</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">목표 온도 (°C)</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">압력 (bar)</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">주탕 각도 (°)</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">가열 출력 (%)</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">냉각률 (%)</th>
+                <th className="text-right py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">진행률</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">시작 시간</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider rounded-tr-lg">예상 완료</th>
               </tr>
             </thead>
             <tbody>
@@ -644,7 +645,7 @@ export default function ProductionPage() {
                 return (
                   <tr
                     key={stage.stage}
-                    className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                    className="border-b border-gray-100 even:bg-gray-50 hover:bg-blue-50 transition-colors"
                   >
                     <td className="py-2.5 px-3 font-semibold text-gray-800">
                       {stage.label}
