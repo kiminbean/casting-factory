@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import FactoryMap from "@/components/FactoryMap";
 import {
   Thermometer,
   Cpu,
@@ -244,6 +245,11 @@ export default function ProductionPage() {
       {/* ===== 0. 공정 레이아웃 Map ===== */}
       <section>
         <h2 className="mb-3 text-base font-semibold text-gray-800">공정 레이아웃 Map</h2>
+        <FactoryMap />
+      </section>
+
+      {/* ===== OLD MAP REPLACED ===== */}
+      <section className="hidden">
         <div className="rounded-xl border border-gray-700 bg-gray-900 p-5 shadow-sm">
           {/* 범례 */}
           <div className="mb-4 flex flex-wrap items-center gap-4">
