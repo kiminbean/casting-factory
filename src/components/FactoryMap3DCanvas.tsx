@@ -564,7 +564,7 @@ export default function FactoryMap3DCanvas({
       <Canvas
         style={{ background: "#1f2937" }}
         camera={{
-          position: [18, 11, -30],
+          position: [18, 11, 30],
           fov: 50,
           near: 0.1,
           far: 500,

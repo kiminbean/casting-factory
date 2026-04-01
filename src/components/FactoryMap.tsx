@@ -1263,7 +1263,7 @@ function ViewToggle({
 
 export default function FactoryMap() {
   const [selectedId, setSelectedId] = useState<string>("");
-  const [viewMode, setViewMode] = useState<"3d" | "interactive" | "map2" | "realtime3d">("3d");
+  const [viewMode, setViewMode] = useState<"3d" | "interactive" | "map2" | "realtime3d">("realtime3d");
 
   function handleSelect(id: string) {
     setSelectedId((prev) => (prev === id ? "" : id));
