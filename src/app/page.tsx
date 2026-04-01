@@ -57,7 +57,7 @@ function StatCard({
 }: {
   title: string;
   value: string | number;
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string; size?: number }>;
   iconBg: string;
   iconColor: string;
   unit?: string;
@@ -76,7 +76,7 @@ function StatCard({
           iconBg
         )}
       >
-        <Icon className={cn("w-6 h-6", iconColor)} />
+        <Icon className={`w-6 h-6 ${iconColor}`} />
       </div>
       <div>
         <p className="text-base text-gray-500 font-medium">{title}</p>
