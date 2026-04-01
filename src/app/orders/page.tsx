@@ -89,24 +89,24 @@ function OrderCard({ order, isSelected, onClick }: OrderCardProps) {
       )}
     >
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-mono text-gray-400">{order.id}</span>
+        <span className="text-sm font-mono text-gray-400">{order.id}</span>
         <span
           className={cn(
-            "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold",
+            "inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-semibold",
             statusInfo.color
           )}
         >
           {statusInfo.label}
         </span>
       </div>
-      <p className="text-sm font-semibold text-gray-900 truncate">
+      <p className="text-base font-semibold text-gray-900 truncate">
         {order.companyName}
       </p>
       <div className="flex items-center justify-between mt-2">
-        <span className="text-xs text-gray-500">
+        <span className="text-sm text-gray-500">
           {formatDate(order.createdAt)}
         </span>
-        <span className="text-sm font-bold text-gray-800">
+        <span className="text-base font-bold text-gray-800">
           {formatCurrency(order.totalAmount)}
         </span>
       </div>
@@ -134,12 +134,12 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
       <div className="px-6 py-5 border-b border-gray-200 bg-white sticky top-0 z-10">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">{order.id}</h2>
-            <p className="text-sm text-gray-500 mt-0.5">{order.companyName}</p>
+            <h2 className="text-xl font-bold text-gray-900">{order.id}</h2>
+            <p className="text-base text-gray-500 mt-0.5">{order.companyName}</p>
           </div>
           <span
             className={cn(
-              "inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold",
+              "inline-flex items-center px-3 py-1.5 rounded-full text-base font-semibold",
               statusInfo.color
             )}
           >
@@ -151,7 +151,7 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
       <div className="px-6 py-5 space-y-6">
         {/* 제품 상세 */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <h3 className="flex items-center gap-2 text-lg font-bold text-gray-900 mb-4">
+          <h3 className="flex items-center gap-2 text-xl font-bold text-gray-900 mb-4">
             <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
               <Layers size={16} className="text-blue-600" />
             </div>
@@ -161,22 +161,22 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     제품명
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     규격
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     재질
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     수량
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     단가
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     소계
                   </th>
                 </tr>
@@ -184,22 +184,22 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
               <tbody className="divide-y divide-gray-100">
                 {details.map((d) => (
                   <tr key={d.id} className="even:bg-gray-50 hover:bg-blue-50 transition-colors">
-                    <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                    <td className="px-4 py-3 text-base text-gray-900 font-medium">
                       {d.productName}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-4 py-3 text-base text-gray-600">
                       {d.spec}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-4 py-3 text-base text-gray-600">
                       {d.material}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 text-right">
+                    <td className="px-4 py-3 text-base text-gray-900 text-right">
                       {d.quantity.toLocaleString()}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 text-right">
+                    <td className="px-4 py-3 text-base text-gray-600 text-right">
                       {formatCurrency(d.unitPrice)}
                     </td>
-                    <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
+                    <td className="px-4 py-3 text-base font-semibold text-gray-900 text-right">
                       {formatCurrency(d.subtotal)}
                     </td>
                   </tr>
@@ -209,11 +209,11 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
                 <tr className="bg-gray-100">
                   <td
                     colSpan={5}
-                    className="px-4 py-3 text-sm font-semibold text-gray-700 text-right"
+                    className="px-4 py-3 text-base font-semibold text-gray-700 text-right"
                   >
                     합계
                   </td>
-                  <td className="px-4 py-3 text-sm font-bold text-blue-700 text-right">
+                  <td className="px-4 py-3 text-base font-bold text-blue-700 text-right">
                     {formatCurrency(order.totalAmount)}
                   </td>
                 </tr>
@@ -227,7 +227,7 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
               {details.map((d) => (
                 <div
                   key={d.id}
-                  className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100"
+                  className="text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2.5 border border-gray-100"
                 >
                   <span className="font-medium text-gray-700">
                     {d.productName}
@@ -250,7 +250,7 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
 
         {/* 견적/납기 계산기 */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <h3 className="flex items-center gap-2 text-lg font-bold text-gray-900 mb-4">
+          <h3 className="flex items-center gap-2 text-xl font-bold text-gray-900 mb-4">
             <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
               <Calculator size={16} className="text-amber-600" />
             </div>
@@ -258,8 +258,8 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
           </h3>
           <div className="grid grid-cols-2 gap-5">
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
-              <p className="text-xs text-blue-600 font-semibold mb-1">총 견적 금액</p>
-              <p className="text-xl font-bold text-blue-800">
+              <p className="text-sm text-blue-600 font-semibold mb-1">총 견적 금액</p>
+              <p className="text-2xl font-bold text-blue-800">
                 {formatCurrency(order.totalAmount)}
               </p>
               <p className="text-[11px] text-blue-500 mt-1.5">
@@ -267,10 +267,10 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
               </p>
             </div>
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-5">
-              <p className="text-xs text-amber-600 font-semibold mb-1">
+              <p className="text-sm text-amber-600 font-semibold mb-1">
                 예상 생산 기간
               </p>
-              <p className="text-xl font-bold text-amber-800">
+              <p className="text-2xl font-bold text-amber-800">
                 {estimatedDays}일
               </p>
               <p className="text-[11px] text-amber-500 mt-1.5">
@@ -280,18 +280,18 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
             <div className="bg-green-50 border border-green-100 rounded-xl p-5">
               <div className="flex items-center gap-1.5 mb-1">
                 <CalendarDays size={13} className="text-green-600" />
-                <p className="text-xs text-green-600 font-semibold">요청 납기</p>
+                <p className="text-sm text-green-600 font-semibold">요청 납기</p>
               </div>
-              <p className="text-sm font-semibold text-green-800">
+              <p className="text-base font-semibold text-green-800">
                 {order.requestedDelivery || "-"}
               </p>
             </div>
             <div className="bg-purple-50 border border-purple-100 rounded-xl p-5">
               <div className="flex items-center gap-1.5 mb-1">
                 <Truck size={13} className="text-purple-600" />
-                <p className="text-xs text-purple-600 font-semibold">확정 납기</p>
+                <p className="text-sm text-purple-600 font-semibold">확정 납기</p>
               </div>
-              <p className="text-sm font-semibold text-purple-800">
+              <p className="text-base font-semibold text-purple-800">
                 {order.confirmedDelivery || "미정"}
               </p>
             </div>
@@ -300,7 +300,7 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
 
         {/* 고객 정보 */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <h3 className="flex items-center gap-2 text-lg font-bold text-gray-900 mb-4">
+          <h3 className="flex items-center gap-2 text-xl font-bold text-gray-900 mb-4">
             <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
               <User size={16} className="text-indigo-600" />
             </div>
@@ -312,8 +312,8 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
                 <User size={14} className="text-gray-500" />
               </div>
               <div>
-                <p className="text-xs text-gray-500">담당자</p>
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm text-gray-500">담당자</p>
+                <p className="text-base font-medium text-gray-900">
                   {order.customerName}
                 </p>
               </div>
@@ -324,8 +324,8 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
                 <Phone size={14} className="text-gray-500" />
               </div>
               <div>
-                <p className="text-xs text-gray-500">연락처</p>
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm text-gray-500">연락처</p>
+                <p className="text-base font-medium text-gray-900">
                   {order.contact}
                 </p>
               </div>
@@ -336,8 +336,8 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
                 <MapPin size={14} className="text-gray-500" />
               </div>
               <div>
-                <p className="text-xs text-gray-500">배송 주소</p>
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm text-gray-500">배송 주소</p>
+                <p className="text-base font-medium text-gray-900">
                   {order.shippingAddress}
                 </p>
               </div>
@@ -350,8 +350,8 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
                     <StickyNote size={14} className="text-gray-500" />
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500">비고</p>
-                    <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-2.5 mt-1 border border-gray-100">
+                    <p className="text-sm text-gray-500">비고</p>
+                    <p className="text-base text-gray-700 bg-gray-50 rounded-lg p-2.5 mt-1 border border-gray-100">
                       {order.notes}
                     </p>
                   </div>
@@ -363,14 +363,14 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
 
         {/* 주문 이력 */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <h3 className="flex items-center gap-2 text-lg font-bold text-gray-900 mb-4">
+          <h3 className="flex items-center gap-2 text-xl font-bold text-gray-900 mb-4">
             <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
               <FileText size={16} className="text-gray-600" />
             </div>
             주문 이력
           </h3>
           <div className="space-y-4">
-            <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-3 text-base">
               <div className="w-3 h-3 rounded-full bg-blue-500 shrink-0 ring-4 ring-blue-100" />
               <span className="text-gray-500 w-32 shrink-0">
                 {formatDate(order.createdAt)}
@@ -378,7 +378,7 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
               <span className="text-gray-900 font-medium">주문 접수</span>
             </div>
             {order.status !== "pending" && (
-              <div className="flex items-center gap-3 text-sm">
+              <div className="flex items-center gap-3 text-base">
                 <div className="w-3 h-3 rounded-full bg-yellow-500 shrink-0 ring-4 ring-yellow-100" />
                 <span className="text-gray-500 w-32 shrink-0">
                   {formatDate(order.updatedAt)}
@@ -390,7 +390,7 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
               </div>
             )}
             {order.confirmedDelivery && (
-              <div className="flex items-center gap-3 text-sm">
+              <div className="flex items-center gap-3 text-base">
                 <div className="w-3 h-3 rounded-full bg-green-500 shrink-0 ring-4 ring-green-100" />
                 <span className="text-gray-500 w-32 shrink-0">
                   {formatDate(order.updatedAt)}
@@ -414,14 +414,14 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
               <>
                 <button
                   type="button"
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700 transition-colors shadow-sm"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-green-600 text-white rounded-lg font-semibold text-base hover:bg-green-700 transition-colors shadow-sm"
                 >
                   <ThumbsUp size={16} />
                   승인
                 </button>
                 <button
                   type="button"
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-red-600 text-white rounded-lg font-semibold text-sm hover:bg-red-700 transition-colors shadow-sm"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-red-600 text-white rounded-lg font-semibold text-base hover:bg-red-700 transition-colors shadow-sm"
                 >
                   <ThumbsDown size={16} />
                   반려
@@ -431,7 +431,7 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
             {order.status === "approved" && (
               <button
                 type="button"
-                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition-colors shadow-sm"
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold text-base hover:bg-blue-700 transition-colors shadow-sm"
               >
                 <Factory size={16} />
                 생산 시작
@@ -484,8 +484,8 @@ export default function OrdersPage() {
             <ClipboardList className="w-5 h-5 text-blue-600" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">주문 관리</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h1 className="text-2xl font-bold text-gray-900">주문 관리</h1>
+            <p className="text-base text-gray-500 mt-0.5">
               전체 주문 현황을 확인하고 관리합니다.
             </p>
           </div>
@@ -511,7 +511,7 @@ export default function OrdersPage() {
                       setSelectedOrder(null);
                     }}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors",
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors",
                       isActive
                         ? "bg-blue-600 text-white shadow-sm"
                         : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -540,7 +540,7 @@ export default function OrdersPage() {
             {filteredOrders.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-400">
                 <Package size={40} strokeWidth={1.5} />
-                <p className="mt-2 text-sm">해당 상태의 주문이 없습니다.</p>
+                <p className="mt-2 text-base">해당 상태의 주문이 없습니다.</p>
               </div>
             ) : (
               filteredOrders.map((order) => (
@@ -556,7 +556,7 @@ export default function OrdersPage() {
 
           {/* 목록 푸터 */}
           <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 shrink-0">
-            <p className="text-xs text-gray-500 font-medium">
+            <p className="text-sm text-gray-500 font-medium">
               총 {filteredOrders.length}건
               {activeTab !== "all" && ` / 전체 ${mockOrders.length}건`}
             </p>
@@ -575,7 +575,7 @@ export default function OrdersPage() {
               <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
                 <ChevronRight size={32} strokeWidth={1.5} className="text-gray-300" />
               </div>
-              <p className="text-sm text-gray-500">좌측 목록에서 주문을 선택하세요.</p>
+              <p className="text-base text-gray-500">좌측 목록에서 주문을 선택하세요.</p>
             </div>
           )}
         </div>

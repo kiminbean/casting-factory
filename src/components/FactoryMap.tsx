@@ -1063,78 +1063,80 @@ function Render3DView({
                 ? "rgba(0,0,0,0.5)"
                 : "transparent",
               transition: "all 0.2s ease",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "flex-end",
-              padding: "4px 6px",
             }}
             title={zone.detail}
           >
-            {/* 구역명 + 상태 */}
+            {/* 구역명 — 핫스팟 위쪽 바깥에 표시 (장비와 겹침 방지) */}
             <div
               style={{
+                position: "absolute",
+                bottom: "calc(100% + 4px)",
+                left: "50%",
+                transform: "translateX(-50%)",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
-                gap: 4,
+                pointerEvents: "none",
+                zIndex: 20,
               }}
             >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: "50%",
-                  background: statusDotColor(zone.status),
-                  boxShadow: `0 0 4px ${statusDotColor(zone.status)}`,
-                  flexShrink: 0,
-                }}
-              />
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 700,
-                  color: "#fff",
-                  textShadow: "0 1px 3px rgba(0,0,0,0.8)",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {zone.name}
+              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    background: statusDotColor(zone.status),
+                    boxShadow: `0 0 6px ${statusDotColor(zone.status)}`,
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: "#fff",
+                    textShadow: "0 2px 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {zone.name}
+                </span>
+              </div>
+              {/* 온도 표시 */}
+              {zone.temp !== undefined && (
+                <span
+                  style={{
+                    fontSize: 14,
+                    color: "#fb923c",
+                    textShadow: "0 1px 4px rgba(0,0,0,0.9)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {zone.temp}°C
+                </span>
+              )}
+              {/* 장비 표시 */}
+              {zone.equipment && (
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: "#fcd34d",
+                    textShadow: "0 1px 4px rgba(0,0,0,0.9)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {zone.equipment}
               </span>
+            )}
             </div>
-
-            {/* 온도 표시 */}
-            {zone.temp !== undefined && (
-              <span
-                style={{
-                  fontSize: 8,
-                  color: "#fb923c",
-                  textShadow: "0 1px 2px rgba(0,0,0,0.9)",
-                  marginTop: 1,
-                }}
-              >
-                {zone.temp}°C
-              </span>
-            )}
-
-            {/* 장비 표시 */}
-            {zone.equipment && (
-              <span
-                style={{
-                  fontSize: 7,
-                  color: "#fcd34d",
-                  textShadow: "0 1px 2px rgba(0,0,0,0.9)",
-                  marginTop: 1,
-                }}
-              >
-                {zone.equipment}
-              </span>
-            )}
 
             {/* 선택 시 상세 팝업 */}
             {isSelected && (
               <div
                 style={{
                   position: "absolute",
-                  bottom: "calc(100% + 8px)",
+                  bottom: "calc(100% + 40px)",
                   left: "50%",
                   transform: "translateX(-50%)",
                   background: "rgba(17, 24, 39, 0.95)",

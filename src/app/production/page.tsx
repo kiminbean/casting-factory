@@ -193,18 +193,18 @@ export default function ProductionPage() {
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
       {/* ====== 페이지 헤더 ====== */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
           <Activity className="w-7 h-7 text-blue-600" />
           생산 모니터링
         </h1>
-        <span className="text-sm text-gray-500">
+        <span className="text-base text-gray-500">
           최종 갱신: {new Date().toLocaleTimeString("ko-KR")}
         </span>
       </div>
 
       {/* ====== 1. 공정 흐름 (Process Flow) ====== */}
       <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
           <Zap className="w-5 h-5 text-amber-500" />
           공정 흐름
         </h2>
@@ -225,7 +225,7 @@ export default function ProductionPage() {
                   )}
                 >
                   <div className="mb-1">{step.icon}</div>
-                  <span className="text-xs font-bold whitespace-nowrap">
+                  <span className="text-sm font-bold whitespace-nowrap">
                     {step.label}
                   </span>
                   <span className="text-[10px] mt-0.5 opacity-80">
@@ -262,17 +262,17 @@ export default function ProductionPage() {
       </section>
 
       {/* ====== 2. 메인 3-컬럼 레이아웃 ====== */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
         {/* ── 중앙: 라이브 데이터 차트 ── */}
         <div className="lg:col-span-8 space-y-5">
           {/* 용해로 실시간 온도 그래프 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <Thermometer className="w-5 h-5 text-red-500" />
                 용해로 실시간 온도
               </h3>
-              <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-3 text-sm">
                 <span className="flex items-center gap-1">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
                   현재: <strong className="text-red-600">{meltingStage?.temperature ?? "-"}°C</strong>
@@ -338,15 +338,15 @@ export default function ProductionPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* 조형/주탕 현재 공정 수치 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
                 <Layers className="w-5 h-5 text-indigo-500" />
                 조형 / 주탕 공정 데이터
               </h3>
               <div className="space-y-4">
                 {/* 패턴 정보 */}
                 <div className="bg-gray-50 rounded-lg p-3">
-                  <span className="text-xs text-gray-500">현재 패턴</span>
-                  <p className="text-sm font-semibold text-gray-800 mt-0.5">
+                  <span className="text-sm text-gray-500">현재 패턴</span>
+                  <p className="text-base font-semibold text-gray-800 mt-0.5">
                     맨홀 뚜껑 KS D-600 ({moldingStage?.equipmentId})
                   </p>
                 </div>
@@ -354,13 +354,13 @@ export default function ProductionPage() {
                 {/* 성형 압력 */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                    <span className="text-sm text-gray-500 flex items-center gap-1">
                       <Gauge className="w-3.5 h-3.5" />
                       성형 압력
                     </span>
-                    <span className="text-lg font-bold text-indigo-600">
+                    <span className="text-xl font-bold text-indigo-600">
                       {moldingStage?.pressure ?? "-"}{" "}
-                      <span className="text-xs font-normal text-gray-400">bar</span>
+                      <span className="text-sm font-normal text-gray-400">bar</span>
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
@@ -380,13 +380,13 @@ export default function ProductionPage() {
                 {/* 주탕 각도 */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                    <span className="text-sm text-gray-500 flex items-center gap-1">
                       <ArrowRightLeft className="w-3.5 h-3.5" />
                       주탕 각도
                     </span>
-                    <span className="text-lg font-bold text-teal-600">
+                    <span className="text-xl font-bold text-teal-600">
                       {pouringStage?.pourAngle ?? "-"}
-                      <span className="text-xs font-normal text-gray-400">°</span>
+                      <span className="text-sm font-normal text-gray-400">°</span>
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
@@ -405,8 +405,8 @@ export default function ProductionPage() {
 
                 {/* 주탕 온도 */}
                 <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                  <span className="text-xs text-gray-500">주탕 온도</span>
-                  <span className="text-sm font-bold text-orange-600">
+                  <span className="text-sm text-gray-500">주탕 온도</span>
+                  <span className="text-base font-bold text-orange-600">
                     {pouringStage?.temperature ?? "-"}°C
                   </span>
                 </div>
@@ -415,7 +415,7 @@ export default function ProductionPage() {
 
             {/* 시간별 생산량 차트 */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
                 <BarChart3 className="w-5 h-5 text-emerald-500" />
                 시간별 생산량
               </h3>
@@ -447,7 +447,7 @@ export default function ProductionPage() {
                   </BarChartComponent>
                 </ResponsiveContainer>
               </div>
-              <div className="flex items-center justify-between mt-3 text-xs text-gray-500">
+              <div className="flex items-center justify-between mt-3 text-sm text-gray-500">
                 <span>
                   금일 총 생산:{" "}
                   <strong className="text-gray-800">
@@ -474,7 +474,7 @@ export default function ProductionPage() {
         </div>
 
         {/* ── 우측: 설비 제어 패널 ── */}
-        <div className="lg:col-span-4 space-y-5">
+        <div className="lg:col-span-4 flex flex-col gap-5">
           {/* 비상 정지 버튼 */}
           <button
             type="button"
@@ -482,14 +482,14 @@ export default function ProductionPage() {
             onClick={() => alert("비상 정지가 요청되었습니다.")}
           >
             <OctagonX className="w-7 h-7" />
-            <span className="text-lg font-bold tracking-wide">
+            <span className="text-xl font-bold tracking-wide">
               비상 정지 (E-STOP)
             </span>
           </button>
 
           {/* 냉각 진행률 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+            <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
               <Wind className="w-5 h-5 text-cyan-500" />
               냉각 진행률
             </h3>
@@ -516,11 +516,11 @@ export default function ProductionPage() {
                     strokeDasharray={`${(coolingProgress / 100) * 213.6} 213.6`}
                   />
                 </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-cyan-700">
+                <span className="absolute inset-0 flex items-center justify-center text-base font-bold text-cyan-700">
                   {coolingProgress}%
                 </span>
               </div>
-              <div className="space-y-1.5 text-xs flex-1">
+              <div className="space-y-1.5 text-sm flex-1">
                 <div className="flex justify-between">
                   <span className="text-gray-500">현재 온도</span>
                   <span className="font-semibold text-gray-800">
@@ -547,12 +547,12 @@ export default function ProductionPage() {
           </div>
 
           {/* 설비별 자동/수동 토글 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex-1 flex flex-col min-h-0">
+            <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
               <Settings className="w-5 h-5 text-gray-500" />
               설비 제어
             </h3>
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            <div className="space-y-2 overflow-y-auto pr-1 flex-1 min-h-0">
               {mockEquipment.map((eq) => {
                 const statusInfo = equipmentStatusMap[eq.status];
                 const isAuto = autoModes[eq.id] ?? true;
@@ -564,12 +564,12 @@ export default function ProductionPage() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-800 truncate">
+                        <span className="text-sm font-semibold text-gray-800 truncate">
                           {eq.name}
                         </span>
                         <span
                           className={cn(
-                            "px-2.5 py-0.5 rounded-full text-xs font-semibold",
+                            "px-2.5 py-0.5 rounded-full text-sm font-semibold",
                             statusInfo.color
                           )}
                         >
@@ -617,12 +617,12 @@ export default function ProductionPage() {
 
       {/* ====== 3. 하단: 공정 파라미터 이력 테이블 ====== */}
       <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+        <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
           <ClipboardList className="w-5 h-5 text-indigo-500" />
           공정 파라미터 이력
         </h2>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-100">
                 <th className="text-left py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider rounded-tl-lg">공정</th>

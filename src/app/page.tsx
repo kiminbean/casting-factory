@@ -79,16 +79,16 @@ function StatCard({
         <Icon className={cn("w-6 h-6", iconColor)} />
       </div>
       <div>
-        <p className="text-sm text-gray-500 font-medium">{title}</p>
+        <p className="text-base text-gray-500 font-medium">{title}</p>
         <p
           className={cn(
-            "text-2xl font-bold leading-tight",
+            "text-3xl font-bold leading-tight",
             accent ? "text-red-600" : "text-gray-900"
           )}
         >
           {value}
           {unit && (
-            <span className="text-base font-normal text-gray-500 ml-1">
+            <span className="text-lg font-normal text-gray-500 ml-1">
               {unit}
             </span>
           )}
@@ -129,11 +129,11 @@ export default function DashboardPage() {
       <div className="max-w-screen-2xl mx-auto space-y-6">
         {/* ── 헤더 ── */}
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
             <LayoutDashboard className="w-7 h-7 text-blue-600" />
             통합 대시보드
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-base text-gray-500 mt-1">
             주물 스마트 공장 실시간 관제
           </p>
         </div>
@@ -176,16 +176,16 @@ export default function DashboardPage() {
         </div>
 
         {/* ── 공장 Map + 실시간 알림 ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-stretch">
           {/* 공장 레이아웃 (2/3 폭) */}
-          <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-5 h-full">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
                 <Factory className="w-5 h-5 text-blue-600" />
                 공장 레이아웃
               </h2>
               {/* 장비 상태 범례 */}
-              <div className="flex items-center gap-3 text-xs text-gray-500">
+              <div className="flex items-center gap-3 text-sm text-gray-500">
                 {(
                   Object.entries(equipmentStatusMap) as [
                     string,
@@ -208,12 +208,12 @@ export default function DashboardPage() {
           </div>
 
           {/* 실시간 알림 피드 (1/3 폭) */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col min-h-0 h-full">
+            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
               <BellRing className="w-5 h-5 text-amber-500" />
               실시간 알림
             </h2>
-            <div className="space-y-3 overflow-y-auto flex-1 max-h-[520px] pr-1">
+            <div className="space-y-3 overflow-y-auto flex-1 min-h-0 pr-1">
               {sortedAlerts.map((alert) => {
                 const sev = alertSeverityMap[alert.severity];
                 // 장비 이름 조회
@@ -240,7 +240,7 @@ export default function DashboardPage() {
                           )}
                           <span
                             className={cn(
-                              "px-2.5 py-0.5 rounded-full text-xs font-semibold",
+                              "px-2.5 py-0.5 rounded-full text-sm font-semibold",
                               sev.color,
                               sev.bg
                             )}
@@ -250,18 +250,18 @@ export default function DashboardPage() {
                         </div>
                         <p
                           className={cn(
-                            "text-sm font-medium leading-snug",
+                            "text-base font-medium leading-snug",
                             sev.color
                           )}
                         >
                           {alert.message}
                         </p>
                         {alert.abnormalValue && (
-                          <p className="text-xs text-gray-500 mt-1">
+                          <p className="text-sm text-gray-500 mt-1">
                             이상값: {alert.abnormalValue}
                           </p>
                         )}
-                        <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400">
+                        <div className="flex items-center gap-2 mt-1.5 text-sm text-gray-400">
                           {eq && <span>{eq.name}</span>}
                           <span>&middot;</span>
                           <span>{alert.zone}</span>
@@ -277,7 +277,7 @@ export default function DashboardPage() {
                 );
               })}
               {sortedAlerts.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-8">
+                <p className="text-base text-gray-400 text-center py-8">
                   알림이 없습니다.
                 </p>
               )}
@@ -286,10 +286,10 @@ export default function DashboardPage() {
         </div>
 
         {/* ── 주간 생산 차트 + 최근 주문 ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-stretch">
           {/* 주간 생산 추이 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
               <TrendingUp className="w-5 h-5 text-emerald-500" />
               주간 생산 추이
             </h2>
@@ -298,27 +298,27 @@ export default function DashboardPage() {
 
           {/* 최근 주문 테이블 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4">
+            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
               <ClipboardList className="w-5 h-5 text-indigo-500" />
               최근 주문
             </h2>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-base">
                 <thead>
                   <tr className="bg-gray-100">
-                    <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3 rounded-tl-lg">
+                    <th className="text-left text-sm font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3 rounded-tl-lg">
                       주문번호
                     </th>
-                    <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
+                    <th className="text-left text-sm font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
                       고객사
                     </th>
-                    <th className="text-right text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
+                    <th className="text-right text-sm font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
                       금액
                     </th>
-                    <th className="text-left text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
+                    <th className="text-left text-sm font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
                       납기
                     </th>
-                    <th className="text-center text-xs font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3 rounded-tr-lg">
+                    <th className="text-center text-sm font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3 rounded-tr-lg">
                       상태
                     </th>
                   </tr>
@@ -332,7 +332,7 @@ export default function DashboardPage() {
                         className="border-b border-gray-100 even:bg-gray-50 hover:bg-blue-50 transition-colors"
                       >
                         <td className="py-2.5 px-3">
-                          <span className="font-mono text-xs text-gray-600">
+                          <span className="font-mono text-sm text-gray-600">
                             {order.id}
                           </span>
                         </td>
@@ -344,13 +344,13 @@ export default function DashboardPage() {
                         <td className="py-2.5 px-3 text-right text-gray-700 font-medium whitespace-nowrap">
                           {formatCurrency(order.totalAmount)}
                         </td>
-                        <td className="py-2.5 px-3 text-gray-600 text-xs whitespace-nowrap">
+                        <td className="py-2.5 px-3 text-gray-600 text-sm whitespace-nowrap">
                           {order.requestedDelivery || "-"}
                         </td>
                         <td className="py-2.5 px-3 text-center">
                           <span
                             className={cn(
-                              "inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold",
+                              "inline-block px-2.5 py-0.5 rounded-full text-sm font-semibold",
                               statusInfo.color
                             )}
                           >
@@ -363,7 +363,7 @@ export default function DashboardPage() {
                 </tbody>
               </table>
               {recentOrders.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-6">
+                <p className="text-base text-gray-400 text-center py-6">
                   주문이 없습니다.
                 </p>
               )}

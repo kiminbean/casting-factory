@@ -79,8 +79,8 @@ export default function QualityPage(): React.JSX.Element {
             <ShieldCheck className="w-6 h-6 text-blue-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">품질 검사 대시보드</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h1 className="text-3xl font-bold text-gray-900">품질 검사 대시보드</h1>
+            <p className="text-base text-gray-500 mt-0.5">
               AI 비전 기반 실시간 품질 검사 현황 및 분류 장치 모니터링
             </p>
           </div>
@@ -94,9 +94,9 @@ export default function QualityPage(): React.JSX.Element {
           <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500 font-medium">금일 총 검사 수</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</p>
-                <p className="text-xs text-gray-400 mt-1.5">
+                <p className="text-base text-gray-500 font-medium">금일 총 검사 수</p>
+                <p className="text-4xl font-bold text-gray-900 mt-1">{stats.total}</p>
+                <p className="text-sm text-gray-400 mt-1.5">
                   양품 {stats.passCount} / 불량 {stats.failCount}
                 </p>
               </div>
@@ -119,10 +119,10 @@ export default function QualityPage(): React.JSX.Element {
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500 font-medium">양품률</p>
+                <p className="text-base text-gray-500 font-medium">양품률</p>
                 <p
                   className={cn(
-                    "text-3xl font-bold mt-1",
+                    "text-4xl font-bold mt-1",
                     stats.passRate >= 95
                       ? "text-green-600"
                       : stats.passRate >= 90
@@ -132,7 +132,7 @@ export default function QualityPage(): React.JSX.Element {
                 >
                   {stats.passRate.toFixed(1)}%
                 </p>
-                <p className="text-xs text-gray-400 mt-1.5">
+                <p className="text-sm text-gray-400 mt-1.5">
                   {stats.passRate >= 95
                     ? "정상 (목표 95% 이상)"
                     : stats.passRate >= 90
@@ -170,19 +170,19 @@ export default function QualityPage(): React.JSX.Element {
               <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
                 <AlertTriangle className="w-4 h-4 text-amber-500" />
               </div>
-              <p className="text-lg font-bold text-gray-900">주요 불량 유형 TOP 3</p>
+              <p className="text-xl font-bold text-gray-900">주요 불량 유형 TOP 3</p>
             </div>
             <div className="grid grid-cols-3 gap-5">
               {top3Defects.map((d, idx) => (
                 <div key={d.type} className="text-center bg-gray-50 rounded-xl p-4 border border-gray-100">
                   <div
-                    className="inline-flex items-center justify-center w-10 h-10 rounded-full text-white text-sm font-bold mb-2 shadow-sm"
+                    className="inline-flex items-center justify-center w-10 h-10 rounded-full text-white text-base font-bold mb-2 shadow-sm"
                     style={{ backgroundColor: d.color }}
                   >
                     {idx + 1}
                   </div>
-                  <p className="text-sm font-semibold text-gray-800">{d.type}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-base font-semibold text-gray-800">{d.type}</p>
+                  <p className="text-sm text-gray-500 mt-0.5">
                     {d.count}건 ({d.percentage}%)
                   </p>
                 </div>
@@ -194,17 +194,17 @@ export default function QualityPage(): React.JSX.Element {
         {/* ──────────────────────────────── */}
         {/* CENTER: 비전/센서 피드 + 불량 유형 차트 */}
         {/* ──────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
           {/* 비전 카메라 피드 + 분류 장치 상태 */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6 flex flex-col">
             {/* 비전 카메라 시뮬레이션 */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
                   <Camera className="w-4 h-4 text-blue-600" />
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">비전 검사 피드</h2>
-                <span className="ml-auto flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                <h2 className="text-xl font-bold text-gray-900">비전 검사 피드</h2>
+                <span className="ml-auto flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-sm font-semibold bg-green-100 text-green-700">
                   <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                   실시간
                 </span>
@@ -238,18 +238,18 @@ export default function QualityPage(): React.JSX.Element {
                     <div className="w-24 h-24 rounded-full border-2 border-dashed border-gray-600 flex items-center justify-center bg-gray-900/50">
                       <Eye className="w-8 h-8 text-gray-500" />
                     </div>
-                    <span className="text-xs text-green-500/80 font-mono tracking-wider">
+                    <span className="text-sm text-green-500/80 font-mono tracking-wider">
                       CAM-001 | {latestInspection?.castingId ?? "---"}
                     </span>
                   </div>
                   {/* PASS / FAIL 배지 */}
                   <div className="absolute top-3 right-3 z-20">
                     {isLatestPass ? (
-                      <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-bold bg-green-600 text-white shadow-lg shadow-green-600/40">
+                      <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-base font-bold bg-green-600 text-white shadow-lg shadow-green-600/40">
                         <CheckCircle className="w-4 h-4" /> PASS
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-bold bg-red-600 text-white shadow-lg shadow-red-600/40">
+                      <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-base font-bold bg-red-600 text-white shadow-lg shadow-red-600/40">
                         <XCircle className="w-4 h-4" /> FAIL
                       </span>
                     )}
@@ -261,13 +261,13 @@ export default function QualityPage(): React.JSX.Element {
                   </div>
                   {/* 신뢰도 표시 */}
                   <div className="absolute bottom-3 left-3 z-20">
-                    <span className="text-xs font-mono text-green-400 bg-black/70 px-2.5 py-1 rounded-md border border-green-900/50">
+                    <span className="text-sm font-mono text-green-400 bg-black/70 px-2.5 py-1 rounded-md border border-green-900/50">
                       신뢰도: {latestInspection?.confidence.toFixed(1)}%
                     </span>
                   </div>
                   {/* 타임스탬프 */}
                   <div className="absolute bottom-3 right-3 z-20">
-                    <span className="text-xs font-mono text-gray-400 bg-black/70 px-2.5 py-1 rounded-md border border-gray-700/50">
+                    <span className="text-sm font-mono text-gray-400 bg-black/70 px-2.5 py-1 rounded-md border border-gray-700/50">
                       {latestInspection ? formatDate(latestInspection.inspectedAt) : "--:--"}
                     </span>
                   </div>
@@ -279,7 +279,7 @@ export default function QualityPage(): React.JSX.Element {
                     <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
                       <ArrowDownUp className="w-4 h-4 text-indigo-600" />
                     </div>
-                    <h3 className="text-sm font-bold text-gray-900">분류 장치 상태</h3>
+                    <h3 className="text-base font-bold text-gray-900">분류 장치 상태</h3>
                   </div>
 
                   {/* 분류기 시각화 */}
@@ -303,26 +303,26 @@ export default function QualityPage(): React.JSX.Element {
                           <div className="w-4 h-4 rounded-full bg-indigo-600 z-10 shadow-md" />
                         </div>
                         {/* 양품 라인 라벨 */}
-                        <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs font-semibold text-green-600">
+                        <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-sm font-semibold text-green-600">
                           양품 (0deg)
                         </span>
                         {/* 불량 라인 라벨 */}
-                        <span className="absolute top-6 -right-10 text-xs font-semibold text-red-600">
+                        <span className="absolute top-6 -right-10 text-sm font-semibold text-red-600">
                           불량 (45deg)
                         </span>
                       </div>
                     </div>
 
                     {/* 분류기 상세 정보 */}
-                    <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="grid grid-cols-2 gap-2 text-base">
                       <div className="bg-white rounded-lg p-2.5 text-center border border-gray-200 shadow-sm">
-                        <p className="text-xs text-gray-500">현재 각도</p>
+                        <p className="text-sm text-gray-500">현재 각도</p>
                         <p className="font-bold text-indigo-700">
                           {latestSorter?.sorterAngle ?? 0}&deg;
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-2.5 text-center border border-gray-200 shadow-sm">
-                        <p className="text-xs text-gray-500">분류 방향</p>
+                        <p className="text-sm text-gray-500">분류 방향</p>
                         <p
                           className={cn(
                             "font-bold",
@@ -337,7 +337,7 @@ export default function QualityPage(): React.JSX.Element {
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-2.5 text-center border border-gray-200 shadow-sm">
-                        <p className="text-xs text-gray-500">동작 성공</p>
+                        <p className="text-sm text-gray-500">동작 성공</p>
                         <p
                           className={cn(
                             "font-bold",
@@ -348,8 +348,8 @@ export default function QualityPage(): React.JSX.Element {
                         </p>
                       </div>
                       <div className="bg-white rounded-lg p-2.5 text-center border border-gray-200 shadow-sm">
-                        <p className="text-xs text-gray-500">검사 ID</p>
-                        <p className="font-bold text-gray-700 font-mono text-xs">
+                        <p className="text-sm text-gray-500">검사 ID</p>
+                        <p className="font-bold text-gray-700 font-mono text-sm">
                           {latestSorter?.inspectionId ?? "-"}
                         </p>
                       </div>
@@ -360,22 +360,22 @@ export default function QualityPage(): React.JSX.Element {
             </div>
 
             {/* 불량률 추이 + 생산량 vs 불량 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm h-full">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
                     <Activity className="w-4 h-4 text-red-500" />
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">불량률 추이</h2>
+                  <h2 className="text-xl font-bold text-gray-900">불량률 추이</h2>
                 </div>
                 <DefectRateChart />
               </div>
-              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm h-full">
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
                     <BarChart3 className="w-4 h-4 text-blue-600" />
                   </div>
-                  <h2 className="text-lg font-bold text-gray-900">생산량 vs 불량</h2>
+                  <h2 className="text-xl font-bold text-gray-900">생산량 vs 불량</h2>
                 </div>
                 <ProductionVsDefectsChart />
               </div>
@@ -383,34 +383,34 @@ export default function QualityPage(): React.JSX.Element {
           </div>
 
           {/* 우측: 불량 유형 분포 + 검사 기준 */}
-          <div className="space-y-6">
+          <div className="flex flex-col gap-6">
             {/* 불량 유형 분포 차트 */}
             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
                   <PieChart className="w-4 h-4 text-purple-600" />
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">불량 유형 분포</h2>
+                <h2 className="text-xl font-bold text-gray-900">불량 유형 분포</h2>
               </div>
               <DefectTypeDistChart />
             </div>
 
             {/* 검사 기준 참조 패널 */}
-            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex-1">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
                   <Ruler className="w-4 h-4 text-gray-600" />
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">검사 기준 참조</h2>
+                <h2 className="text-xl font-bold text-gray-900">검사 기준 참조</h2>
               </div>
               <div className="space-y-3">
                 {mockInspectionStandards.map((std) => (
                   <div
                     key={std.productId}
-                    className="bg-gray-50 rounded-xl p-4 border border-gray-200 text-sm hover:bg-blue-50 transition-colors"
+                    className="bg-gray-50 rounded-xl p-4 border border-gray-200 text-base hover:bg-blue-50 transition-colors"
                   >
                     <p className="font-semibold text-gray-900 mb-2">{std.productName}</p>
-                    <div className="grid grid-cols-2 gap-1.5 text-xs text-gray-500">
+                    <div className="grid grid-cols-2 gap-1.5 text-sm text-gray-500">
                       <span>목표 치수</span>
                       <span className="text-gray-700 font-medium">{std.targetDimension}</span>
                       <span>허용 오차</span>
@@ -434,38 +434,38 @@ export default function QualityPage(): React.JSX.Element {
               <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
                 <XCircle className="w-4 h-4 text-red-500" />
               </div>
-              <h2 className="text-lg font-bold text-gray-900">불량 검사 로그</h2>
+              <h2 className="text-xl font-bold text-gray-900">불량 검사 로그</h2>
             </div>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+            <span className="px-2.5 py-0.5 rounded-full text-sm font-semibold bg-red-100 text-red-700">
               총 {failedInspections.length}건
             </span>
           </div>
-          <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-base">
               <thead className="sticky top-0 bg-gray-100 z-10">
                 <tr>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     이미지
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     검사ID
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     제품ID
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     판정
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     불량유형
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     상세사유
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     신뢰도
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-gray-600 uppercase tracking-wider">
                     검사시각
                   </th>
                 </tr>
@@ -482,23 +482,23 @@ export default function QualityPage(): React.JSX.Element {
                         <ImageIcon className="w-4 h-4 text-gray-400" />
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-600">
+                    <td className="px-4 py-3 font-mono text-sm text-gray-600">
                       {ins.id}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-600">
+                    <td className="px-4 py-3 font-mono text-sm text-gray-600">
                       {ins.castingId}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-sm font-semibold bg-red-100 text-red-700">
                         <XCircle className="w-3 h-3" /> 불량
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm text-gray-800 font-medium">
+                      <span className="text-base text-gray-800 font-medium">
                         {ins.defectType ?? "-"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600 text-xs max-w-[200px] truncate">
+                    <td className="px-4 py-3 text-gray-600 text-sm max-w-[200px] truncate">
                       {ins.defectDetail ?? "-"}
                     </td>
                     <td className="px-4 py-3">
@@ -516,12 +516,12 @@ export default function QualityPage(): React.JSX.Element {
                             style={{ width: `${ins.confidence}%` }}
                           />
                         </div>
-                        <span className="text-xs font-semibold text-gray-700">
+                        <span className="text-sm font-semibold text-gray-700">
                           {ins.confidence.toFixed(1)}%
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
+                    <td className="px-4 py-3 text-gray-500 text-sm whitespace-nowrap">
                       {formatDate(ins.inspectedAt)}
                     </td>
                   </tr>
