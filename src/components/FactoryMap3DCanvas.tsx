@@ -308,6 +308,64 @@ function FactoryScene({ editMode }: { editMode: boolean }) {
   const dragPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
   const dragOffset = useRef(new THREE.Vector3());
   const { camera, raycaster, gl } = useThree();
+  const [clonedObjects, setClonedObjects] = useState<THREE.Object3D[]>([]);
+
+  // Ctrl+D: 선택된 객체 복사 (편집 모드에서만)
+  useEffect(() => {
+    if (!editMode) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "d" && selectedMesh) {
+        e.preventDefault();
+
+        // 선택된 메시의 부모(그룹) 또는 메시 자체를 복사
+        const target = selectedMesh.parent && selectedMesh.parent !== scene
+          ? selectedMesh.parent
+          : selectedMesh;
+
+        const clone = target.clone(true);
+        clone.name = `${target.name}_copy_${Date.now()}`;
+
+        // 약간 옆으로 이동 (X +2)
+        clone.position.x += 2;
+
+        // 복사본의 재질을 독립적으로 clone
+        clone.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material) {
+            if (Array.isArray(child.material)) {
+              child.material = child.material.map((m: THREE.Material) => m.clone());
+            } else {
+              child.material = child.material.clone();
+            }
+          }
+        });
+
+        scene.add(clone);
+        setClonedObjects(prev => [...prev, clone]);
+
+        // 새 복사본을 선택
+        const firstMesh = clone instanceof THREE.Mesh ? clone : null;
+        if (firstMesh) setSelectedMesh(firstMesh);
+      }
+
+      // Delete: 선택된 복사 객체 삭제
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedMesh && editMode) {
+        const target = selectedMesh.parent && selectedMesh.parent !== scene
+          ? selectedMesh.parent
+          : selectedMesh;
+
+        // 복사된 객체만 삭제 가능 (원본 보호)
+        if (target.name.includes("_copy_")) {
+          scene.remove(target);
+          setClonedObjects(prev => prev.filter(o => o !== target));
+          setSelectedMesh(null);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [editMode, selectedMesh, scene]);
 
   // 클릭하여 메시 선택
   const handleClick = useCallback(

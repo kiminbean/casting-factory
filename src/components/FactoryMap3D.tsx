@@ -86,7 +86,7 @@ export default function FactoryMap3D() {
         </button>
         {editMode && (
           <span style={{ fontSize: 10, color: "#fbbf24", opacity: 0.8 }}>
-            오브젝트를 드래그하여 이동할 수 있습니다
+            드래그: 이동 | Ctrl+D: 복사 | Delete: 삭제
           </span>
         )}
       </div>
