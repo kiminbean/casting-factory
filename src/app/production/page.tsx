@@ -20,13 +20,19 @@ import {
   Settings,
   Zap,
   ClipboardList,
+  Bot,
+  Truck,
+  Video,
+  ArrowDownUp,
+  BatteryMedium,
+  ScanLine,
 } from "lucide-react";
 import {
   mockProcessStages,
   mockEquipment,
   mockHourlyProduction,
 } from "@/lib/mock-data";
-import type { ProcessStage, ProcessStatus } from "@/lib/types";
+import type { ProcessStage, ProcessStatus, EquipmentStatus, EquipmentType } from "@/lib/types";
 import { cn, processStatusMap, equipmentStatusMap, formatDate } from "@/lib/utils";
 
 // Recharts: SSR 비활성화 동적 임포트
@@ -143,6 +149,55 @@ const tempTimelineData = Array.from({ length: 30 }, (_, i) => {
 });
 
 // ────────────────────────────────────────
+// 설비 타입별 아이콘 및 허용 상태 정의
+// ────────────────────────────────────────
+
+const equipmentTypeIcon: Record<EquipmentType, React.ReactNode> = {
+  furnace: <Flame className="w-4 h-4" />,
+  mold_press: <Layers className="w-4 h-4" />,
+  robot_arm: <Bot className="w-4 h-4" />,
+  amr: <Truck className="w-4 h-4" />,
+  conveyor: <ArrowRightLeft className="w-4 h-4" />,
+  camera: <Video className="w-4 h-4" />,
+  sorter: <ArrowDownUp className="w-4 h-4" />,
+};
+
+// 설비 타입별 전환 가능한 상태 목록
+const equipmentValidStates: Record<EquipmentType, EquipmentStatus[]> = {
+  robot_arm: ["running", "idle", "maintenance"],
+  amr: ["running", "idle", "charging", "maintenance"],
+  furnace: ["running", "idle", "maintenance"],
+  mold_press: ["running", "idle", "maintenance"],
+  conveyor: ["running", "idle", "error"],
+  camera: ["running", "idle"],
+  sorter: ["running", "idle"],
+};
+
+// 상태별 버튼 색상 (활성/비활성)
+const statusButtonStyle: Record<EquipmentStatus, { active: string; inactive: string }> = {
+  running: {
+    active: "bg-green-500 text-white ring-2 ring-green-300 shadow-md",
+    inactive: "bg-green-50 text-green-600 hover:bg-green-100 border border-green-200",
+  },
+  idle: {
+    active: "bg-gray-500 text-white ring-2 ring-gray-300 shadow-md",
+    inactive: "bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200",
+  },
+  charging: {
+    active: "bg-blue-500 text-white ring-2 ring-blue-300 shadow-md",
+    inactive: "bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200",
+  },
+  maintenance: {
+    active: "bg-yellow-500 text-white ring-2 ring-yellow-300 shadow-md",
+    inactive: "bg-yellow-50 text-yellow-600 hover:bg-yellow-100 border border-yellow-200",
+  },
+  error: {
+    active: "bg-red-500 text-white ring-2 ring-red-300 shadow-md animate-pulse",
+    inactive: "bg-red-50 text-red-600 hover:bg-red-100 border border-red-200",
+  },
+};
+
+// ────────────────────────────────────────
 // 메인 페이지 컴포넌트
 // ────────────────────────────────────────
 
@@ -156,11 +211,33 @@ export default function ProductionPage() {
     return initial;
   });
 
+  // 설비별 현재 상태 (mock 데이터에서 초기화)
+  const [equipmentStatuses, setEquipmentStatuses] = useState<Record<string, EquipmentStatus>>(() => {
+    const initial: Record<string, EquipmentStatus> = {};
+    mockEquipment.forEach((eq) => {
+      initial[eq.id] = eq.status;
+    });
+    return initial;
+  });
+
+  // 상태 변경 시 시각 피드백용 (최근 변경된 설비 ID)
+  const [recentlyChanged, setRecentlyChanged] = useState<string | null>(null);
+
   const toggleMode = (equipmentId: string) => {
     setAutoModes((prev) => ({
       ...prev,
       [equipmentId]: !prev[equipmentId],
     }));
+  };
+
+  const changeEquipmentStatus = (equipmentId: string, newStatus: EquipmentStatus) => {
+    setEquipmentStatuses((prev) => ({
+      ...prev,
+      [equipmentId]: newStatus,
+    }));
+    // 시각 피드백: 잠시 하이라이트
+    setRecentlyChanged(equipmentId);
+    setTimeout(() => setRecentlyChanged(null), 800);
   };
 
   // 공정 단계별 데이터 매핑
@@ -546,67 +623,121 @@ export default function ProductionPage() {
             </div>
           </div>
 
-          {/* 설비별 자동/수동 토글 */}
+          {/* 설비별 상태 제어 패널 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex-1 flex flex-col min-h-0">
             <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
               <Settings className="w-5 h-5 text-gray-500" />
               설비 제어
             </h3>
-            <div className="space-y-2 overflow-y-auto pr-1 flex-1 min-h-0">
+            <div className="space-y-3 overflow-y-auto pr-1 flex-1 min-h-0">
               {mockEquipment.map((eq) => {
-                const statusInfo = equipmentStatusMap[eq.status];
+                const currentStatus = equipmentStatuses[eq.id] ?? eq.status;
+                const statusInfo = equipmentStatusMap[currentStatus];
                 const isAuto = autoModes[eq.id] ?? true;
+                const validStates = equipmentValidStates[eq.type] ?? ["running", "idle"];
+                const isChanged = recentlyChanged === eq.id;
 
                 return (
                   <div
                     key={eq.id}
-                    className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2.5 hover:bg-blue-50 transition-colors"
+                    className={cn(
+                      "bg-gray-50 rounded-lg px-3 py-3 transition-all duration-300",
+                      isChanged && "ring-2 ring-blue-400 bg-blue-50"
+                    )}
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-gray-800 truncate">
-                          {eq.name}
-                        </span>
-                        <span
-                          className={cn(
-                            "px-2.5 py-0.5 rounded-full text-sm font-semibold",
-                            statusInfo.color
+                    {/* 상단: 이름, 타입 아이콘, 상태 배지, 토글 */}
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-500 flex-shrink-0">
+                            {equipmentTypeIcon[eq.type]}
+                          </span>
+                          <span className="text-sm font-semibold text-gray-800 truncate">
+                            {eq.name}
+                          </span>
+                          <span
+                            className={cn(
+                              "px-2 py-0.5 rounded-full text-xs font-semibold transition-all duration-300",
+                              statusInfo.color
+                            )}
+                          >
+                            {statusInfo.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <div className="flex items-center gap-1 text-[10px] text-gray-400">
+                            <MapPin className="w-2.5 h-2.5" />
+                            {eq.installLocation}
+                          </div>
+                          {/* AMR 배터리 표시 */}
+                          {eq.type === "amr" && eq.battery != null && (
+                            <div className="flex items-center gap-1 text-[10px]">
+                              <BatteryMedium className={cn(
+                                "w-3 h-3",
+                                eq.battery > 50 ? "text-green-500" : eq.battery > 20 ? "text-yellow-500" : "text-red-500"
+                              )} />
+                              <span className={cn(
+                                "font-semibold",
+                                eq.battery > 50 ? "text-green-600" : eq.battery > 20 ? "text-yellow-600" : "text-red-600"
+                              )}>
+                                {eq.battery}%
+                              </span>
+                            </div>
                           )}
-                        >
-                          {statusInfo.label}
-                        </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 mt-0.5 text-[10px] text-gray-400">
-                        <MapPin className="w-2.5 h-2.5" />
-                        {eq.installLocation}
-                      </div>
-                    </div>
-                    {/* Auto/Manual 토글 스위치 */}
-                    <button
-                      type="button"
-                      onClick={() => toggleMode(eq.id)}
-                      className={cn(
-                        "relative w-14 h-7 rounded-full transition-colors flex-shrink-0 ml-2",
-                        isAuto ? "bg-blue-500" : "bg-gray-300"
-                      )}
-                    >
-                      <span
+                      {/* Auto/Manual 토글 스위치 */}
+                      <button
+                        type="button"
+                        onClick={() => toggleMode(eq.id)}
                         className={cn(
-                          "absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform",
-                          isAuto ? "translate-x-7" : "translate-x-0.5"
-                        )}
-                      />
-                      <span
-                        className={cn(
-                          "absolute text-[9px] font-bold top-1/2 -translate-y-1/2",
-                          isAuto
-                            ? "left-1.5 text-white"
-                            : "right-1 text-gray-500"
+                          "relative w-14 h-7 rounded-full transition-colors flex-shrink-0 ml-2",
+                          isAuto ? "bg-blue-500" : "bg-gray-300"
                         )}
                       >
-                        {isAuto ? "자동" : "수동"}
-                      </span>
-                    </button>
+                        <span
+                          className={cn(
+                            "absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform",
+                            isAuto ? "translate-x-7" : "translate-x-0.5"
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            "absolute text-[9px] font-bold top-1/2 -translate-y-1/2",
+                            isAuto
+                              ? "left-1.5 text-white"
+                              : "right-1 text-gray-500"
+                          )}
+                        >
+                          {isAuto ? "자동" : "수동"}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* 하단: 상태 변경 버튼 그룹 */}
+                    <div className="flex items-center gap-1.5 mt-2">
+                      {validStates.map((st) => {
+                        const isActive = currentStatus === st;
+                        const style = statusButtonStyle[st];
+                        const label = equipmentStatusMap[st].label;
+
+                        return (
+                          <button
+                            key={st}
+                            type="button"
+                            onClick={() => changeEquipmentStatus(eq.id, st)}
+                            disabled={isActive}
+                            className={cn(
+                              "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all duration-200 cursor-pointer",
+                              isActive ? style.active : style.inactive,
+                              isActive && "cursor-default"
+                            )}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}

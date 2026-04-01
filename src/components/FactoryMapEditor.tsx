@@ -42,48 +42,49 @@ interface MapZone {
 const DEFAULT_ZONES: MapZone[] = [
   // 왼쪽: 주조 구역 4개 (로봇팔 4대)
   {
-    id: "cast-b",
-    name: "주조 B (주탕)",
+    id: "cast-a",
+    name: "주조 A (주탕/탈형)",
     type: "robot_arm",
     x: 16,
     y: 28,
     width: 14,
     height: 12,
     status: "active",
-    description: "Casting Zone B — 용탕을 주형에 주입하는 주탕 로봇암",
+    description: "Casting Zone A — 주탕(용탕 주입) + 탈형(주물 분리) 겸용 로봇암",
   },
   {
-    id: "cast-a",
-    name: "주조 A (주탕)",
+    id: "cast-b",
+    name: "주조 B (주탕/탈형)",
+
     type: "robot_arm",
     x: 12,
     y: 36,
     width: 14,
     height: 12,
     status: "active",
-    description: "Casting Zone A — 용탕을 주형에 주입하는 주탕 로봇암",
+    description: "Casting Zone A — 주탕(용탕 주입) + 탈형(주물 분리) 겸용 로봇암",
   },
   {
-    id: "cast-c1",
-    name: "주조 C1 (탈형)",
+    id: "cast-c",
+    name: "주조 C (주탕/탈형)",
     type: "robot_arm",
     x: 7,
     y: 46,
     width: 14,
     height: 12,
     status: "active",
-    description: "Casting Zone C1 — 주형에서 주물을 분리하는 탈형 로봇암",
+    description: "Casting Zone C — 주탕(용탕 주입) + 탈형(주물 분리) 겸용 로봇암",
   },
   {
-    id: "cast-c2",
-    name: "주조 C2 (탈형)",
+    id: "cast-d",
+    name: "주조 D (주탕/탈형)",
     type: "robot_arm",
     x: 0,
     y: 60,
     width: 14,
     height: 12,
     status: "idle",
-    description: "Casting Zone C2 — 주형에서 주물을 분리하는 탈형 로봇암",
+    description: "Casting Zone D — 주탕(용탕 주입) + 탈형(주물 분리) 겸용 로봇암",
   },
   // 중앙: 컨베이어 2개 + 카메라 2개
   {
@@ -296,6 +297,45 @@ export default function FactoryMapEditor() {
   // ---- 선택된 구역 정보 ----
   const selectedZone = zones.find((z) => z.id === selectedId) ?? null;
 
+  const AMR_STYLES = `
+    @keyframes map2-amr1 {
+      0%   { left: 28%; top: 37%; }
+      8%   { left: 28%; top: 37%; }
+      20%  { left: 34%; top: 38%; }
+      32%  { left: 46%; top: 40%; }
+      45%  { left: 46%; top: 40%; }
+      58%  { left: 34%; top: 38%; }
+      70%  { left: 28%; top: 44%; }
+      82%  { left: 34%; top: 50%; }
+      90%  { left: 46%; top: 55%; }
+      95%  { left: 46%; top: 55%; }
+      100% { left: 28%; top: 37%; }
+    }
+    @keyframes map2-amr2 {
+      0%   { left: 55%; top: 40%; }
+      6%   { left: 55%; top: 40%; }
+      18%  { left: 64%; top: 38%; }
+      28%  { left: 72%; top: 38%; }
+      40%  { left: 72%; top: 38%; }
+      52%  { left: 64%; top: 42%; }
+      60%  { left: 55%; top: 55%; }
+      70%  { left: 64%; top: 52%; }
+      80%  { left: 72%; top: 50%; }
+      90%  { left: 72%; top: 50%; }
+      100% { left: 55%; top: 40%; }
+    }
+    @keyframes map2-amr3 {
+      0%   { left: 80%; top: 52%; }
+      10%  { left: 80%; top: 52%; }
+      25%  { left: 86%; top: 58%; }
+      40%  { left: 90%; top: 65%; }
+      55%  { left: 90%; top: 65%; }
+      70%  { left: 86%; top: 58%; }
+      85%  { left: 80%; top: 52%; }
+      100% { left: 80%; top: 52%; }
+    }
+  `;
+
   return (
     <div
       style={{
@@ -308,6 +348,7 @@ export default function FactoryMapEditor() {
         position: "relative",
       }}
     >
+      <style>{AMR_STYLES}</style>
       {/* 상단 툴바 */}
       <div
         style={{
@@ -550,6 +591,49 @@ export default function FactoryMapEditor() {
             zIndex: 0,
           }}
         />
+        {/* === AMR 3대 오버레이 === */}
+        {[
+          { id: "AMR-001", label: "AMR-001", task: "주조→컨베이어", anim: "map2-amr1", dur: 14, color: "#22d3ee" },
+          { id: "AMR-002", label: "AMR-002", task: "컨베이어→보관", anim: "map2-amr2", dur: 16, color: "#22d3ee" },
+          { id: "AMR-003", label: "AMR-003", task: "보관→충전소", anim: "map2-amr3", dur: 10, color: "#fde047" },
+        ].map((amr) => (
+          <div
+            key={amr.id}
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              zIndex: 25,
+              animation: `${amr.anim} ${amr.dur}s ease-in-out infinite`,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              style={{
+                width: 36,
+                height: 24,
+                background: "linear-gradient(135deg, #164e63, #0e7490)",
+                border: `2px solid ${amr.color}`,
+                borderRadius: 5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div style={{ width: 7, height: 7, borderRadius: "50%", background: amr.color, boxShadow: `0 0 6px ${amr.color}` }} />
+            </div>
+            <span style={{ marginTop: 2, fontSize: 8, fontWeight: 700, color: amr.color, textShadow: "0 1px 4px rgba(0,0,0,0.9)", whiteSpace: "nowrap" }}>
+              {amr.label}
+            </span>
+            <span style={{ fontSize: 6, color: "#94a3b8", textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}>
+              {amr.task}
+            </span>
+          </div>
+        ))}
       </div>
 
       {/* 하단 정보 패널 */}

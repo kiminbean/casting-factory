@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import { Factory, Bot, Cpu, Zap, Battery, MapPin } from "lucide-react";
 import FactoryMapEditor from "./FactoryMapEditor";
+import FactoryMap3D from "./FactoryMap3D";
 
 // ----------------------------------------------------------------
 // CSS Keyframes injected via style tag
@@ -1214,8 +1215,8 @@ function ViewToggle({
   mode,
   onToggle,
 }: {
-  mode: "3d" | "interactive" | "map2";
-  onToggle: (m: "3d" | "interactive" | "map2") => void;
+  mode: "3d" | "interactive" | "map2" | "realtime3d";
+  onToggle: (m: "3d" | "interactive" | "map2" | "realtime3d") => void;
 }) {
   return (
     <div
@@ -1232,6 +1233,7 @@ function ViewToggle({
         { key: "3d" as const, label: "맵 1: 3D 공장" },
         { key: "interactive" as const, label: "인터랙티브 맵" },
         { key: "map2" as const, label: "맵 2: 공정 레이아웃" },
+        { key: "realtime3d" as const, label: "맵 2: 3D 실시간" },
       ].map((item) => (
         <button
           key={item.key}
@@ -1261,7 +1263,7 @@ function ViewToggle({
 
 export default function FactoryMap() {
   const [selectedId, setSelectedId] = useState<string>("");
-  const [viewMode, setViewMode] = useState<"3d" | "interactive" | "map2">("3d");
+  const [viewMode, setViewMode] = useState<"3d" | "interactive" | "map2" | "realtime3d">("3d");
 
   function handleSelect(id: string) {
     setSelectedId((prev) => (prev === id ? "" : id));
@@ -1341,6 +1343,11 @@ export default function FactoryMap() {
           {/* === Map 2: 공정 레이아웃 편집기 === */}
           {viewMode === "map2" && (
             <FactoryMapEditor />
+          )}
+
+          {/* === Map 2: 3D 실시간 뷰어 (Three.js) === */}
+          {viewMode === "realtime3d" && (
+            <FactoryMap3D />
           )}
 
           {/* === Interactive Isometric Map View === */}
