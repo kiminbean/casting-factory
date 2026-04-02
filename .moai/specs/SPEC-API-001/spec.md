@@ -1,7 +1,7 @@
 ---
 id: SPEC-API-001
 version: "1.0.0"
-status: draft
+status: completed
 created: "2026-04-02"
 updated: "2026-04-02"
 author: kisoo
@@ -16,6 +16,7 @@ issue_number: 0
 | 날짜 | 버전 | 변경 내용 |
 |------|------|----------|
 | 2026-04-02 | 1.0.0 | 초기 SPEC 생성 |
+| 2026-04-02 | 1.1.0 | 구현 완료, sync 완료 |
 
 ## 개요
 

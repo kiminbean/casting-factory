@@ -26,7 +26,8 @@ casting-factory/
 │   │       └── DefectTypeDistChart.tsx
 │   └── lib/                      # 공유 유틸리티
 │       ├── types.ts              # 전체 도메인 타입 정의
-│       ├── mock-data.ts          # Mock 데이터 (개발용)
+│       ├── api.ts                # API 클라이언트 (fetch + snake→camelCase 변환)
+│       ├── mock-data.ts          # Mock 데이터 (개발용, 서브 페이지)
 │       └── utils.ts              # 포맷팅, 상태맵 헬퍼
 │
 ├── backend/                      # FastAPI 백엔드

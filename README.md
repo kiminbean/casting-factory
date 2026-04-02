@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 주물공장 생산 관제 시스템 (Casting Factory MES)
 
-## Getting Started
+주물(캐스팅) 스마트 공장의 실시간 생산 관제 대시보드. 용해~분류 전체 공정 모니터링, 주문 관리, 품질 검사, 물류/이송, 3D 공장 맵을 통합 관리한다.
 
-First, run the development server:
+## 기술 스택
+
+| 레이어 | 기술 |
+|--------|------|
+| 프론트엔드 | Next.js 16 + React 19 + TypeScript |
+| UI | Tailwind CSS 4 + Recharts + Lucide Icons |
+| 3D | Three.js + @react-three/fiber + drei |
+| 백엔드 | FastAPI + SQLAlchemy + Pydantic |
+| DB | SQLite |
+| 3D 에셋 | Blender → GLB |
+
+## 시작하기
+
+### 백엔드
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd backend
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+백엔드 서버: http://localhost:8000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 프론트엔드
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+npm run dev
+```
 
-## Learn More
+프론트엔드: http://localhost:3000
 
-To learn more about Next.js, take a look at the following resources:
+## 프로젝트 구조
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+casting-factory/
+├── src/                    # Next.js 프론트엔드
+│   ├── app/                # App Router 페이지
+│   ├── components/         # React 컴포넌트 (대시보드, 3D 맵, 차트)
+│   └── lib/                # 타입, API 클라이언트, 유틸리티
+├── backend/                # FastAPI 백엔드
+│   └── app/                # 라우터, 모델, 스키마, 시드 데이터
+├── blender/                # 3D 에셋 (Blender 스크립트, CAD 파일)
+├── public/                 # 정적 파일 (GLB 모델, 이미지)
+└── docs/                   # 프로젝트 문서
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 주요 기능
 
-## Deploy on Vercel
+- **통합 대시보드**: 생산 KPI 카드, 실시간 알림, 주간 생산 차트, 주문 테이블
+- **3D 공장 맵**: Three.js 기반 실시간 공장 뷰어 (편집 모드 지원)
+- **주문 관리**: 접수~완료 상태 추적, 품목 상세
+- **생산 모니터링**: 8단계 공정 상태 (용해~분류)
+- **품질 검사**: 비전 검사 결과, 불량률 차트
+- **물류/이송**: AMR 이송 태스크, 창고 관리
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## API 엔드포인트
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| 경로 | 설명 |
+|------|------|
+| GET /api/dashboard/stats | 대시보드 통계 |
+| GET /api/orders | 주문 목록 |
+| GET /api/production/stages | 공정 단계 |
+| GET /api/production/metrics | 생산 지표 |
+| GET /api/production/equipment | 설비 목록 |
+| GET /api/quality | 품질 검사 |
+| GET /api/logistics | 물류/이송 |
+| GET /api/alerts | 알림 |
+| WS /ws | WebSocket 실시간 |
