@@ -9,11 +9,13 @@ import {
   FlaskConical,
   Truck,
   Factory,
+  CalendarClock,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
   { href: "/production", label: "생산 모니터링", icon: Activity },
+  { href: "/production/schedule", label: "생산 계획", icon: CalendarClock },
   { href: "/orders", label: "주문 관리", icon: ClipboardList },
   { href: "/quality", label: "품질 검사", icon: FlaskConical },
   { href: "/logistics", label: "물류/이송", icon: Truck },
@@ -36,7 +38,7 @@ export default function Sidebar() {
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         <ul className="space-y-1">
           {navItems.map(({ href, label, icon: Icon }) => {
-            const isActive = pathname === href;
+            const isActive = href === "/" ? pathname === "/" : pathname === href;
             return (
               <li key={href}>
                 <Link

@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, SessionLocal, engine
-from app.routes import alerts, logistics, orders, production, quality, websocket
+from app.routes import alerts, logistics, orders, production, quality, schedule, websocket
 from app.seed import seed_database
 
 # 스키마 변경 시 기존 DB 삭제 후 재생성
@@ -52,6 +52,7 @@ app.include_router(production.router)
 app.include_router(quality.router)
 app.include_router(logistics.router)
 app.include_router(alerts.router)
+app.include_router(schedule.router)
 
 # WebSocket router
 app.include_router(websocket.router)

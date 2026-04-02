@@ -13,8 +13,10 @@ from app.models.models import (
     Order,
     OrderDetail,
     OutboundOrder,
+    PriorityChangeLog,  # noqa: F401 — 테이블 생성 보장
     ProcessStage,
     Product,
+    ProductionJob,  # noqa: F401 — 테이블 생성 보장
     ProductionMetric,
     SorterLog,
     TransportTask,
@@ -52,6 +54,9 @@ def _seed_orders(db: Session) -> None:
         Order(id="ORD-2026-003", customer_id="CUST-003", customer_name="박민수", company_name="(주)대한건설", contact="031-345-6789", shipping_address="경기도 수원시 장안구 정조로 123", total_amount=5500000, status="pending", requested_delivery="2026-05-01", confirmed_delivery="", created_at="2026-03-29T08:30:00", updated_at="2026-03-29T08:30:00", notes="대량 주문 할인 요청"),
         Order(id="ORD-2026-004", customer_id="CUST-004", customer_name="정수빈", company_name="(주)경기도시공사", contact="031-456-7890", shipping_address="경기도 성남시 분당구 정자동 45-6", total_amount=1700000, status="completed", requested_delivery="2026-03-28", confirmed_delivery="2026-03-27", created_at="2026-03-15T09:00:00", updated_at="2026-03-27T16:00:00", notes="납기 완료"),
         Order(id="ORD-2026-005", customer_id="CUST-005", customer_name="최동현", company_name="(주)부산항만공사", contact="051-567-8901", shipping_address="부산광역시 중구 충장대로 206", total_amount=7000000, status="reviewing", requested_delivery="2026-04-25", confirmed_delivery="", created_at="2026-03-30T07:00:00", updated_at="2026-03-30T07:00:00", notes="항만용 내식성 강화 요청"),
+        Order(id="ORD-2026-006", customer_id="CUST-006", customer_name="한지민", company_name="(주)인천공항공사", contact="032-678-9012", shipping_address="인천광역시 중구 공항로 272", total_amount=9200000, status="approved", requested_delivery="2026-04-10", confirmed_delivery="", created_at="2026-03-24T11:00:00", updated_at="2026-03-28T09:00:00", notes="긴급 납기 — 활주로 보수용"),
+        Order(id="ORD-2026-007", customer_id="CUST-007", customer_name="윤서준", company_name="(주)대전도시공사", contact="042-789-0123", shipping_address="대전광역시 서구 둔산로 100", total_amount=2400000, status="approved", requested_delivery="2026-04-30", confirmed_delivery="", created_at="2026-03-31T08:00:00", updated_at="2026-04-01T10:00:00", notes=""),
+        Order(id="ORD-2026-008", customer_id="CUST-008", customer_name="강예린", company_name="(주)울산항만공사", contact="052-890-1234", shipping_address="울산광역시 남구 장생포로 55", total_amount=4800000, status="approved", requested_delivery="2026-04-08", confirmed_delivery="", created_at="2026-03-22T07:30:00", updated_at="2026-03-25T14:00:00", notes="항만 맨홀 — 내염수 사양"),
     ]
     db.add_all(rows)
     db.commit()
@@ -66,6 +71,9 @@ def _seed_order_details(db: Session) -> None:
         OrderDetail(id="OD-003", order_id="ORD-2026-003", product_id="PRD-003", product_name="맨홀 뚜껑 KS D-450", quantity=100, spec="450mm / 두께 40mm / EN124 C250", material="FC250 (회주철)", post_processing="방청 코팅", logo_data="", unit_price=55000, subtotal=5500000),
         OrderDetail(id="OD-004", order_id="ORD-2026-004", product_id="PRD-001", product_name="맨홀 뚜껑 KS D-600", quantity=20, spec="600mm / 두께 50mm / EN124 D400", material="GCD450 (구상흑연주철)", post_processing="표면 연마 + 방청 코팅 + 문구 삽입", logo_data="경기도시공사 문구", unit_price=85000, subtotal=1700000),
         OrderDetail(id="OD-005", order_id="ORD-2026-005", product_id="PRD-005", product_name="배수구 그레이팅", quantity=200, spec="500x300mm / 두께 30mm", material="FC200 (회주철)", post_processing="아연 도금", logo_data="", unit_price=35000, subtotal=7000000),
+        OrderDetail(id="OD-006", order_id="ORD-2026-006", product_id="PRD-002", product_name="맨홀 뚜껑 KS D-800", quantity=80, spec="800mm / 두께 60mm / EN124 E600", material="GCD500 (구상흑연주철)", post_processing="표면 연마 + 방청 코팅", logo_data="인천공항공사 로고", unit_price=115000, subtotal=9200000),
+        OrderDetail(id="OD-007", order_id="ORD-2026-007", product_id="PRD-003", product_name="맨홀 뚜껑 KS D-450", quantity=40, spec="450mm / 두께 40mm / EN124 C250", material="FC250 (회주철)", post_processing="방청 코팅", logo_data="", unit_price=60000, subtotal=2400000),
+        OrderDetail(id="OD-008", order_id="ORD-2026-008", product_id="PRD-001", product_name="맨홀 뚜껑 KS D-600", quantity=60, spec="600mm / 두께 50mm / EN124 D400", material="GCD450 (구상흑연주철)", post_processing="아연 도금 + 내염수 코팅", logo_data="울산항만공사 문구", unit_price=80000, subtotal=4800000),
     ]
     db.add_all(rows)
     db.commit()

@@ -264,3 +264,38 @@ class ProductionMetric(Base):
     production = Column(Integer, nullable=False, default=0)
     defects = Column(Integer, nullable=False, default=0)
     defect_rate = Column(Float, nullable=False, default=0.0)
+
+
+# ────────────────────────────────────────
+# 7. 생산 스케줄링 (Production Scheduling)
+# ────────────────────────────────────────
+
+class ProductionJob(Base):
+    """생산 작업 — 주문을 공정에 할당한 작업 단위"""
+
+    __tablename__ = "production_jobs"
+
+    id = Column(String, primary_key=True, index=True)
+    order_id = Column(String, ForeignKey("orders.id"), nullable=False, index=True)
+    priority_score = Column(Float, nullable=False, default=0.0)
+    priority_rank = Column(Integer, nullable=False, default=0)
+    assigned_stage = Column(String, nullable=False, default="melting")
+    status = Column(String, nullable=False, default="queued")  # queued/running/completed/cancelled
+    estimated_completion = Column(String, nullable=True)
+    started_at = Column(String, nullable=True)
+    completed_at = Column(String, nullable=True)
+    created_at = Column(String, nullable=False)
+
+
+class PriorityChangeLog(Base):
+    """우선순위 변경 이력 — 수동 순서 변경 감사 추적"""
+
+    __tablename__ = "priority_change_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_id = Column(String, nullable=False, index=True)
+    old_rank = Column(Integer, nullable=False)
+    new_rank = Column(Integer, nullable=False)
+    reason = Column(String, nullable=False)
+    changed_by = Column(String, nullable=False, default="admin")
+    changed_at = Column(String, nullable=False)
