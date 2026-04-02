@@ -32,6 +32,23 @@ export const equipmentStatusMap: Record<EquipmentStatus, { label: string; color:
   charging: { label: "충전 중", color: "bg-blue-100 text-blue-700" },
 };
 
+// AMR 전용 상태 매핑 (유휴/작업중/충전필요/사용불가)
+export function getAmrStatusInfo(status: EquipmentStatus, battery?: number): { label: string; color: string } {
+  // 배터리 20% 미만이면 "충전필요" 우선 표시 (충전 중이 아닐 때)
+  if (battery !== undefined && battery < 20 && status !== "charging") {
+    return { label: "충전필요", color: "bg-orange-100 text-orange-700" };
+  }
+  switch (status) {
+    case "idle": return { label: "유휴", color: "bg-gray-100 text-gray-700" };
+    case "running": return { label: "작업중", color: "bg-green-100 text-green-700" };
+    case "charging": return { label: "충전 중", color: "bg-blue-100 text-blue-700" };
+    case "error":
+    case "maintenance":
+      return { label: "사용불가", color: "bg-red-100 text-red-700" };
+    default: return equipmentStatusMap[status];
+  }
+}
+
 export const transportStatusMap: Record<TransportStatus, { label: string; color: string }> = {
   unassigned: { label: "배정 전", color: "bg-gray-100 text-gray-700" },
   assigned: { label: "배정됨", color: "bg-blue-100 text-blue-700" },

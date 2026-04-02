@@ -11,6 +11,7 @@ import type { TransportTask, WarehouseRack } from "@/lib/types";
 import {
   transportStatusMap,
   equipmentStatusMap,
+  getAmrStatusInfo,
   storageSlotColorMap,
   formatDate,
   cn,
@@ -207,7 +208,7 @@ export default function LogisticsPage() {
 
               <div className="p-4 space-y-3 flex-1 overflow-y-auto">
                 {amrList.map((amr) => {
-                  const statusInfo = equipmentStatusMap[amr.status];
+                  const statusInfo = getAmrStatusInfo(amr.status, amr.battery);
                   const battery = amr.battery ?? 0;
                   const batteryColor = getBatteryColor(battery);
                   const batteryText = getBatteryTextColor(battery);
