@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Factory,
   CheckCircle,
@@ -11,6 +11,14 @@ import {
   FileText,
   User,
   CircleCheck,
+  Paintbrush,
+  ShieldCheck,
+  Layers,
+  Stamp,
+  Image,
+  Ruler,
+  Weight,
+  Gem,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────
@@ -18,15 +26,20 @@ import {
 // ─────────────────────────────────────────────
 
 type ProductId = "D450" | "D600" | "D800" | "GRATING";
+type Category = "all" | "manhole" | "grating";
 
 interface Product {
   id: ProductId;
   name: string;
+  category: Category;
+  categoryLabel: string;
   spec: string;
   priceRange: string;
   basePrice: number;
   diameterOptions: string[];
   thicknessOptions: string[];
+  materials: string[];
+  loadClassRange: string;
 }
 
 interface FormData {
@@ -53,52 +66,99 @@ interface FormData {
 // Constants
 // ─────────────────────────────────────────────
 
+const CATEGORIES: { id: Category; label: string }[] = [
+  { id: "all", label: "전체" },
+  { id: "manhole", label: "맨홀 뚜껑" },
+  { id: "grating", label: "그레이팅" },
+];
+
 const PRODUCTS: Product[] = [
   {
     id: "D450",
     name: "맨홀 뚜껑 KS D-450",
+    category: "manhole",
+    categoryLabel: "맨홀 뚜껑",
     spec: "직경 450mm, KS 규격",
     priceRange: "50,000 - 70,000원",
     basePrice: 55000,
     diameterOptions: ["450mm", "460mm", "470mm"],
     thicknessOptions: ["25mm", "30mm", "35mm", "40mm"],
+    materials: ["FC200", "FC250", "GCD450"],
+    loadClassRange: "B125 ~ D400",
   },
   {
     id: "D600",
     name: "맨홀 뚜껑 KS D-600",
+    category: "manhole",
+    categoryLabel: "맨홀 뚜껑",
     spec: "직경 600mm, KS 규격",
     priceRange: "75,000 - 100,000원",
     basePrice: 85000,
     diameterOptions: ["600mm", "610mm", "620mm"],
     thicknessOptions: ["30mm", "35mm", "40mm", "45mm"],
+    materials: ["FC200", "FC250", "GCD450", "GCD500"],
+    loadClassRange: "B125 ~ F900",
   },
   {
     id: "D800",
     name: "맨홀 뚜껑 KS D-800",
+    category: "manhole",
+    categoryLabel: "맨홀 뚜껑",
     spec: "직경 800mm, KS 규격",
     priceRange: "110,000 - 140,000원",
     basePrice: 120000,
     diameterOptions: ["800mm", "810mm", "820mm"],
     thicknessOptions: ["35mm", "40mm", "45mm", "50mm"],
+    materials: ["FC250", "GCD450", "GCD500"],
+    loadClassRange: "C250 ~ F900",
   },
   {
     id: "GRATING",
     name: "배수구 그레이팅 500x300",
+    category: "grating",
+    categoryLabel: "그레이팅",
     spec: "500x300mm, 격자형",
     priceRange: "30,000 - 45,000원",
     basePrice: 35000,
     diameterOptions: ["500x300mm", "500x350mm", "600x300mm"],
     thicknessOptions: ["20mm", "25mm", "30mm"],
+    materials: ["FC200", "FC250"],
+    loadClassRange: "B125 ~ C250",
   },
 ];
 
 const LOAD_CLASSES = ["EN124 B125", "EN124 C250", "EN124 D400", "EN124 E600", "EN124 F900"];
 const MATERIALS = ["FC200", "FC250", "GCD450", "GCD500"];
+
 const POST_PROCESSING_OPTIONS = [
-  { id: "polish", label: "표면 연마", price: 5000 },
-  { id: "rustProof", label: "방청 코팅", price: 3000 },
-  { id: "zinc", label: "아연 도금", price: 8000 },
-  { id: "logo", label: "로고/문구 삽입", price: 7000 },
+  {
+    id: "polish",
+    label: "표면 연마",
+    description: "매끄러운 표면 처리로 외관 품질 향상",
+    price: 5000,
+    icon: Paintbrush,
+  },
+  {
+    id: "rustProof",
+    label: "방청 코팅",
+    description: "부식 방지 코팅으로 내구성 강화",
+    price: 3000,
+    icon: ShieldCheck,
+  },
+  {
+    id: "zinc",
+    label: "아연 도금",
+    description: "아연 도금 처리로 장기 부식 방지",
+    price: 8000,
+    icon: Layers,
+  },
+  {
+    id: "logo",
+    label: "로고/문구 삽입",
+    description: "회사 로고 또는 식별 문구 양각 삽입",
+    price: 7000,
+    icon: Stamp,
+  },
 ];
 
 const STEPS = [
@@ -176,7 +236,7 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
 }
 
 // ─────────────────────────────────────────────
-// Step 1: Product Selection
+// Step 1: Product Selection (카테고리 필터 + 재질/하중등급)
 // ─────────────────────────────────────────────
 
 function Step1ProductSelection({
@@ -186,12 +246,38 @@ function Step1ProductSelection({
   selectedProduct: ProductId | null;
   onSelect: (id: ProductId) => void;
 }) {
+  const [category, setCategory] = useState<Category>("all");
+
+  const filteredProducts = useMemo(() => {
+    if (category === "all") return PRODUCTS;
+    return PRODUCTS.filter((p) => p.category === category);
+  }, [category]);
+
   return (
     <div>
       <h2 className="text-xl font-bold text-gray-900 mb-2">제품 선택</h2>
       <p className="text-sm text-gray-500 mb-6">주문하실 제품을 선택해 주세요.</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {PRODUCTS.map((product) => {
+
+      {/* 카테고리 필터 */}
+      <div className="flex items-center gap-2 mb-6">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat.id}
+            onClick={() => setCategory(cat.id)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              category === cat.id
+                ? "bg-blue-600 text-white shadow-sm"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 제품 그리드 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {filteredProducts.map((product) => {
           const isSelected = selectedProduct === product.id;
           return (
             <button
@@ -203,17 +289,35 @@ function Step1ProductSelection({
                   : "border-gray-200 bg-white hover:border-blue-300"
               }`}
             >
-              {/* Placeholder image area */}
-              <div className="w-full h-32 bg-gray-100 rounded-lg flex flex-col items-center justify-center mb-4">
+              {/* 제품 이미지 placeholder */}
+              <div className="w-full h-36 bg-gray-100 rounded-lg flex flex-col items-center justify-center mb-4 relative">
                 <Factory
                   className={`w-10 h-10 mb-1 ${isSelected ? "text-blue-500" : "text-gray-400"}`}
                 />
                 <span className="text-xs text-gray-400">제품 이미지</span>
+                {/* 카테고리 뱃지 */}
+                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/80 text-gray-600 border border-gray-200">
+                  {product.categoryLabel}
+                </span>
               </div>
+
               <h3 className={`font-semibold text-sm mb-1 ${isSelected ? "text-blue-700" : "text-gray-900"}`}>
                 {product.name}
               </h3>
-              <p className="text-xs text-gray-500 mb-2">{product.spec}</p>
+              <p className="text-xs text-gray-500 mb-3">{product.spec}</p>
+
+              {/* 재질 + 하중등급 정보 */}
+              <div className="space-y-1.5 mb-3">
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Gem className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  <span>재질: {product.materials.join(", ")}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Weight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                  <span>하중: {product.loadClassRange}</span>
+                </div>
+              </div>
+
               <p className={`text-xs font-medium ${isSelected ? "text-blue-600" : "text-gray-400"}`}>
                 기준가 {product.priceRange}
               </p>
@@ -232,7 +336,7 @@ function Step1ProductSelection({
 }
 
 // ─────────────────────────────────────────────
-// Step 2: Specification Input
+// Step 2: Specification Input (이미지 카드형 후처리)
 // ─────────────────────────────────────────────
 
 function Step2SpecInput({
@@ -257,7 +361,7 @@ function Step2SpecInput({
       <h2 className="text-xl font-bold text-gray-900 mb-2">사양 입력</h2>
       <p className="text-sm text-gray-500 mb-6">선택하신 제품의 상세 사양을 입력해 주세요.</p>
 
-      {/* Selected product info */}
+      {/* 선택 제품 정보 */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-6 flex items-center gap-3">
         <Factory className="w-5 h-5 text-blue-600 shrink-0" />
         <div>
@@ -267,7 +371,7 @@ function Step2SpecInput({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        {/* Diameter */}
+        {/* 규격 (직경) */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             규격 (직경) <span className="text-red-500">*</span>
@@ -281,15 +385,13 @@ function Step2SpecInput({
           >
             <option value="">선택하세요</option>
             {product.diameterOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
+              <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
           {errors.diameter && <p className="mt-1 text-xs text-red-500">{errors.diameter}</p>}
         </div>
 
-        {/* Thickness */}
+        {/* 두께 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             두께 <span className="text-red-500">*</span>
@@ -303,15 +405,13 @@ function Step2SpecInput({
           >
             <option value="">선택하세요</option>
             {product.thicknessOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt}
-              </option>
+              <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
           {errors.thickness && <p className="mt-1 text-xs text-red-500">{errors.thickness}</p>}
         </div>
 
-        {/* Load Class */}
+        {/* 하중 등급 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             하중 등급 <span className="text-red-500">*</span>
@@ -325,15 +425,13 @@ function Step2SpecInput({
           >
             <option value="">선택하세요</option>
             {LOAD_CLASSES.map((cls) => (
-              <option key={cls} value={cls}>
-                {cls}
-              </option>
+              <option key={cls} value={cls}>{cls}</option>
             ))}
           </select>
           {errors.loadClass && <p className="mt-1 text-xs text-red-500">{errors.loadClass}</p>}
         </div>
 
-        {/* Material */}
+        {/* 재질 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             재질 <span className="text-red-500">*</span>
@@ -347,15 +445,13 @@ function Step2SpecInput({
           >
             <option value="">선택하세요</option>
             {MATERIALS.map((mat) => (
-              <option key={mat} value={mat}>
-                {mat}
-              </option>
+              <option key={mat} value={mat}>{mat}</option>
             ))}
           </select>
           {errors.material && <p className="mt-1 text-xs text-red-500">{errors.material}</p>}
         </div>
 
-        {/* Quantity */}
+        {/* 수량 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             수량 (최소 10개) <span className="text-red-500">*</span>
@@ -372,7 +468,7 @@ function Step2SpecInput({
           {errors.quantity && <p className="mt-1 text-xs text-red-500">{errors.quantity}</p>}
         </div>
 
-        {/* Desired Delivery */}
+        {/* 희망 납기일 */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             희망 납기일 <span className="text-red-500">*</span>
@@ -392,38 +488,52 @@ function Step2SpecInput({
         </div>
       </div>
 
-      {/* Post Processing */}
-      <div className="mt-5">
-        <label className="block text-sm font-medium text-gray-700 mb-2">후처리 (선택)</label>
+      {/* 후처리 — 이미지 카드 형식 */}
+      <div className="mt-6">
+        <label className="block text-sm font-medium text-gray-700 mb-3">후처리 옵션 (선택)</label>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {POST_PROCESSING_OPTIONS.map((opt) => {
             const isChecked = formData.postProcessing.includes(opt.id);
+            const Icon = opt.icon;
             return (
-              <label
+              <button
                 key={opt.id}
-                className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 cursor-pointer transition-all ${
+                type="button"
+                onClick={() => togglePostProcessing(opt.id)}
+                className={`relative flex flex-col items-center text-center rounded-xl border-2 p-4 transition-all ${
                   isChecked
-                    ? "border-blue-500 bg-blue-50 text-blue-700"
-                    : "border-gray-200 hover:border-blue-300 text-gray-700"
+                    ? "border-blue-500 bg-blue-50 shadow-sm"
+                    : "border-gray-200 bg-white hover:border-blue-300 hover:shadow-sm"
                 }`}
               >
-                <input
-                  type="checkbox"
-                  checked={isChecked}
-                  onChange={() => togglePostProcessing(opt.id)}
-                  className="w-4 h-4 text-blue-600 rounded"
-                />
-                <div>
-                  <p className="text-xs font-medium">{opt.label}</p>
-                  <p className="text-xs text-gray-400">+{formatCurrency(opt.price)}</p>
+                {/* 아이콘 이미지 영역 */}
+                <div
+                  className={`w-14 h-14 rounded-xl flex items-center justify-center mb-3 ${
+                    isChecked ? "bg-blue-100" : "bg-gray-100"
+                  }`}
+                >
+                  <Icon className={`w-7 h-7 ${isChecked ? "text-blue-600" : "text-gray-400"}`} />
                 </div>
-              </label>
+                <p className={`text-xs font-semibold mb-1 ${isChecked ? "text-blue-700" : "text-gray-800"}`}>
+                  {opt.label}
+                </p>
+                <p className="text-[10px] text-gray-400 leading-tight mb-2">{opt.description}</p>
+                <span className={`text-xs font-medium ${isChecked ? "text-blue-600" : "text-gray-500"}`}>
+                  +{formatCurrency(opt.price)}
+                </span>
+                {/* 선택 표시 */}
+                {isChecked && (
+                  <div className="absolute top-2 right-2 w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
+                    <CheckCircle className="w-3.5 h-3.5 text-white" />
+                  </div>
+                )}
+              </button>
             );
           })}
         </div>
       </div>
 
-      {/* Notes */}
+      {/* 비고 */}
       <div className="mt-5">
         <label className="block text-sm font-medium text-gray-700 mb-1">비고</label>
         <textarea
@@ -439,7 +549,7 @@ function Step2SpecInput({
 }
 
 // ─────────────────────────────────────────────
-// Step 3: Quote Review
+// Step 3: Quote Review (디자인 시안 + 옵션 미리보기)
 // ─────────────────────────────────────────────
 
 function Step3QuoteReview({
@@ -463,83 +573,90 @@ function Step3QuoteReview({
   return (
     <div>
       <h2 className="text-xl font-bold text-gray-900 mb-2">견적 확인</h2>
-      <p className="text-sm text-gray-500 mb-6">주문 내용을 확인해 주세요.</p>
+      <p className="text-sm text-gray-500 mb-6">주문 내용과 디자인 시안을 확인해 주세요.</p>
 
       <div className="space-y-4">
-        {/* Product Info */}
+        {/* 디자인 시안 + 옵션 미리보기 */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-            <Package className="w-4 h-4 text-blue-600" />
-            제품 정보
+          <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <Image className="w-4 h-4 text-blue-600" />
+            디자인 시안 미리보기
           </h3>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="text-gray-500">제품명</span>
-              <p className="font-medium text-gray-900 mt-0.5">{product.name}</p>
-            </div>
-            <div>
-              <span className="text-gray-500">기본 사양</span>
-              <p className="font-medium text-gray-900 mt-0.5">{product.spec}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Spec Info */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-            <Settings className="w-4 h-4 text-blue-600" />
-            사양 정보
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-            <div>
-              <span className="text-gray-500">규격 (직경)</span>
-              <p className="font-medium text-gray-900 mt-0.5">{formData.diameter}</p>
-            </div>
-            <div>
-              <span className="text-gray-500">두께</span>
-              <p className="font-medium text-gray-900 mt-0.5">{formData.thickness}</p>
-            </div>
-            <div>
-              <span className="text-gray-500">하중 등급</span>
-              <p className="font-medium text-gray-900 mt-0.5">{formData.loadClass}</p>
-            </div>
-            <div>
-              <span className="text-gray-500">재질</span>
-              <p className="font-medium text-gray-900 mt-0.5">{formData.material}</p>
-            </div>
-            <div>
-              <span className="text-gray-500">수량</span>
-              <p className="font-medium text-gray-900 mt-0.5">{formData.quantity.toLocaleString()}개</p>
-            </div>
-            <div>
-              <span className="text-gray-500">희망 납기일</span>
-              <p className="font-medium text-gray-900 mt-0.5">{formData.desiredDelivery}</p>
-            </div>
-          </div>
-          {selectedPostProcessing.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <span className="text-gray-500 text-sm">후처리</span>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {selectedPostProcessing.map((opt) => (
-                  <span
-                    key={opt.id}
-                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700"
-                  >
-                    {opt.label} (+{formatCurrency(opt.price)})
-                  </span>
-                ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* 디자인 시안 이미지 */}
+            <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 flex flex-col items-center justify-center min-h-[200px]">
+              <div className="w-28 h-28 bg-gray-200 rounded-full flex items-center justify-center mb-3">
+                <Factory className="w-14 h-14 text-gray-400" />
+              </div>
+              <p className="text-sm font-medium text-gray-700">{product.name}</p>
+              <p className="text-xs text-gray-400 mt-1">기본 디자인 시안</p>
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-400">
+                <Ruler className="w-3 h-3" />
+                <span>{formData.diameter} / {formData.thickness}</span>
               </div>
             </div>
-          )}
-          {formData.notes && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <span className="text-gray-500 text-sm">비고</span>
-              <p className="text-sm text-gray-700 mt-0.5">{formData.notes}</p>
+
+            {/* 선택 옵션 요약 카드 */}
+            <div className="space-y-3">
+              {/* 규격 사양 */}
+              <div className="bg-blue-50 rounded-lg px-4 py-3 border border-blue-100">
+                <p className="text-[10px] uppercase tracking-wider text-blue-400 font-semibold mb-1">규격 사양</p>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-gray-500">직경</span>
+                    <p className="font-semibold text-gray-800">{formData.diameter}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">두께</span>
+                    <p className="font-semibold text-gray-800">{formData.thickness}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">하중</span>
+                    <p className="font-semibold text-gray-800">{formData.loadClass}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">재질</span>
+                    <p className="font-semibold text-gray-800">{formData.material}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 후처리 적용 내역 */}
+              <div className="bg-amber-50 rounded-lg px-4 py-3 border border-amber-100">
+                <p className="text-[10px] uppercase tracking-wider text-amber-500 font-semibold mb-2">후처리 적용</p>
+                {selectedPostProcessing.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedPostProcessing.map((opt) => {
+                      const Icon = opt.icon;
+                      return (
+                        <span
+                          key={opt.id}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-white border border-amber-200 text-amber-700"
+                        >
+                          <Icon className="w-3 h-3" />
+                          {opt.label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">후처리 옵션 없음</p>
+                )}
+              </div>
+
+              {/* 수량/납기 */}
+              <div className="bg-green-50 rounded-lg px-4 py-3 border border-green-100">
+                <p className="text-[10px] uppercase tracking-wider text-green-500 font-semibold mb-1">주문 수량</p>
+                <p className="text-lg font-bold text-gray-800">
+                  {formData.quantity.toLocaleString()}개
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">납기: {formData.desiredDelivery}</p>
+              </div>
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Quote */}
+        {/* 예상 견적 */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
             <FileText className="w-4 h-4 text-blue-600" />
@@ -577,7 +694,14 @@ function Step3QuoteReview({
           </div>
         </div>
 
-        {/* Warning */}
+        {formData.notes && (
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">비고</h3>
+            <p className="text-sm text-gray-600">{formData.notes}</p>
+          </div>
+        )}
+
+        {/* 안내 */}
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
           <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center shrink-0 mt-0.5">
             <span className="text-white text-xs font-bold">!</span>
@@ -611,41 +735,11 @@ function Step4CustomerInfo({
     placeholder: string;
     required: boolean;
   }[] = [
-    {
-      key: "companyName",
-      label: "회사명",
-      type: "text",
-      placeholder: "주식회사 예시",
-      required: true,
-    },
-    {
-      key: "contactPerson",
-      label: "담당자명",
-      type: "text",
-      placeholder: "홍길동",
-      required: true,
-    },
-    {
-      key: "phone",
-      label: "연락처",
-      type: "tel",
-      placeholder: "010-1234-5678",
-      required: true,
-    },
-    {
-      key: "email",
-      label: "이메일",
-      type: "email",
-      placeholder: "example@company.com",
-      required: true,
-    },
-    {
-      key: "address",
-      label: "배송지 주소",
-      type: "text",
-      placeholder: "서울특별시 강남구 ...",
-      required: true,
-    },
+    { key: "companyName", label: "회사명", type: "text", placeholder: "주식회사 예시", required: true },
+    { key: "contactPerson", label: "담당자명", type: "text", placeholder: "홍길동", required: true },
+    { key: "phone", label: "연락처", type: "tel", placeholder: "010-1234-5678", required: true },
+    { key: "email", label: "이메일", type: "email", placeholder: "example@company.com", required: true },
+    { key: "address", label: "배송지 주소", type: "text", placeholder: "서울특별시 강남구 ...", required: true },
   ];
 
   return (
@@ -709,16 +803,14 @@ function Step5OrderComplete({
         </div>
       </div>
       <h2 className="text-2xl font-bold text-gray-900 mb-2">주문이 접수되었습니다</h2>
-      <p className="text-gray-500 mb-6">
-        주문 상태를 이메일로 안내드리겠습니다.
-      </p>
+      <p className="text-gray-500 mb-6">주문 상태를 이메일로 안내드리겠습니다.</p>
 
       <div className="bg-blue-50 border border-blue-200 rounded-xl px-6 py-4 mb-6 inline-block">
         <p className="text-sm text-blue-600 mb-1">주문 번호</p>
         <p className="text-2xl font-bold text-blue-800">{orderNumber}</p>
       </div>
 
-      {/* Summary */}
+      {/* 요약 */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 text-left mb-6">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">주문 요약</h3>
         <div className="space-y-2.5 text-sm">
@@ -757,10 +849,6 @@ function Step5OrderComplete({
           <div className="flex justify-between">
             <span className="text-gray-500">이메일</span>
             <span className="font-medium text-gray-900">{formData.email}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">예상 납기</span>
-            <span className="font-medium text-gray-900">주문 확정 후 약 2-3주</span>
           </div>
         </div>
       </div>
@@ -856,7 +944,6 @@ export default function CustomerOrderPage() {
     if (!validateStep(step)) return;
 
     if (step === 4) {
-      // Submit order
       setOrderNumber(generateOrderNumber());
     }
     setStep((prev) => Math.min(prev + 1, 5));
@@ -884,13 +971,11 @@ export default function CustomerOrderPage() {
 
       {/* Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
-        {/* Step content */}
         {step === 1 && (
           <Step1ProductSelection
             selectedProduct={formData.selectedProduct}
             onSelect={(id) => {
               handleChange("selectedProduct", id);
-              // Reset spec fields when product changes
               setFormData((prev) => ({
                 ...prev,
                 selectedProduct: id,
