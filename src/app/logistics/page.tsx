@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
-  mockTransports,
-  mockEquipment,
-  mockWarehouseRacks,
-  mockOutboundOrders,
-} from "@/lib/mock-data";
-import type { TransportTask, WarehouseRack } from "@/lib/types";
+  fetchTransportTasks,
+  fetchEquipment,
+  fetchWarehouseRacks,
+  fetchOutboundOrders,
+} from "@/lib/api";
+import type { TransportTask, WarehouseRack, Equipment, OutboundOrder } from "@/lib/types";
 import {
   transportStatusMap,
   equipmentStatusMap,
@@ -33,6 +33,7 @@ import {
   ClipboardList,
   Grid3X3,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 
 // 우선순위 정렬: high > medium > low
@@ -48,13 +49,7 @@ const priorityBadge: Record<TransportTask["priority"], { label: string; color: s
   low: { label: "낮음", color: "bg-gray-100 text-gray-600" },
 };
 
-// AMR 목록
-const amrList = mockEquipment.filter((e) => e.type === "amr");
-
-// 이송 작업을 우선순위 순으로 정렬
-const sortedTransports = [...mockTransports].sort(
-  (a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]
-);
+// (amrList, sortedTransports는 컴포넌트 내부 useMemo로 이동)
 
 function getBatteryColor(level: number): string {
   if (level > 50) return "bg-green-500";
@@ -75,16 +70,75 @@ function getBatteryBgColor(level: number): string {
 }
 
 export default function LogisticsPage() {
+  const [transports, setTransports] = useState<TransportTask[]>([]);
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [warehouseRacks, setWarehouseRacks] = useState<WarehouseRack[]>([]);
+  const [outboundOrders, setOutboundOrders] = useState<OutboundOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [focusedRobotId, setFocusedRobotId] = useState<string | null>(null);
-  const [outboundOrders, setOutboundOrders] = useState(mockOutboundOrders);
   const [hoveredRack, setHoveredRack] = useState<WarehouseRack | null>(null);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const [tData, eqData, wrData, obData] = await Promise.all([
+          fetchTransportTasks(),
+          fetchEquipment(),
+          fetchWarehouseRacks(),
+          fetchOutboundOrders(),
+        ]);
+        setTransports(tData);
+        setEquipment(eqData);
+        setWarehouseRacks(wrData);
+        setOutboundOrders(obData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "데이터를 불러오는 중 오류가 발생했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  const amrList = useMemo(() => equipment.filter((e) => e.type === "amr"), [equipment]);
+  const sortedTransports = useMemo(
+    () => [...transports].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]),
+    [transports]
+  );
 
   const handleCompleteOrder = (orderId: string) => {
     setOutboundOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, completed: true } : o))
     );
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={36} className="animate-spin text-blue-500" />
+          <p className="text-base text-gray-500">물류 데이터를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <AlertTriangle size={36} className="text-red-400" />
+          <p className="text-base text-red-600">{error}</p>
+          <button type="button" onClick={() => window.location.reload()} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">다시 시도</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -217,7 +271,7 @@ export default function LogisticsPage() {
                   const isFocused = focusedRobotId === amr.id;
 
                   // 이 AMR에 배정된 작업 찾기
-                  const assignedTask = mockTransports.find(
+                  const assignedTask = transports.find(
                     (t) => t.assignedRobotId === amr.id && t.status !== "completed"
                   );
 
@@ -352,7 +406,7 @@ export default function LogisticsPage() {
               <div className="p-5 space-y-5">
                 {/* 랙 그리드 (4행 x 6열) */}
                 <div className="grid grid-cols-6 gap-2.5">
-                  {mockWarehouseRacks.map((rack) => {
+                  {warehouseRacks.map((rack) => {
                     const colorClass = storageSlotColorMap[rack.status];
                     const isHovered = hoveredRack?.id === rack.id;
 
@@ -469,22 +523,22 @@ export default function LogisticsPage() {
                   {[
                     {
                       label: "비어있음",
-                      count: mockWarehouseRacks.filter((r) => r.status === "empty").length,
+                      count: warehouseRacks.filter((r) => r.status === "empty").length,
                       color: "text-gray-600",
                     },
                     {
                       label: "점유",
-                      count: mockWarehouseRacks.filter((r) => r.status === "occupied").length,
+                      count: warehouseRacks.filter((r) => r.status === "occupied").length,
                       color: "text-blue-700",
                     },
                     {
                       label: "예약",
-                      count: mockWarehouseRacks.filter((r) => r.status === "reserved").length,
+                      count: warehouseRacks.filter((r) => r.status === "reserved").length,
                       color: "text-amber-600",
                     },
                     {
                       label: "사용불가",
-                      count: mockWarehouseRacks.filter((r) => r.status === "unavailable").length,
+                      count: warehouseRacks.filter((r) => r.status === "unavailable").length,
                       color: "text-red-600",
                     },
                   ].map((stat) => (

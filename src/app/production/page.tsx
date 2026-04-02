@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import {
   Thermometer,
@@ -26,13 +26,23 @@ import {
   ArrowDownUp,
   BatteryMedium,
   ScanLine,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import {
-  mockProcessStages,
-  mockEquipment,
-  mockHourlyProduction,
-} from "@/lib/mock-data";
-import type { ProcessStage, ProcessStatus, EquipmentStatus, EquipmentType } from "@/lib/types";
+  fetchProcessStages,
+  fetchEquipment,
+  fetchProductionMetrics,
+} from "@/lib/api";
+import type {
+  ProcessStageData,
+  ProcessStage,
+  ProcessStatus,
+  Equipment,
+  EquipmentStatus,
+  EquipmentType,
+  ProductionMetric,
+} from "@/lib/types";
 import { cn, processStatusMap, equipmentStatusMap, formatDate } from "@/lib/utils";
 
 // Recharts: SSR 비활성화 동적 임포트
@@ -130,23 +140,24 @@ function arrowColor(status: ProcessStatus): string {
 }
 
 // ────────────────────────────────────────
-// 용해로 온도 시뮬레이션 데이터 (최근 30분)
+// 용해로 온도 시뮬레이션 데이터 생성 함수
 // ────────────────────────────────────────
 
-const meltingStage = mockProcessStages.find((s) => s.stage === "melting");
-const tempTimelineData = Array.from({ length: 30 }, (_, i) => {
-  const minute = i + 1;
-  const target = meltingStage?.targetTemperature ?? 1450;
-  // 서서히 목표 온도에 수렴하는 시뮬레이션
-  const current = Math.round(
-    target - (target - 1200) * Math.exp(-0.12 * minute) + (Math.random() - 0.5) * 8
-  );
-  return {
-    time: `${minute}분`,
-    현재온도: current,
-    목표온도: target,
-  };
-});
+function buildTempTimeline(stages: ProcessStageData[]) {
+  const meltingStage = stages.find((s) => s.stage === "melting");
+  return Array.from({ length: 30 }, (_, i) => {
+    const minute = i + 1;
+    const target = meltingStage?.targetTemperature ?? 1450;
+    const current = Math.round(
+      target - (target - 1200) * Math.exp(-0.12 * minute) + (Math.random() - 0.5) * 8
+    );
+    return {
+      time: `${minute}분`,
+      현재온도: current,
+      목표온도: target,
+    };
+  });
+}
 
 // ────────────────────────────────────────
 // 설비 타입별 아이콘 및 허용 상태 정의
@@ -202,23 +213,53 @@ const statusButtonStyle: Record<EquipmentStatus, { active: string; inactive: str
 // ────────────────────────────────────────
 
 export default function ProductionPage() {
-  // 설비별 자동/수동 모드 토글 상태
-  const [autoModes, setAutoModes] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {};
-    mockEquipment.forEach((eq) => {
-      initial[eq.id] = true; // 기본: 자동 모드
-    });
-    return initial;
-  });
+  const [processStages, setProcessStages] = useState<ProcessStageData[]>([]);
+  const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
+  const [hourlyProduction, setHourlyProduction] = useState<ProductionMetric[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // 설비별 현재 상태 (mock 데이터에서 초기화)
-  const [equipmentStatuses, setEquipmentStatuses] = useState<Record<string, EquipmentStatus>>(() => {
-    const initial: Record<string, EquipmentStatus> = {};
-    mockEquipment.forEach((eq) => {
-      initial[eq.id] = eq.status;
-    });
-    return initial;
-  });
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const [stagesData, eqData, metricsData] = await Promise.all([
+          fetchProcessStages(),
+          fetchEquipment(),
+          fetchProductionMetrics(),
+        ]);
+        setProcessStages(stagesData);
+        setEquipmentList(eqData);
+        setHourlyProduction(metricsData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "데이터를 불러오는 중 오류가 발생했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  // 설비별 자동/수동 모드 토글 상태
+  const [autoModes, setAutoModes] = useState<Record<string, boolean>>({});
+
+  // 설비별 현재 상태
+  const [equipmentStatuses, setEquipmentStatuses] = useState<Record<string, EquipmentStatus>>({});
+
+  // 설비 데이터 로드 후 초기화
+  useEffect(() => {
+    if (equipmentList.length > 0) {
+      const modes: Record<string, boolean> = {};
+      const statuses: Record<string, EquipmentStatus> = {};
+      equipmentList.forEach((eq) => {
+        modes[eq.id] = true;
+        statuses[eq.id] = eq.status;
+      });
+      setAutoModes(modes);
+      setEquipmentStatuses(statuses);
+    }
+  }, [equipmentList]);
 
   // 상태 변경 시 시각 피드백용 (최근 변경된 설비 ID)
   const [recentlyChanged, setRecentlyChanged] = useState<string | null>(null);
@@ -235,19 +276,21 @@ export default function ProductionPage() {
       ...prev,
       [equipmentId]: newStatus,
     }));
-    // 시각 피드백: 잠시 하이라이트
     setRecentlyChanged(equipmentId);
     setTimeout(() => setRecentlyChanged(null), 800);
   };
 
+  // 온도 타임라인 데이터
+  const tempTimelineData = useMemo(() => buildTempTimeline(processStages), [processStages]);
+
   // 공정 단계별 데이터 매핑
   const stageDataMap = useMemo(() => {
-    const map: Record<string, (typeof mockProcessStages)[number]> = {};
-    mockProcessStages.forEach((s) => {
+    const map: Record<string, ProcessStageData> = {};
+    processStages.forEach((s) => {
       map[s.stage] = s;
     });
     return map;
-  }, []);
+  }, [processStages]);
 
   // 냉각 공정 데이터
   const coolingStage = stageDataMap["cooling"];
@@ -263,8 +306,38 @@ export default function ProductionPage() {
     : 0;
 
   // 조형/주탕 데이터
+  const meltingStage = stageDataMap["melting"];
   const moldingStage = stageDataMap["molding"];
   const pouringStage = stageDataMap["pouring"];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={36} className="animate-spin text-blue-500" />
+          <p className="text-base text-gray-500">생산 데이터를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <AlertTriangle size={36} className="text-red-400" />
+          <p className="text-base text-red-600">{error}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+          >
+            다시 시도
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
@@ -498,7 +571,7 @@ export default function ProductionPage() {
               </h3>
               <div className="h-52">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChartComponent data={mockHourlyProduction}>
+                  <BarChartComponent data={hourlyProduction}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="hour" tick={{ fontSize: 10 }} />
                     <YAxis tick={{ fontSize: 10 }} />
@@ -528,7 +601,7 @@ export default function ProductionPage() {
                 <span>
                   금일 총 생산:{" "}
                   <strong className="text-gray-800">
-                    {mockHourlyProduction.reduce(
+                    {hourlyProduction.reduce(
                       (sum, h) => sum + h.production,
                       0
                     )}
@@ -538,7 +611,7 @@ export default function ProductionPage() {
                 <span>
                   금일 불량:{" "}
                   <strong className="text-red-600">
-                    {mockHourlyProduction.reduce(
+                    {hourlyProduction.reduce(
                       (sum, h) => sum + h.defects,
                       0
                     )}
@@ -630,7 +703,7 @@ export default function ProductionPage() {
               설비 제어
             </h3>
             <div className="space-y-3 overflow-y-auto pr-1 flex-1 min-h-0">
-              {mockEquipment.map((eq) => {
+              {equipmentList.map((eq) => {
                 const currentStatus = equipmentStatuses[eq.id] ?? eq.status;
                 const statusInfo = equipmentStatusMap[currentStatus];
                 const isAuto = autoModes[eq.id] ?? true;
@@ -771,7 +844,7 @@ export default function ProductionPage() {
               </tr>
             </thead>
             <tbody>
-              {mockProcessStages.map((stage) => {
+              {processStages.map((stage) => {
                 const statusInfo = processStatusMap[stage.status];
                 return (
                   <tr

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Factory,
   CheckCircle,
@@ -15,8 +15,10 @@ import {
   Truck,
   ShieldCheck,
   PackageCheck,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
-import { mockOrders, mockOrderDetails } from "@/lib/mock-data";
+import { fetchOrders, fetchOrderDetails } from "@/lib/api";
 import { orderStatusMap, formatDate, formatCurrency as formatKRW } from "@/lib/utils";
 import type { Order, OrderDetail, OrderStatus } from "@/lib/types";
 
@@ -267,37 +269,94 @@ function OrderDetailPanel({
 // ─────────────────────────────────────────────
 
 export default function CustomerOrdersPage() {
+  const [orders, setOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedDetails, setSelectedDetails] = useState<OrderDetail[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadOrders = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await fetchOrders();
+      setOrders(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "주문 데이터를 불러오는 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadOrders(); }, [loadOrders]);
+
+  // 주문 선택 시 상세 로드
+  const handleSelectOrder = useCallback(async (order: Order) => {
+    setSelectedOrder(order);
+    try {
+      setDetailLoading(true);
+      const details = await fetchOrderDetails(order.id);
+      setSelectedDetails(details);
+    } catch {
+      setSelectedDetails([]);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
 
   // 주문번호 또는 연락처로 검색
   const filteredOrders = useMemo(() => {
-    if (!searchQuery.trim()) return mockOrders;
+    if (!searchQuery.trim()) return orders;
     const q = searchQuery.trim().toLowerCase();
-    return mockOrders.filter(
+    return orders.filter(
       (order) =>
         order.id.toLowerCase().includes(q) ||
         order.contact.includes(q) ||
         order.companyName.toLowerCase().includes(q)
     );
-  }, [searchQuery]);
+  }, [searchQuery, orders]);
 
-  // 선택한 주문의 상세 정보
-  const selectedDetails = useMemo(() => {
-    if (!selectedOrder) return [];
-    return mockOrderDetails.filter((d) => d.orderId === selectedOrder.id);
-  }, [selectedOrder]);
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={36} className="animate-spin text-blue-500" />
+          <p className="text-base text-gray-500">주문 데이터를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <AlertTriangle size={36} className="text-red-400" />
+          <p className="text-base text-red-600">{error}</p>
+          <button type="button" onClick={loadOrders} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">다시 시도</button>
+        </div>
+      </div>
+    );
+  }
 
   // 주문 상세 보기
   if (selectedOrder) {
     return (
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
-          <OrderDetailPanel
-            order={selectedOrder}
-            details={selectedDetails}
-            onBack={() => setSelectedOrder(null)}
-          />
+          {detailLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={28} className="animate-spin text-blue-400" />
+            </div>
+          ) : (
+            <OrderDetailPanel
+              order={selectedOrder}
+              details={selectedDetails}
+              onBack={() => { setSelectedOrder(null); setSelectedDetails([]); }}
+            />
+          )}
         </div>
       </div>
     );
@@ -345,7 +404,7 @@ export default function CustomerOrdersPage() {
               return (
                 <button
                   key={order.id}
-                  onClick={() => setSelectedOrder(order)}
+                  onClick={() => handleSelectOrder(order)}
                   className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-300 hover:shadow-sm transition-all group"
                 >
                   <div className="flex items-center justify-between mb-2">

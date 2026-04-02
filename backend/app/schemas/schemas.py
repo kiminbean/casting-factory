@@ -25,6 +25,13 @@ class OrderStatusUpdate(BaseModel):
     status: str
 
 
+class OrderUpdate(BaseModel):
+    """주문 필드 부분 수정 (견적 금액, 확정 납기, 비고 등)."""
+    total_amount: Optional[float] = None
+    confirmed_delivery: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -455,3 +462,82 @@ class DashboardStats(BaseModel):
     defect_rate: float = 0.0
     equipment_utilization: float = 0.0
     completed_today: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Production Scheduling schemas
+# ---------------------------------------------------------------------------
+
+class PriorityCalculateRequest(BaseModel):
+    """우선순위 계산 요청 — 주문 ID 목록"""
+    order_ids: list[str]
+
+
+class PriorityFactor(BaseModel):
+    """개별 우선순위 요인 점수"""
+    name: str
+    score: float
+    max_score: float
+    detail: str
+
+
+class PriorityResult(BaseModel):
+    """단일 주문의 우선순위 계산 결과"""
+    order_id: str
+    company_name: str
+    product_summary: str
+    total_quantity: int
+    requested_delivery: Optional[str] = None
+    total_score: float
+    rank: int
+    factors: list[PriorityFactor]
+    recommendation_reason: str
+    delay_risk: str  # high / medium / low
+    ready_status: str  # ready / not_ready
+    blocking_reasons: list[str]
+    estimated_days: int
+
+
+class PriorityCalculateResponse(BaseModel):
+    """우선순위 계산 응답"""
+    results: list[PriorityResult]
+
+
+class ProductionStartRequest(BaseModel):
+    """생산 개시 요청 — 주문 ID + 순위 목록"""
+    order_ids: list[str]
+
+
+class ProductionJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    order_id: str
+    priority_score: float
+    priority_rank: int
+    assigned_stage: str
+    status: str
+    estimated_completion: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    created_at: str
+
+
+class PriorityLogCreate(BaseModel):
+    """우선순위 변경 이력 생성"""
+    order_id: str
+    old_rank: int
+    new_rank: int
+    reason: str
+
+
+class PriorityLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    order_id: str
+    old_rank: int
+    new_rank: int
+    reason: str
+    changed_by: str
+    changed_at: str

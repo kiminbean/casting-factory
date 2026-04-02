@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Package,
   Clock,
@@ -21,8 +21,14 @@ import {
   Layers,
   ClipboardList,
   Settings,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
-import { mockOrders, mockOrderDetails } from "@/lib/mock-data";
+import {
+  fetchOrders,
+  fetchOrderDetails,
+  updateOrderStatus,
+} from "@/lib/api";
 import { orderStatusMap, formatDate, formatCurrency, cn } from "@/lib/utils";
 import type { Order, OrderStatus, OrderDetail } from "@/lib/types";
 
@@ -122,9 +128,11 @@ function OrderCard({ order, isSelected, onClick }: OrderCardProps) {
 interface OrderDetailPanelProps {
   order: Order;
   details: OrderDetail[];
+  onStatusChange: (orderId: string, status: OrderStatus) => void;
+  actionLoading: boolean;
 }
 
-function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
+function OrderDetailPanel({ order, details, onStatusChange, actionLoading }: OrderDetailPanelProps) {
   const statusInfo = orderStatusMap[order.status];
   const estimatedDays = calcEstimatedDays(details);
   const estimatedDelivery = calcEstimatedDelivery(order, details);
@@ -450,23 +458,29 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
               <>
                 <button
                   type="button"
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-green-600 text-white rounded-lg font-semibold text-base hover:bg-green-700 transition-colors shadow-sm"
+                  disabled={actionLoading}
+                  onClick={() => onStatusChange(order.id, "approved")}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-green-600 text-white rounded-lg font-semibold text-base hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50"
                 >
-                  <ThumbsUp size={16} />
+                  {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <ThumbsUp size={16} />}
                   승인
                 </button>
                 <button
                   type="button"
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-amber-500 text-white rounded-lg font-semibold text-base hover:bg-amber-600 transition-colors shadow-sm"
+                  disabled={actionLoading}
+                  onClick={() => onStatusChange(order.id, "reviewing")}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-amber-500 text-white rounded-lg font-semibold text-base hover:bg-amber-600 transition-colors shadow-sm disabled:opacity-50"
                 >
-                  <ClipboardList size={16} />
+                  {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <ClipboardList size={16} />}
                   수정 요청
                 </button>
                 <button
                   type="button"
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-red-600 text-white rounded-lg font-semibold text-base hover:bg-red-700 transition-colors shadow-sm"
+                  disabled={actionLoading}
+                  onClick={() => onStatusChange(order.id, "rejected")}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-red-600 text-white rounded-lg font-semibold text-base hover:bg-red-700 transition-colors shadow-sm disabled:opacity-50"
                 >
-                  <ThumbsDown size={16} />
+                  {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <ThumbsDown size={16} />}
                   반려
                 </button>
               </>
@@ -474,9 +488,11 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
             {order.status === "approved" && (
               <button
                 type="button"
-                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold text-base hover:bg-blue-700 transition-colors shadow-sm"
+                disabled={actionLoading}
+                onClick={() => onStatusChange(order.id, "in_production")}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold text-base hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
               >
-                <Factory size={16} />
+                {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Factory size={16} />}
                 생산 시작
               </button>
             )}
@@ -492,30 +508,102 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
 // ────────────────────────────────────────
 
 export default function OrdersPage() {
+  const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedDetails, setSelectedDetails] = useState<OrderDetail[]>([]);
   const [activeTab, setActiveTab] = useState<OrderStatus | "all">("all");
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // 주문 목록 로드
+  const loadOrders = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await fetchOrders();
+      setOrders(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "주문 데이터를 불러오는 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadOrders(); }, [loadOrders]);
+
+  // 주문 선택 시 상세 로드
+  const handleSelectOrder = useCallback(async (order: Order) => {
+    setSelectedOrder(order);
+    try {
+      setDetailLoading(true);
+      const details = await fetchOrderDetails(order.id);
+      setSelectedDetails(details);
+    } catch {
+      setSelectedDetails([]);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
+  // 상태 변경 (승인/반려/생산시작)
+  const handleStatusChange = useCallback(async (orderId: string, status: OrderStatus) => {
+    try {
+      setActionLoading(true);
+      const updated = await updateOrderStatus(orderId, status);
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? updated : o)));
+      setSelectedOrder(updated);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "상태 변경 실패");
+    } finally {
+      setActionLoading(false);
+    }
+  }, []);
 
   // 탭 필터
   const filteredOrders =
     activeTab === "all"
-      ? mockOrders
-      : mockOrders.filter((o) => o.status === activeTab);
-
-  // 선택된 주문의 상세 정보
-  const selectedDetails = selectedOrder
-    ? mockOrderDetails.filter((d) => d.orderId === selectedOrder.id)
-    : [];
+      ? orders
+      : orders.filter((o) => o.status === activeTab);
 
   // 탭별 카운트
-  const tabCounts: Record<string, number> = {
-    all: mockOrders.length,
-  };
+  const tabCounts: Record<string, number> = { all: orders.length };
   for (const tab of STATUS_TABS) {
     if (tab.key !== "all") {
-      tabCounts[tab.key] = mockOrders.filter(
-        (o) => o.status === tab.key
-      ).length;
+      tabCounts[tab.key] = orders.filter((o) => o.status === tab.key).length;
     }
+  }
+
+  // 로딩 화면
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={36} className="animate-spin text-blue-500" />
+          <p className="text-base text-gray-500">주문 데이터를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 에러 화면
+  if (error) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <AlertTriangle size={36} className="text-red-400" />
+          <p className="text-base text-red-600">{error}</p>
+          <button
+            type="button"
+            onClick={loadOrders}
+            className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+          >
+            다시 시도
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -552,6 +640,7 @@ export default function OrdersPage() {
                     onClick={() => {
                       setActiveTab(tab.key);
                       setSelectedOrder(null);
+                      setSelectedDetails([]);
                     }}
                     className={cn(
                       "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold transition-colors",
@@ -591,7 +680,7 @@ export default function OrdersPage() {
                   key={order.id}
                   order={order}
                   isSelected={selectedOrder?.id === order.id}
-                  onClick={() => setSelectedOrder(order)}
+                  onClick={() => handleSelectOrder(order)}
                 />
               ))
             )}
@@ -601,7 +690,7 @@ export default function OrdersPage() {
           <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50 shrink-0">
             <p className="text-sm text-gray-500 font-medium">
               총 {filteredOrders.length}건
-              {activeTab !== "all" && ` / 전체 ${mockOrders.length}건`}
+              {activeTab !== "all" && ` / 전체 ${orders.length}건`}
             </p>
           </div>
         </div>
@@ -609,10 +698,18 @@ export default function OrdersPage() {
         {/* -- 우측: 주문 상세 -- */}
         <div className="flex-1 bg-gray-50 flex flex-col">
           {selectedOrder ? (
-            <OrderDetailPanel
-              order={selectedOrder}
-              details={selectedDetails}
-            />
+            detailLoading ? (
+              <div className="flex-1 flex items-center justify-center">
+                <Loader2 size={28} className="animate-spin text-blue-400" />
+              </div>
+            ) : (
+              <OrderDetailPanel
+                order={selectedOrder}
+                details={selectedDetails}
+                onStatusChange={handleStatusChange}
+                actionLoading={actionLoading}
+              />
+            )
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
               <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">

@@ -11,6 +11,7 @@ from app.schemas.schemas import (
     OrderDetailResponse,
     OrderResponse,
     OrderStatusUpdate,
+    OrderUpdate,
     ProductResponse,
 )
 
@@ -53,6 +54,24 @@ async def update_order_status(
     if not order:
         raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
     order.status = payload.status
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+@router.patch("/{order_id}", response_model=OrderResponse)
+async def update_order(
+    order_id: str,
+    payload: OrderUpdate,
+    db: Session = Depends(get_db),
+):
+    """주문 필드 부분 수정 (견적 금액, 확정 납기, 비고)."""
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(order, field, value)
     db.commit()
     db.refresh(order)
     return order

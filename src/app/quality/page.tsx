@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import dynamic from "next/dynamic";
 import {
-  mockInspections,
-  mockDefectTypeStats,
-  mockSorterLogs,
-  mockInspectionStandards,
-} from "@/lib/mock-data";
+  fetchInspections,
+  fetchQualityStats,
+  fetchInspectionStandards,
+  fetchSorterLogs,
+} from "@/lib/api";
+import type { InspectionRecord, InspectionStandard, SorterLog } from "@/lib/types";
 import { formatDate, cn } from "@/lib/utils";
 import {
   CheckCircle,
@@ -23,6 +24,7 @@ import {
   Activity,
   BarChart3,
   PieChart,
+  Loader2,
 } from "lucide-react";
 
 // Recharts 동적 임포트 (SSR 비활성화)
@@ -42,33 +44,105 @@ const ProductionVsDefectsChart = dynamic(
 );
 
 export default function QualityPage(): React.JSX.Element {
+  const [inspections, setInspections] = useState<InspectionRecord[]>([]);
+  const [standards, setStandards] = useState<InspectionStandard[]>([]);
+  const [sorterLogs, setSorterLogs] = useState<SorterLog[]>([]);
+  const [qualityStats, setQualityStats] = useState<{
+    total: number; passed: number; failed: number; defectRate: number;
+    defectTypes: Record<string, number>;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const [inspData, statsData, stdData, sorterData] = await Promise.all([
+          fetchInspections(),
+          fetchQualityStats(),
+          fetchInspectionStandards(),
+          fetchSorterLogs(),
+        ]);
+        setInspections(inspData);
+        setQualityStats(statsData);
+        setStandards(stdData);
+        setSorterLogs(sorterData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "데이터를 불러오는 중 오류가 발생했습니다.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
   // 검사 통계 계산
   const stats = useMemo(() => {
-    const total = mockInspections.length;
-    const passCount = mockInspections.filter((i) => i.result === "pass").length;
+    if (qualityStats) {
+      const passRate = qualityStats.total > 0
+        ? (qualityStats.passed / qualityStats.total) * 100 : 0;
+      return {
+        total: qualityStats.total,
+        passCount: qualityStats.passed,
+        failCount: qualityStats.failed,
+        passRate,
+      };
+    }
+    const total = inspections.length;
+    const passCount = inspections.filter((i) => i.result === "pass").length;
     const failCount = total - passCount;
     const passRate = total > 0 ? (passCount / total) * 100 : 0;
     return { total, passCount, failCount, passRate };
-  }, []);
+  }, [qualityStats, inspections]);
 
   // 불량 유형 TOP 3
-  const top3Defects = useMemo(
-    () => mockDefectTypeStats.slice(0, 3),
-    []
-  );
+  const top3Defects = useMemo(() => {
+    if (qualityStats?.defectTypes) {
+      return Object.entries(qualityStats.defectTypes)
+        .map(([type, count]) => ({ type, count, percentage: stats.failCount > 0 ? (count / stats.failCount) * 100 : 0, color: "" }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 3);
+    }
+    return [];
+  }, [qualityStats, stats.failCount]);
 
   // 불량 검사 로그만 추출
   const failedInspections = useMemo(
-    () => mockInspections.filter((i) => i.result === "fail"),
-    []
+    () => inspections.filter((i) => i.result === "fail"),
+    [inspections]
   );
 
-  // 최신 sorter 로그 (가장 최근 것)
-  const latestSorter = mockSorterLogs[mockSorterLogs.length - 1];
+  // 최신 sorter 로그
+  const latestSorter = sorterLogs.length > 0 ? sorterLogs[0] : null;
 
-  // 가장 최근 검사 결과 (비전 피드 시뮬레이션용)
-  const latestInspection = mockInspections[mockInspections.length - 1];
+  // 가장 최근 검사 결과
+  const latestInspection = inspections.length > 0 ? inspections[0] : null;
   const isLatestPass = latestInspection?.result === "pass";
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={36} className="animate-spin text-blue-500" />
+          <p className="text-base text-gray-500">품질 데이터를 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <AlertTriangle size={36} className="text-red-400" />
+          <p className="text-base text-red-600">{error}</p>
+          <button type="button" onClick={() => window.location.reload()} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">다시 시도</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -404,7 +478,7 @@ export default function QualityPage(): React.JSX.Element {
                 <h2 className="text-xl font-bold text-gray-900">검사 기준 참조</h2>
               </div>
               <div className="space-y-3">
-                {mockInspectionStandards.map((std) => (
+                {standards.map((std) => (
                   <div
                     key={std.productId}
                     className="bg-gray-50 rounded-xl p-4 border border-gray-200 text-base hover:bg-blue-50 transition-colors"
