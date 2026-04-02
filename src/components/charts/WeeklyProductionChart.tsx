@@ -9,9 +9,13 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { mockWeeklyMetrics } from "@/lib/mock-data";
+import type { ProductionMetric } from "@/lib/types";
 
-export default function WeeklyProductionChart() {
+interface WeeklyProductionChartProps {
+  data: ProductionMetric[];
+}
+
+export default function WeeklyProductionChart({ data }: WeeklyProductionChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 500, height: 220 });
 
@@ -31,7 +35,7 @@ export default function WeeklyProductionChart() {
       <AreaChart
         width={size.width}
         height={size.height}
-        data={mockWeeklyMetrics}
+        data={data}
         margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
       >
         <defs>
