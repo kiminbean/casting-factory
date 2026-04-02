@@ -810,25 +810,28 @@ function Step5OrderComplete({
         <p className="text-2xl font-bold text-blue-800">{orderNumber}</p>
       </div>
 
-      {/* 요약 */}
+      {/* 주문 요약 — 모든 선택 사양을 한눈에 */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 text-left mb-6">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">주문 요약</h3>
         <div className="space-y-2.5 text-sm">
+          {/* 제품 정보 */}
           <div className="flex justify-between">
             <span className="text-gray-500">제품</span>
             <span className="font-medium text-gray-900">{product.name}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">사양</span>
+            <span className="text-gray-500">규격 (직경/두께)</span>
             <span className="font-medium text-gray-900">
               {formData.diameter} / {formData.thickness}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">재질 / 하중등급</span>
-            <span className="font-medium text-gray-900">
-              {formData.material} / {formData.loadClass}
-            </span>
+            <span className="text-gray-500">재질</span>
+            <span className="font-medium text-gray-900">{formData.material}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">하중 등급</span>
+            <span className="font-medium text-gray-900">{formData.loadClass}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">수량</span>
@@ -836,19 +839,64 @@ function Step5OrderComplete({
               {formData.quantity.toLocaleString()}개
             </span>
           </div>
+
+          {/* 후처리 */}
+          <div className="flex justify-between">
+            <span className="text-gray-500">후처리</span>
+            <span className="font-medium text-gray-900">
+              {formData.postProcessing.length > 0
+                ? POST_PROCESSING_OPTIONS.filter((o) =>
+                    formData.postProcessing.includes(o.id)
+                  )
+                    .map((o) => o.label)
+                    .join(", ")
+                : "없음"}
+            </span>
+          </div>
+
+          {/* 희망 납기일 */}
+          <div className="flex justify-between">
+            <span className="text-gray-500">희망 납기일</span>
+            <span className="font-medium text-gray-900">{formData.desiredDelivery}</span>
+          </div>
+
+          {/* 비고 */}
+          {formData.notes && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">비고</span>
+              <span className="font-medium text-gray-900 text-right max-w-[60%]">{formData.notes}</span>
+            </div>
+          )}
+
+          {/* 예상 금액 */}
           <div className="flex justify-between border-t border-gray-100 pt-2.5">
             <span className="text-gray-500">예상 금액</span>
             <span className="font-bold text-blue-600">{formatCurrency(totalPrice)}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">주문자</span>
-            <span className="font-medium text-gray-900">
-              {formData.contactPerson} ({formData.companyName})
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">이메일</span>
-            <span className="font-medium text-gray-900">{formData.email}</span>
+
+          {/* 주문자 정보 */}
+          <div className="border-t border-gray-100 pt-2.5 space-y-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">주문자 정보</p>
+            <div className="flex justify-between">
+              <span className="text-gray-500">회사명</span>
+              <span className="font-medium text-gray-900">{formData.companyName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">담당자</span>
+              <span className="font-medium text-gray-900">{formData.contactPerson}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">연락처</span>
+              <span className="font-medium text-gray-900">{formData.phone}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">이메일</span>
+              <span className="font-medium text-gray-900">{formData.email}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">배송지</span>
+              <span className="font-medium text-gray-900 text-right max-w-[60%]">{formData.address}</span>
+            </div>
           </div>
         </div>
       </div>

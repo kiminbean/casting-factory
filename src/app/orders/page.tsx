@@ -20,6 +20,7 @@ import {
   StickyNote,
   Layers,
   ClipboardList,
+  Settings,
 } from "lucide-react";
 import { mockOrders, mockOrderDetails } from "@/lib/mock-data";
 import { orderStatusMap, formatDate, formatCurrency, cn } from "@/lib/utils";
@@ -250,12 +251,23 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
 
         {/* 견적/납기 계산기 */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-          <h3 className="flex items-center gap-2 text-xl font-bold text-gray-900 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-              <Calculator size={16} className="text-amber-600" />
-            </div>
-            견적 / 납기 계산
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="flex items-center gap-2 text-xl font-bold text-gray-900">
+              <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                <Calculator size={16} className="text-amber-600" />
+              </div>
+              견적 / 납기 계산
+            </h3>
+            {(order.status === "pending" || order.status === "reviewing") && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
+              >
+                <Settings size={14} />
+                견적/납기 수정
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-5">
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
               <p className="text-sm text-blue-600 font-semibold mb-1">총 견적 금액</p>
@@ -309,6 +321,18 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
           <div className="space-y-4">
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
+                <Factory size={14} className="text-gray-500" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">회사명</p>
+                <p className="text-base font-medium text-gray-900">
+                  {order.companyName}
+                </p>
+              </div>
+            </div>
+            <div className="border-t border-gray-100" />
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
                 <User size={14} className="text-gray-500" />
               </div>
               <div>
@@ -327,6 +351,18 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
                 <p className="text-sm text-gray-500">연락처</p>
                 <p className="text-base font-medium text-gray-900">
                   {order.contact}
+                </p>
+              </div>
+            </div>
+            <div className="border-t border-gray-100" />
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
+                <FileText size={14} className="text-gray-500" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">이메일</p>
+                <p className="text-base font-medium text-gray-900">
+                  {order.contact?.includes("@") ? order.contact : "-"}
                 </p>
               </div>
             </div>
@@ -418,6 +454,13 @@ function OrderDetailPanel({ order, details }: OrderDetailPanelProps) {
                 >
                   <ThumbsUp size={16} />
                   승인
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-amber-500 text-white rounded-lg font-semibold text-base hover:bg-amber-600 transition-colors shadow-sm"
+                >
+                  <ClipboardList size={16} />
+                  수정 요청
                 </button>
                 <button
                   type="button"

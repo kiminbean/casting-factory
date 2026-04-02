@@ -168,6 +168,10 @@ function OrderDetailPanel({
             <p className="font-medium text-gray-900 mt-0.5">{order.contact}</p>
           </div>
           <div>
+            <span className="text-gray-500">이메일</span>
+            <p className="font-medium text-gray-900 mt-0.5">{order.contact?.includes("@") ? order.contact : "-"}</p>
+          </div>
+          <div>
             <span className="text-gray-500">주문일</span>
             <p className="font-medium text-gray-900 mt-0.5">{formatDate(order.createdAt)}</p>
           </div>
@@ -178,6 +182,14 @@ function OrderDetailPanel({
           <div>
             <span className="text-gray-500">확정 납기</span>
             <p className="font-medium text-gray-900 mt-0.5">{order.confirmedDelivery || "-"}</p>
+          </div>
+          <div>
+            <span className="text-gray-500">배송지</span>
+            <p className="font-medium text-gray-900 mt-0.5">{order.shippingAddress || "-"}</p>
+          </div>
+          <div>
+            <span className="text-gray-500">예상 금액</span>
+            <p className="font-medium text-blue-600 mt-0.5">{formatKRW(order.totalAmount)}</p>
           </div>
         </div>
         {order.notes && (
@@ -232,12 +244,10 @@ function OrderDetailPanel({
                     <span className="text-gray-400">단가</span>
                     <p className="mt-0.5">{formatKRW(d.unitPrice)}</p>
                   </div>
-                  {d.logoData && (
-                    <div>
-                      <span className="text-gray-400">로고/문구</span>
-                      <p className="mt-0.5">{d.logoData}</p>
-                    </div>
-                  )}
+                  <div>
+                    <span className="text-gray-400">로고/문구</span>
+                    <p className="mt-0.5">{d.logoData || "-"}</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -352,7 +362,7 @@ export default function CustomerOrdersPage() {
                     <span>{order.customerName}</span>
                     <span>{formatDate(order.createdAt)}</span>
                     <span className="ml-auto font-medium text-gray-700">
-                      {formatKRW(order.totalAmount)}
+                      예상 {formatKRW(order.totalAmount)}
                     </span>
                   </div>
                   {/* 미니 타임라인 */}
