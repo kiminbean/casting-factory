@@ -44,3 +44,6 @@ venv/
 __pycache__/
 .claude/
 backend/.next/
+
+# Firmware secrets (WiFi/MQTT credentials)
+firmware/conveyor_controller/config.h

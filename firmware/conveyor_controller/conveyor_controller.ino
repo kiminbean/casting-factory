@@ -1,6 +1,6 @@
 /*
  * Conveyor Belt Controller - ESP32 DevKitC V4
- * v3.0.0 - TOF250 ASCII UART protocol
+ * v4.0.0 - WiFi + MQTT vision integration
  *
  * Hardware:
  *   - Motor: JGB37-555 DC12V 167RPM (via L298N motor driver)
@@ -29,6 +29,16 @@
  */
 
 #include <HardwareSerial.h>
+#include <WiFi.h>
+#include "ESP32MQTTClient.h"
+#include "config.h"
+
+// === MQTT Client ===
+ESP32MQTTClient mqttClient;
+bool mqttConnected = false;
+unsigned long lastHeartbeat = 0;
+bool visionResultReceived = false;  // set by MQTT callback when vision/1/result arrives
+String visionResult = "";            // "ok" or "ng"
 
 // === Pin Definitions ===
 static const int PIN_MOTOR_ENA = 25;
@@ -147,9 +157,22 @@ void readSensors() {
   }
 }
 
+// === MQTT Publish helpers ===
+void mqttPublish(const char* topic, const String& payload) {
+  Serial.println(payload);  // always log to USB serial
+  if (mqttConnected) {
+    mqttClient.publish(topic, payload.c_str(), 0, false);
+  }
+}
+
+void publishEvent(const String& json) {
+  mqttPublish(TOPIC_EVENT, json);
+}
+
 // === State Machine ===
 void setState(State s) {
-  Serial.printf("{\"event\":\"state\",\"to\":\"%s\"}\n", ST_NAME[s]);
+  String msg = String("{\"event\":\"state\",\"to\":\"") + ST_NAME[s] + "\"}";
+  publishEvent(msg);
   state = s;
   stateStart = millis();
 }
@@ -161,7 +184,7 @@ void update() {
     case ST_IDLE:
       if (det1) {
         motorOn();
-        Serial.printf("{\"event\":\"entry\",\"dist\":%d}\n", dist1);
+        publishEvent(String("{\"event\":\"entry\",\"dist\":") + dist1 + "}");
         setState(ST_RUNNING);
       }
       break;
@@ -174,24 +197,34 @@ void update() {
       }
       if (det2) {
         motorOff();
-        Serial.printf("{\"event\":\"exit\",\"dist\":%d}\n", dist2);
+        visionResultReceived = false;  // wait for new inspection
+        visionResult = "";
+        publishEvent(String("{\"event\":\"exit\",\"dist\":") + dist2
+                     + ",\"inspection\":\"requested\"}");
         setState(ST_STOPPED);
       }
       break;
 
     case ST_STOPPED:
-      if (elapsed >= STOP_WAIT_MS) {
+      // Transition to POST_RUN when either:
+      //   1) MQTT vision result received (preferred)
+      //   2) STOP_WAIT_MS timeout expired (fallback, so system keeps moving)
+      if (visionResultReceived || elapsed >= STOP_WAIT_MS) {
         objCount++;
         motorOn();
-        Serial.printf("{\"event\":\"post_start\",\"count\":%d}\n", objCount);
+        const char* reason = visionResultReceived ? "vision" : "timeout";
+        publishEvent(String("{\"event\":\"post_start\",\"count\":") + objCount
+                     + ",\"reason\":\"" + reason
+                     + "\",\"result\":\"" + (visionResult.length() ? visionResult : "unknown") + "\"}");
+        visionResultReceived = false;
         setState(ST_POST_RUN);
       }
       break;
 
     case ST_POST_RUN:
       if (elapsed >= POST_RUN_MS) {
-        Serial.printf("{\"event\":\"post_done\",\"tof2_det\":%s}\n",
-                      det2 ? "true" : "false");
+        publishEvent(String("{\"event\":\"post_done\",\"tof2_det\":")
+                     + (det2 ? "true" : "false") + "}");
         setState(ST_CLEARING);
       }
       break;
@@ -199,14 +232,14 @@ void update() {
     case ST_CLEARING:
       if (!det2) {
         motorOff();
-        Serial.printf("{\"event\":\"cycle_done\",\"count\":%d}\n", objCount);
+        publishEvent(String("{\"event\":\"cycle_done\",\"count\":") + objCount + "}");
         raw1 = raw2 = false;
         det1 = det2 = false;
         det1Start = det2Start = 0;
         setState(ST_IDLE);
       } else if (elapsed >= CLEAR_TIMEOUT_MS) {
         motorOff();
-        Serial.println("{\"event\":\"clear_timeout\",\"warn\":\"tof2_stuck\"}");
+        publishEvent("{\"event\":\"clear_timeout\",\"warn\":\"tof2_stuck\"}");
         raw1 = raw2 = false;
         det1 = det2 = false;
         det1Start = det2Start = 0;
@@ -216,13 +249,8 @@ void update() {
   }
 }
 
-// === Serial Commands ===
-void processCmd() {
-  if (!Serial.available()) return;
-  String cmd = Serial.readStringUntil('\n');
-  cmd.trim();
-  if (cmd.length() == 0) return;
-
+// === Command handler (shared between USB serial and MQTT) ===
+void handleCommand(const String& cmd, const String& source) {
   if (cmd == "start")        { motorOn(); setState(ST_RUNNING); }
   else if (cmd == "stop")    { motorOff(); setState(ST_IDLE); }
   else if (cmd == "reset")   {
@@ -231,7 +259,15 @@ void processCmd() {
     raw1 = raw2 = false;
     det1 = det2 = false;
     det1Start = det2Start = 0;
+    visionResultReceived = false;
+    visionResult = "";
     setState(ST_IDLE);
+  }
+  else if (cmd == "camera_ok" || cmd == "inspect_done") {
+    // Vision inspection complete - transition STOPPED -> POST_RUN immediately
+    visionResult = "ok";
+    visionResultReceived = true;
+    Serial.printf("{\"ack\":\"camera_ok\",\"src\":\"%s\"}\n", source.c_str());
   }
   else if (cmd == "sim_entry") {
     raw1 = true; det1 = true; dist1 = 50;
@@ -246,21 +282,112 @@ void processCmd() {
   else if (cmd == "status") { sendStatus(); }
 }
 
+// === USB Serial Command Parser ===
+void processCmd() {
+  if (!Serial.available()) return;
+  String cmd = Serial.readStringUntil('\n');
+  cmd.trim();
+  if (cmd.length() == 0) return;
+  handleCommand(cmd, "usb");
+}
+
+// === MQTT payload parser (accepts plain text or JSON with "cmd"/"result") ===
+void handleMqttCommand(const String& topic, const std::string& payloadStd) {
+  String p = String(payloadStd.c_str());
+  p.trim();
+  if (p.length() == 0) return;
+
+  // Vision result topic
+  if (topic == TOPIC_VISION) {
+    // Accept either raw string "ok"/"ng" or JSON {"result":"ok"}
+    String result = p;
+    int idx = p.indexOf("\"result\"");
+    if (idx >= 0) {
+      int colon = p.indexOf(':', idx);
+      int q1 = p.indexOf('"', colon + 1);
+      int q2 = p.indexOf('"', q1 + 1);
+      if (q1 >= 0 && q2 > q1) result = p.substring(q1 + 1, q2);
+    }
+    result.toLowerCase();
+    visionResult = result;
+    visionResultReceived = true;
+    Serial.printf("{\"vision_result\":\"%s\"}\n", result.c_str());
+    return;
+  }
+
+  // Command topic - accept plain text or JSON {"cmd":"start"}
+  if (topic == TOPIC_CMD) {
+    String cmd = p;
+    int idx = p.indexOf("\"cmd\"");
+    if (idx >= 0) {
+      int colon = p.indexOf(':', idx);
+      int q1 = p.indexOf('"', colon + 1);
+      int q2 = p.indexOf('"', q1 + 1);
+      if (q1 >= 0 && q2 > q1) cmd = p.substring(q1 + 1, q2);
+    }
+    handleCommand(cmd, "mqtt");
+  }
+}
+
 void sendStatus() {
   bool motorRunning = digitalRead(PIN_MOTOR_IN1) || digitalRead(PIN_MOTOR_IN2);
-  Serial.printf(
+  char buf[384];
+  snprintf(buf, sizeof(buf),
     "{\"state\":\"%s\",\"elapsed\":%lu,\"motor\":%s,"
     "\"range\":{\"min\":%d,\"max\":%d},"
     "\"tof1\":{\"mm\":%d,\"det\":%s},"
     "\"tof2\":{\"mm\":%d,\"det\":%s},"
-    "\"count\":%d}\n",
+    "\"count\":%d,"
+    "\"wifi\":%s,\"mqtt\":%s}",
     ST_NAME[state], millis() - stateStart,
     motorRunning ? "true" : "false",
     DETECT_MIN_MM, DETECT_MAX_MM,
     dist1, det1 ? "true" : "false",
     dist2, det2 ? "true" : "false",
-    objCount
+    objCount,
+    (WiFi.status() == WL_CONNECTED) ? "true" : "false",
+    mqttConnected ? "true" : "false"
   );
+  Serial.println(buf);
+  if (mqttConnected) {
+    mqttClient.publish(TOPIC_STATUS, buf, 0, false);
+  }
+}
+
+// === WiFi + MQTT ===
+void setupWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);  // keep connection stable for MQTT
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.printf("{\"wifi\":\"connecting\",\"ssid\":\"%s\"}\n", WIFI_SSID);
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+    delay(250);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("{\"wifi\":\"connected\",\"ip\":\"%s\",\"rssi\":%d}\n",
+                  WiFi.localIP().toString().c_str(), WiFi.RSSI());
+  } else {
+    Serial.println("{\"wifi\":\"timeout\",\"warn\":\"will retry in background\"}");
+  }
+}
+
+void setupMQTT() {
+  if (strlen(MQTT_USERNAME) > 0) {
+    mqttClient.setURI(MQTT_URI, MQTT_USERNAME, MQTT_PASSWORD);
+  } else {
+    mqttClient.setURI(MQTT_URI);
+  }
+  mqttClient.setMqttClientName(MQTT_CLIENT_ID);
+  mqttClient.enableLastWillMessage(TOPIC_HEARTBEAT, "offline", true);
+  mqttClient.setKeepAlive(MQTT_KEEPALIVE_SEC);
+  mqttClient.loopStart();  // starts background task
+  Serial.printf("{\"mqtt\":\"starting\",\"uri\":\"%s\",\"id\":\"%s\"}\n",
+                MQTT_URI, MQTT_CLIENT_ID);
 }
 
 // === Setup & Loop ===
@@ -281,7 +408,12 @@ void setup() {
   ledcWrite(PIN_MOTOR_ENA, 0);
 
   delay(500);
-  Serial.println("{\"boot\":\"conveyor_v3.0\",\"tof1\":16,\"tof2\":17,\"baud\":9600,\"proto\":\"ASCII\"}");
+  Serial.println("{\"boot\":\"conveyor_v4.0\",\"tof1\":16,\"tof2\":17,"
+                 "\"tof_baud\":9600,\"proto\":\"ASCII\",\"mqtt\":\"enabled\"}");
+
+  setupWiFi();
+  setupMQTT();
+
   stateStart = millis();
 }
 
@@ -294,4 +426,45 @@ void loop() {
     lastReport = millis();
     sendStatus();
   }
+
+  // Heartbeat (retained MQTT message)
+  if (mqttConnected && millis() - lastHeartbeat >= HEARTBEAT_INTERVAL_MS) {
+    lastHeartbeat = millis();
+    char hb[64];
+    snprintf(hb, sizeof(hb), "{\"alive\":%lu,\"count\":%d}", millis(), objCount);
+    mqttClient.publish(TOPIC_HEARTBEAT, hb, 0, true);
+  }
 }
+
+// === ESP32MQTTClient required callbacks ===
+
+// Called by library when MQTT connection is established
+void onMqttConnect(esp_mqtt_client_handle_t client) {
+  if (mqttClient.isMyTurn(client)) {
+    mqttConnected = true;
+    Serial.println("{\"mqtt\":\"connected\"}");
+
+    mqttClient.subscribe(TOPIC_CMD, [](const std::string& payload) {
+      handleMqttCommand(TOPIC_CMD, payload);
+    });
+    mqttClient.subscribe(TOPIC_VISION, [](const std::string& payload) {
+      handleMqttCommand(TOPIC_VISION, payload);
+    });
+
+    mqttClient.publish(TOPIC_HEARTBEAT, "online", 0, true);
+  }
+}
+
+// ESP-IDF MQTT event bridge (required boilerplate by library)
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0)
+esp_err_t handleMQTT(esp_mqtt_event_handle_t event) {
+  mqttClient.onEventCallback(event);
+  return ESP_OK;
+}
+#else
+void handleMQTT(void* handler_args, esp_event_base_t base,
+                int32_t event_id, void* event_data) {
+  auto* event = static_cast<esp_mqtt_event_handle_t>(event_data);
+  mqttClient.onEventCallback(event);
+}
+#endif

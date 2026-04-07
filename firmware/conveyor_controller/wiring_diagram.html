@@ -323,11 +323,15 @@
 </div>
 
 <div class="note warn">
-  <strong>Serial Commands (115200 baud via USB):</strong><br>
-  <code>start</code> / <code>stop</code> — force motor control<br>
-  <code>reset</code> — return to IDLE, clear cycle count<br>
-  <code>sim_entry</code> / <code>sim_exit</code> — simulate sensor detection (for testing without physical objects)<br>
-  <code>status</code> — request immediate status JSON
+  <strong>Two Separate Serial Channels:</strong><br>
+  <br>
+  <strong>① USB Serial (ESP32 ↔ PC): 115200 baud</strong><br>
+  사용자 명령 및 JSON 로그 통신 (Arduino IDE Serial Monitor)<br>
+  Commands: <code>start</code> / <code>stop</code> / <code>reset</code> / <code>sim_entry</code> / <code>sim_exit</code> / <code>status</code><br>
+  <br>
+  <strong>② TOF250 UART (Sensor → ESP32): 9600 baud</strong><br>
+  센서에서 ESP32로 거리값 전송 (ASCII 형식: <code>"NNN\r\n"</code>)<br>
+  TOF1 → GPIO 16, TOF2 → GPIO 17 (White wire only)
 </div>
 
 <div class="note success">
