@@ -117,6 +117,43 @@ QHeaderView::section {
     font-size: 12px;
 }
 
+/* 차트 / 테이블 카드 */
+#chartCard {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+}
+
+#tableCard {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+}
+
+#gaugeCard {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+}
+
+#controlPanel {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+}
+
+#amrCard {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+}
+
+#cameraView {
+    background-color: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 10px;
+}
+
 /* 알림 목록 */
 #alertList {
     background-color: #ffffff;
