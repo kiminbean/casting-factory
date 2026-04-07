@@ -55,3 +55,7 @@ firmware/tof_protocol_scan/
 # Firmware binary assets (>1MB, kept out of git)
 firmware/conveyor_controller/wiring_diagram_full.png
 firmware/conveyor_controller/wiring_diagram_image_only.png
+
+# PyInstaller build outputs
+monitoring/build/
+monitoring/dist/

@@ -28,6 +28,6 @@ MQTT_TOPICS: tuple[str, ...] = (
 )
 
 APP_NAME: str = "주물공장 모니터링"
-APP_VERSION: str = "0.9.0"
+APP_VERSION: str = "1.0.0"
 
 REFRESH_INTERVAL_MS: int = 3000
