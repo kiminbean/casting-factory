@@ -47,3 +47,11 @@ backend/.next/
 
 # Firmware secrets (WiFi/MQTT credentials)
 firmware/conveyor_controller/config.h
+
+# Firmware debug sketches (temporary, not for production)
+firmware/i2c_scan/
+firmware/tof_protocol_scan/
+
+# Firmware binary assets (>1MB, kept out of git)
+firmware/conveyor_controller/wiring_diagram_full.png
+firmware/conveyor_controller/wiring_diagram_image_only.png
