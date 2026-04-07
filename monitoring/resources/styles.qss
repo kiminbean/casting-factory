@@ -1,0 +1,148 @@
+/* 주물공장 모니터링 앱 스타일 */
+
+QMainWindow {
+    background-color: #f5f6fa;
+}
+
+/* 사이드바 */
+#sidebar {
+    background-color: #111827;
+    border-right: 1px solid #1f2937;
+}
+
+#sidebarLogo {
+    background-color: #0b1220;
+    color: #60a5fa;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 20px 14px;
+    border-bottom: 1px solid #1f2937;
+}
+
+#sidebarNav {
+    background-color: #111827;
+    border: none;
+    color: #d1d5db;
+    font-size: 14px;
+    outline: none;
+}
+
+#sidebarNav::item {
+    padding: 14px 18px;
+    border-left: 3px solid transparent;
+}
+
+#sidebarNav::item:hover {
+    background-color: #1f2937;
+    color: #ffffff;
+}
+
+#sidebarNav::item:selected {
+    background-color: #2563eb;
+    color: #ffffff;
+    border-left: 3px solid #93c5fd;
+}
+
+#sidebarVersion {
+    color: #6b7280;
+    font-size: 11px;
+    padding: 10px;
+    background-color: #0b1220;
+    border-top: 1px solid #1f2937;
+}
+
+/* 페이지 제목 */
+#pageTitle {
+    color: #111827;
+    font-size: 22px;
+    font-weight: bold;
+    padding: 6px 0;
+}
+
+#sectionTitle {
+    color: #374151;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 0 4px 0;
+}
+
+/* KPI 카드 */
+#kpiCard {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+}
+
+#kpiTitle {
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+#kpiValue {
+    color: #111827;
+    font-size: 32px;
+    font-weight: bold;
+}
+
+#kpiUnit {
+    color: #6b7280;
+    font-size: 14px;
+    padding-bottom: 6px;
+}
+
+/* 테이블 */
+QTableWidget {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    gridline-color: #f3f4f6;
+    font-size: 13px;
+    selection-background-color: #dbeafe;
+    selection-color: #111827;
+}
+
+QTableWidget::item {
+    padding: 6px 10px;
+}
+
+QHeaderView::section {
+    background-color: #f3f4f6;
+    color: #374151;
+    padding: 8px;
+    border: none;
+    border-right: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+    font-weight: 600;
+    font-size: 12px;
+}
+
+/* 알림 목록 */
+#alertList {
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 13px;
+    padding: 4px;
+}
+
+#alertList::item {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+#alertList::item:hover {
+    background-color: #f9fafb;
+}
+
+/* 상태바 */
+QStatusBar {
+    background-color: #f9fafb;
+    color: #6b7280;
+    font-size: 11px;
+    border-top: 1px solid #e5e7eb;
+}
+
+QStatusBar QLabel {
+    padding: 0 12px;
+}

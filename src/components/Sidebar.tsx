@@ -3,22 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Activity,
   ClipboardList,
   FlaskConical,
-  Truck,
   Factory,
   CalendarClock,
+  Package,
 } from "lucide-react";
 
+// 관리자 웹 페이지 (Next.js).
+// 모니터링 관련 페이지(대시보드/생산 모니터링/품질 검사/물류 이송)는
+// PyQt5 데스크톱 앱(monitoring/)으로 분리됨.
+// @MX:NOTE: Confluence 17956894 결정 — UI 분리 정책
 const navItems = [
-  { href: "/", label: "대시보드", icon: LayoutDashboard },
-  { href: "/production", label: "생산 모니터링", icon: Activity },
   { href: "/production/schedule", label: "생산 계획", icon: CalendarClock },
   { href: "/orders", label: "주문 관리", icon: ClipboardList },
-  { href: "/quality", label: "품질 검사", icon: FlaskConical },
-  { href: "/logistics", label: "물류/이송", icon: Truck },
+  { href: "/quality", label: "품질 관리", icon: FlaskConical },
+  { href: "/logistics", label: "입출고 내역", icon: Package },
 ];
 
 export default function Sidebar() {

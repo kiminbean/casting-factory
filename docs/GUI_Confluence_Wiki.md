@@ -2,7 +2,7 @@
 
 > **프로젝트**: 주물 스마트 공장 관제 시스템 (Casting Factory MES)
 > **버전**: v3.2 (2026-04-02)
-> **기술 스택**: Next.js 16 + TypeScript + Tailwind CSS + FastAPI + SQLite + Three.js
+> **기술 스택**: Next.js 16 + TypeScript + Tailwind CSS + FastAPI + PostgreSQL 16 + TimescaleDB + MQTT + WebSocket + Three.js
 > **GitHub**: https://github.com/kiminbean/casting-factory
 
 ---
@@ -14,10 +14,16 @@
 ### 시스템 구성도
 
 ```
-[브라우저] ←→ [Next.js 16 (포트 3000)] ←→ [FastAPI (포트 8000)] ←→ [SQLite DB]
-                    ↕                              ↕
-           [Three.js 3D 맵]              [WebSocket /ws/dashboard]
+[브라우저] ←→ [Next.js 16 (포트 3000)] ←→ [FastAPI (포트 8000)] ←→ [PostgreSQL 16 + TimescaleDB]
+                    ↕                              ↕                          ↕
+           [Three.js 3D 맵]              [WebSocket /ws/dashboard]      [Redis Cache]
+                                                   ↕
+                                         [MQTT Broker (Mosquitto)]
+                                                   ↕
+                                   [ESP32 Conveyor / Cobot / AMR / Vision]
 ```
+
+> DB 참고: 개발 초기(Phase 0) SQLite 로 시작 → Phase 1 부터 PostgreSQL 16 + TimescaleDB 로 이전. 다중 하드웨어 동시 쓰기, JSONB 저장, 시계열 하이퍼테이블 지원 때문.
 
 ### 접속 정보
 - 프론트엔드: `http://localhost:3000` (LAN: `http://192.168.0.16:3000`)
@@ -374,4 +380,5 @@
 | v3.0 | 2026-04-01 | FastAPI 백엔드 + SQLite DB + WebSocket + REST API 22개 |
 | v3.1 | 2026-04-02 | SPEC-API-001: 대시보드 Mock→API 전환 |
 | v3.2 | 2026-04-02 | SPEC-API-002: 전체 5개 페이지 Mock→API 전환 (27개 엔드포인트) |
-| **v3.3** | **2026-04-02** | **SPEC-CTL-001: 생산 스케줄링 모듈 (생산 계획 페이지 신규, 우선순위 7요소 계산 엔진)** |
+| v3.3 | 2026-04-02 | SPEC-CTL-001: 생산 스케줄링 모듈 (생산 계획 페이지 신규, 우선순위 7요소 계산 엔진) |
+| **v3.4** | **2026-04-07** | **UI 분리: Next.js 관리자 웹(생산계획/주문/품질/입출고) + PyQt5 관제 모니터링 데스크톱 앱 분리 (Confluence 17956894)** |

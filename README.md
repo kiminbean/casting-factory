@@ -1,6 +1,16 @@
 # 주물공장 생산 관제 시스템 (Casting Factory MES)
 
-주물(캐스팅) 스마트 공장의 실시간 생산 관제 대시보드. 용해~분류 전체 공정 모니터링, 주문 관리, 품질 검사, 물류/이송, 3D 공장 맵을 통합 관리한다.
+> **Version**: v3.4.0 — UI 분리 (웹 관리자 + PyQt5 모니터링)
+
+주물(캐스팅) 스마트 공장의 실시간 생산 관제 시스템. 용해~분류 전체 공정 모니터링, 주문 관리, 품질 검사, 물류/이송, 3D 공장 맵을 통합 관리한다.
+
+## UI 분리 정책
+
+| 영역 | 앱 | 화면 |
+|------|-----|------|
+| 관리자 (웹) | Next.js 16 `http://<host>:3000` | 생산 계획, 주문 관리, 품질 관리, 입출고 내역 |
+| 관제실 (데스크톱) | **PyQt5 `monitoring/`** | 대시보드, 생산 모니터링, 품질 검사, 물류 이송 |
+| 고객 (웹) | Next.js `/customer` | 주문 등록, 배송 조회 |
 
 ## 기술 스택
 
@@ -9,8 +19,9 @@
 | 프론트엔드 | Next.js 16 + React 19 + TypeScript |
 | UI | Tailwind CSS 4 + Recharts + Lucide Icons |
 | 3D | Three.js + @react-three/fiber + drei |
-| 백엔드 | FastAPI + SQLAlchemy + Pydantic |
-| DB | SQLite |
+| 백엔드 | FastAPI + SQLAlchemy + Pydantic + asyncpg |
+| DB | **PostgreSQL 16 + TimescaleDB** (Phase 1 부터) · SQLite (Phase 0 개발용) |
+| 메시징 | MQTT (Mosquitto, ESP32) + WebSocket (UI) |
 | 3D 에셋 | Blender → GLB |
 
 ## 시작하기
@@ -27,28 +38,46 @@ uvicorn app.main:app --reload
 
 백엔드 서버: http://localhost:8000
 
-### 프론트엔드
+### 프론트엔드 (관리자 웹)
 
 ```bash
 npm install
 npm run dev
 ```
 
-프론트엔드: http://localhost:3000
+관리자 웹: http://localhost:3000
+
+### 모니터링 앱 (PyQt5 데스크톱)
+
+```bash
+cd monitoring
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python main.py
+```
+
+환경변수로 API 서버 지정 가능: `CASTING_API_HOST=192.168.0.16 python main.py`
 
 ## 프로젝트 구조
 
 ```
 casting-factory/
-├── src/                    # Next.js 프론트엔드
-│   ├── app/                # App Router 페이지
-│   ├── components/         # React 컴포넌트 (대시보드, 3D 맵, 차트)
-│   └── lib/                # 타입, API 클라이언트, 유틸리티
-├── backend/                # FastAPI 백엔드
-│   └── app/                # 라우터, 모델, 스키마, 시드 데이터
+├── src/                    # Next.js 관리자 웹
+│   ├── app/                # App Router 페이지 (생산계획/주문/품질/입출고)
+│   ├── components/
+│   └── lib/
+├── monitoring/             # PyQt5 관제 모니터링 데스크톱 앱
+│   ├── main.py
+│   ├── config.py
+│   ├── app/                # main_window, api_client, ws_worker, pages/*
+│   └── resources/          # styles.qss
+├── backend/                # FastAPI (공유 백엔드)
+│   └── app/                # 라우터, 모델, 스키마, WebSocket
+├── firmware/               # ESP32 펌웨어 (컨베이어 v4.0 MQTT)
 ├── blender/                # 3D 에셋 (Blender 스크립트, CAD 파일)
 ├── public/                 # 정적 파일 (GLB 모델, 이미지)
-└── docs/                   # 프로젝트 문서
+└── docs/                   # 프로젝트 문서 (architecture.html, POSTGRES_MIGRATION.md 등)
 ```
 
 ## 주요 기능

@@ -1,496 +1,102 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import dynamic from "next/dynamic";
+/**
+ * 관리자 웹 허브 페이지.
+ *
+ * 기존 대시보드(모니터링용)는 PyQt5 monitoring 앱으로 분리됨
+ * (Confluence 17956894 결정). 이 페이지는 관리자 업무 네비게이션 역할만 수행.
+ */
+
+import Link from "next/link";
 import {
-  Target,
-  Bot,
-  ShoppingCart,
-  Bell,
-  AlertTriangle,
-  Clock,
-  CheckCircle2,
-  LayoutDashboard,
-  Factory,
-  BellRing,
-  TrendingUp,
   ClipboardList,
+  FlaskConical,
+  CalendarClock,
+  Package,
+  Monitor,
 } from "lucide-react";
-import type {
-  DashboardStats,
-  Alert,
-  Equipment,
-  Order,
-  ProductionMetric,
-} from "@/lib/types";
-import {
-  fetchDashboardStats,
-  fetchAlerts,
-  fetchEquipment,
-  fetchOrders,
-  fetchProductionMetrics,
-} from "@/lib/api";
-import {
-  alertSeverityMap,
-  equipmentStatusMap,
-  orderStatusMap,
-  formatDate,
-  formatCurrency,
-  cn,
-} from "@/lib/utils";
-import FactoryMap from "@/components/FactoryMap";
 
-// 차트 컴포넌트 — SSR 비활성화 (Recharts는 브라우저 전용)
-const WeeklyProductionChart = dynamic(
-  () => import("@/components/charts/WeeklyProductionChart"),
+const cards = [
   {
-    ssr: false,
-    loading: () => (
-      <div className="h-[260px] bg-gray-50 rounded-lg animate-pulse" />
-    ),
-  }
-);
+    href: "/production/schedule",
+    label: "생산 계획",
+    desc: "작업 지시, 스케줄, 생산 목표 관리",
+    icon: CalendarClock,
+    color: "from-blue-500 to-indigo-600",
+  },
+  {
+    href: "/orders",
+    label: "주문 관리",
+    desc: "수주 주문 확인, 상태 변경, 배송 관리",
+    icon: ClipboardList,
+    color: "from-emerald-500 to-teal-600",
+  },
+  {
+    href: "/quality",
+    label: "품질 관리",
+    desc: "검사 기준 설정, 불량 분석, 품질 리포트",
+    icon: FlaskConical,
+    color: "from-purple-500 to-pink-600",
+  },
+  {
+    href: "/logistics",
+    label: "입출고 내역",
+    desc: "원자재 입고, 완제품 출고, 재고 이력",
+    icon: Package,
+    color: "from-orange-500 to-amber-600",
+  },
+];
 
-// ────────────────────────────────────────
-// 요약 카드 컴포넌트
-// ────────────────────────────────────────
-
-function StatCard({
-  title,
-  value,
-  icon: Icon,
-  iconBg,
-  iconColor,
-  unit,
-  accent,
-}: {
-  title: string;
-  value: string | number;
-  icon: React.ComponentType<{ className?: string; size?: number }>;
-  iconBg: string;
-  iconColor: string;
-  unit?: string;
-  accent?: boolean;
-}) {
+export default function AdminHomePage() {
   return (
-    <div
-      className={cn(
-        "bg-white rounded-xl shadow-sm border p-5 flex items-center gap-4 transition-all hover:shadow-md",
-        accent ? "border-red-200" : "border-gray-200"
-      )}
-    >
-      <div
-        className={cn(
-          "w-12 h-12 rounded-xl flex items-center justify-center",
-          iconBg
-        )}
-      >
-        <Icon className={`w-6 h-6 ${iconColor}`} />
-      </div>
-      <div>
-        <p className="text-base text-gray-500 font-medium">{title}</p>
-        <p
-          className={cn(
-            "text-3xl font-bold leading-tight",
-            accent ? "text-red-600" : "text-gray-900"
-          )}
-        >
-          {value}
-          {unit && (
-            <span className="text-lg font-normal text-gray-500 ml-1">
-              {unit}
-            </span>
-          )}
+    <div className="p-8 max-w-6xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">관리자 포털</h1>
+        <p className="mt-2 text-gray-600">
+          주물공장 관제 시스템 관리자 웹. 실시간 모니터링은 관제실 데스크톱 앱을 사용하세요.
         </p>
       </div>
-    </div>
-  );
-}
 
-// ────────────────────────────────────────
-// 스켈레톤 로딩 컴포넌트
-// ────────────────────────────────────────
-
-function StatCardSkeleton() {
-  return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex items-center gap-4 animate-pulse">
-      <div className="w-12 h-12 rounded-xl bg-gray-200" />
-      <div className="flex-1">
-        <div className="h-4 bg-gray-200 rounded w-24 mb-2" />
-        <div className="h-8 bg-gray-200 rounded w-16" />
-      </div>
-    </div>
-  );
-}
-
-// ────────────────────────────────────────
-// 알림 심각도 우선순위 (정렬용)
-// ────────────────────────────────────────
-
-const severityOrder: Record<string, number> = {
-  critical: 0,
-  warning: 1,
-  info: 2,
-};
-
-// ────────────────────────────────────────
-// 메인 대시보드 페이지
-// ────────────────────────────────────────
-
-export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [equipment, setEquipment] = useState<Equipment[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [metrics, setMetrics] = useState<ProductionMetric[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError(null);
-        const [statsData, alertsData, equipmentData, ordersData, metricsData] =
-          await Promise.all([
-            fetchDashboardStats(),
-            fetchAlerts(),
-            fetchEquipment(),
-            fetchOrders(),
-            fetchProductionMetrics(),
-          ]);
-        setStats(statsData);
-        setAlerts(alertsData);
-        setEquipment(equipmentData);
-        setOrders(ordersData);
-        setMetrics(metricsData);
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "데이터를 불러오는 중 오류가 발생했습니다."
-        );
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
-  }, []);
-
-  // 알림 — 심각도 순 정렬
-  const sortedAlerts = [...alerts].sort(
-    (a, b) =>
-      (severityOrder[a.severity] ?? 9) - (severityOrder[b.severity] ?? 9)
-  );
-
-  // 최근 주문 5건
-  const recentOrders = orders.slice(0, 5);
-
-  // 주간 생산 지표 (최근 7일)
-  const weeklyMetrics = metrics.slice(-7);
-
-  // 에러 표시
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
-        <div className="bg-white rounded-xl shadow-sm border border-red-200 p-8 max-w-md text-center">
-          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">
-            데이터 로드 실패
-          </h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <p className="text-sm text-gray-400">
-            백엔드 서버가 실행 중인지 확인해 주세요.
-            <br />
-            (기본: http://localhost:8000)
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-screen-2xl mx-auto space-y-6">
-        {/* ── 헤더 ── */}
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <LayoutDashboard className="w-7 h-7 text-blue-600" />
-            통합 대시보드
-          </h1>
-          <p className="text-base text-gray-500 mt-1">
-            주물 스마트 공장 실시간 관제
-          </p>
-        </div>
-
-        {/* ── 요약 카드 4종 ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {loading || !stats ? (
-            <>
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-              <StatCardSkeleton />
-            </>
-          ) : (
-            <>
-              <StatCard
-                title="생산 목표 달성률"
-                value={stats.productionGoalRate}
-                unit="%"
-                icon={Target}
-                iconBg="bg-blue-50"
-                iconColor="text-blue-600"
-              />
-              <StatCard
-                title="실시간 가동 로봇"
-                value={stats.activeRobots}
-                unit="대"
-                icon={Bot}
-                iconBg="bg-green-50"
-                iconColor="text-green-600"
-              />
-              <StatCard
-                title="미처리 주문"
-                value={stats.pendingOrders}
-                unit="건"
-                icon={ShoppingCart}
-                iconBg="bg-amber-50"
-                iconColor="text-amber-600"
-              />
-              <StatCard
-                title="금일 발생 알람"
-                value={stats.todayAlarms}
-                unit="건"
-                icon={Bell}
-                iconBg="bg-red-50"
-                iconColor="text-red-500"
-                accent={stats.todayAlarms > 0}
-              />
-            </>
-          )}
-        </div>
-
-        {/* ── 공장 Map + 실시간 알림 ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-stretch">
-          {/* 공장 레이아웃 (2/3 폭) */}
-          <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-5 h-full">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                <Factory className="w-5 h-5 text-blue-600" />
-                공장 레이아웃
-              </h2>
-              {/* 장비 상태 범례 */}
-              <div className="flex items-center gap-3 text-sm text-gray-500">
-                {(
-                  Object.entries(equipmentStatusMap) as [
-                    string,
-                    { label: string; color: string },
-                  ][]
-                ).map(([key, { label, color }]) => (
-                  <span key={key} className="flex items-center gap-1">
-                    <span
-                      className={cn(
-                        "inline-block w-2.5 h-2.5 rounded-full",
-                        color.replace(/text-\S+/, "").trim()
-                      )}
-                    />
-                    {label}
-                  </span>
-                ))}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {cards.map(({ href, label, desc, icon: Icon, color }) => (
+          <Link
+            key={href}
+            href={href}
+            className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5"
+          >
+            <div
+              className={`absolute top-0 left-0 h-1 w-full bg-gradient-to-r ${color}`}
+            />
+            <div className="flex items-start gap-4">
+              <div
+                className={`rounded-lg bg-gradient-to-br ${color} p-3 text-white`}
+              >
+                <Icon className="h-6 w-6" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold text-gray-900">{label}</h2>
+                <p className="mt-1 text-sm text-gray-600">{desc}</p>
               </div>
             </div>
-            <FactoryMap />
-          </div>
+          </Link>
+        ))}
+      </div>
 
-          {/* 실시간 알림 피드 (1/3 폭) */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 flex flex-col min-h-0 h-full">
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
-              <BellRing className="w-5 h-5 text-amber-500" />
-              실시간 알림
-            </h2>
-            <div className="space-y-3 overflow-y-auto flex-1 min-h-0 pr-1">
-              {loading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className="h-20 bg-gray-100 rounded-lg animate-pulse"
-                    />
-                  ))}
-                </div>
-              ) : (
-                <>
-                  {sortedAlerts.map((alert) => {
-                    const sev = alertSeverityMap[alert.severity];
-                    // 장비 이름 조회
-                    const eq = equipment.find(
-                      (e) => e.id === alert.equipmentId
-                    );
-                    return (
-                      <div
-                        key={alert.id}
-                        className={cn(
-                          "rounded-lg border p-3 transition-colors",
-                          sev.bg
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              {alert.severity === "critical" ? (
-                                <AlertTriangle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
-                              ) : alert.severity === "warning" ? (
-                                <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                              ) : (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                              )}
-                              <span
-                                className={cn(
-                                  "px-2.5 py-0.5 rounded-full text-sm font-semibold",
-                                  sev.color,
-                                  sev.bg
-                                )}
-                              >
-                                {sev.label}
-                              </span>
-                            </div>
-                            <p
-                              className={cn(
-                                "text-base font-medium leading-snug",
-                                sev.color
-                              )}
-                            >
-                              {alert.message}
-                            </p>
-                            {alert.abnormalValue && (
-                              <p className="text-sm text-gray-500 mt-1">
-                                이상값: {alert.abnormalValue}
-                              </p>
-                            )}
-                            <div className="flex items-center gap-2 mt-1.5 text-sm text-gray-400">
-                              {eq && <span>{eq.name}</span>}
-                              <span>&middot;</span>
-                              <span>{alert.zone}</span>
-                              <span>&middot;</span>
-                              <span>{formatDate(alert.timestamp)}</span>
-                            </div>
-                          </div>
-                          {!alert.acknowledged && (
-                            <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0 mt-1 animate-pulse" />
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {sortedAlerts.length === 0 && (
-                    <p className="text-base text-gray-400 text-center py-8">
-                      알림이 없습니다.
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
+      <div className="rounded-xl border border-blue-200 bg-blue-50 p-6">
+        <div className="flex items-start gap-4">
+          <div className="rounded-lg bg-blue-600 p-3 text-white">
+            <Monitor className="h-6 w-6" />
           </div>
-        </div>
-
-        {/* ── 주간 생산 차트 + 최근 주문 ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-stretch">
-          {/* 주간 생산 추이 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
-              <TrendingUp className="w-5 h-5 text-emerald-500" />
-              주간 생산 추이
+          <div className="flex-1">
+            <h2 className="text-lg font-semibold text-blue-900">
+              관제 모니터링 앱 (PyQt5 데스크톱)
             </h2>
-            {loading ? (
-              <div className="h-[220px] bg-gray-50 rounded-lg animate-pulse" />
-            ) : (
-              <WeeklyProductionChart data={weeklyMetrics} />
-            )}
-          </div>
-
-          {/* 최근 주문 테이블 */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 mb-4">
-              <ClipboardList className="w-5 h-5 text-indigo-500" />
-              최근 주문
-            </h2>
-            <div className="overflow-x-auto">
-              {loading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div
-                      key={i}
-                      className="h-10 bg-gray-100 rounded animate-pulse"
-                    />
-                  ))}
-                </div>
-              ) : (
-                <table className="w-full text-base">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="text-left text-sm font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3 rounded-tl-lg">
-                        주문번호
-                      </th>
-                      <th className="text-left text-sm font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
-                        고객사
-                      </th>
-                      <th className="text-right text-sm font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
-                        금액
-                      </th>
-                      <th className="text-left text-sm font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3">
-                        납기
-                      </th>
-                      <th className="text-center text-sm font-semibold text-gray-600 uppercase tracking-wider py-2.5 px-3 rounded-tr-lg">
-                        상태
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentOrders.map((order) => {
-                      const statusInfo = orderStatusMap[order.status];
-                      return (
-                        <tr
-                          key={order.id}
-                          className="border-b border-gray-100 even:bg-gray-50 hover:bg-blue-50 transition-colors"
-                        >
-                          <td className="py-2.5 px-3">
-                            <span className="font-mono text-sm text-gray-600">
-                              {order.id}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <span className="text-gray-800 truncate block max-w-[160px]">
-                              {order.companyName}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 text-right text-gray-700 font-medium whitespace-nowrap">
-                            {formatCurrency(order.totalAmount)}
-                          </td>
-                          <td className="py-2.5 px-3 text-gray-600 text-sm whitespace-nowrap">
-                            {order.requestedDelivery || "-"}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <span
-                              className={cn(
-                                "inline-block px-2.5 py-0.5 rounded-full text-sm font-semibold",
-                                statusInfo.color
-                              )}
-                            >
-                              {statusInfo.label}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-              {!loading && recentOrders.length === 0 && (
-                <p className="text-base text-gray-400 text-center py-6">
-                  주문이 없습니다.
-                </p>
-              )}
+            <p className="mt-1 text-sm text-blue-700">
+              실시간 대시보드, 생산 모니터링, 품질 검사, 물류 이송 화면은
+              관제실 PyQt5 데스크톱 앱에서 제공됩니다.
+            </p>
+            <div className="mt-3 rounded-md bg-white px-4 py-3 font-mono text-xs text-gray-700 border border-blue-100">
+              cd monitoring && python main.py
             </div>
           </div>
         </div>
