@@ -19,6 +19,8 @@ import {
   Ruler,
   Weight,
   Gem,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────
@@ -944,6 +946,9 @@ export default function CustomerOrderPage() {
   const [formData, setFormData] = useState<FormData>(INITIAL_FORM);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [orderNumber, setOrderNumber] = useState("");
+  // API 저장 상태
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const selectedProduct = PRODUCTS.find((p) => p.id === formData.selectedProduct) ?? null;
 
@@ -988,12 +993,109 @@ export default function CustomerOrderPage() {
     return true;
   }
 
-  function handleNext() {
+  async function handleNext() {
     if (!validateStep(step)) return;
 
+    // ─── Step 4 → 5: 백엔드 DB에 주문 저장 ───
     if (step === 4) {
-      setOrderNumber(generateOrderNumber());
+      if (!selectedProduct) return;
+
+      // 단가/합계 계산
+      const postProcessingTotal = formData.postProcessing.reduce((sum, id) => {
+        const opt = POST_PROCESSING_OPTIONS.find((o) => o.id === id);
+        return sum + (opt?.price ?? 0);
+      }, 0);
+      const unitPrice = selectedProduct.basePrice + postProcessingTotal;
+      const totalPrice = unitPrice * formData.quantity;
+
+      const orderId = generateOrderNumber();
+      // customer_id: 이메일 앞부분 + 타임스탬프 뒷 4자리로 간단 생성
+      const customerId = `CUST-${Date.now().toString().slice(-6)}`;
+
+      try {
+        setSubmitting(true);
+        setSubmitError(null);
+
+        // 1) 주문 헤더 저장
+        const orderRes = await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: orderId,
+            customer_id: customerId,
+            customer_name: formData.contactPerson,
+            company_name: formData.companyName,
+            contact: formData.phone,
+            shipping_address: formData.address,
+            total_amount: totalPrice,
+            status: "pending",
+            requested_delivery: formData.desiredDelivery,
+            confirmed_delivery: null,
+            notes: [
+              `이메일: ${formData.email}`,
+              formData.notes ? `비고: ${formData.notes}` : null,
+            ]
+              .filter(Boolean)
+              .join(" / "),
+          }),
+        });
+
+        if (!orderRes.ok) {
+          const errBody = await orderRes.json().catch(() => ({}));
+          throw new Error(
+            typeof errBody.detail === "string"
+              ? errBody.detail
+              : "주문 저장에 실패했습니다. 백엔드 서버를 확인해 주세요."
+          );
+        }
+
+        // 2) 주문 품목 상세 저장
+        const postProcessingLabel =
+          formData.postProcessing.length > 0
+            ? formData.postProcessing
+                .map(
+                  (id) =>
+                    POST_PROCESSING_OPTIONS.find((o) => o.id === id)?.label ?? id
+                )
+                .join(", ")
+            : null;
+
+        const detailRes = await fetch(`/api/orders/${orderId}/details`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: `${orderId}-DET-001`,
+            order_id: orderId,
+            product_id: selectedProduct.id,
+            product_name: selectedProduct.name,
+            quantity: formData.quantity,
+            spec: `직경 ${formData.diameter} / 두께 ${formData.thickness} / 하중 ${formData.loadClass}`,
+            material: formData.material,
+            post_processing: postProcessingLabel,
+            logo_data: null,
+            unit_price: unitPrice,
+            subtotal: totalPrice,
+          }),
+        });
+
+        if (!detailRes.ok) {
+          throw new Error("주문 품목 상세 저장에 실패했습니다.");
+        }
+
+        // 저장 성공 → 서버 확정 ID 사용
+        setOrderNumber(orderId);
+      } catch (err) {
+        setSubmitError(
+          err instanceof Error
+            ? err.message
+            : "알 수 없는 오류가 발생했습니다."
+        );
+        return; // 실패 시 Step 5로 넘어가지 않음
+      } finally {
+        setSubmitting(false);
+      }
     }
+
     setStep((prev) => Math.min(prev + 1, 5));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1009,6 +1111,7 @@ export default function CustomerOrderPage() {
     setErrors({});
     setStep(1);
     setOrderNumber("");
+    setSubmitError(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -1062,31 +1165,55 @@ export default function CustomerOrderPage() {
 
         {/* Navigation buttons */}
         {step < 5 && (
-          <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-100">
-            <button
-              onClick={handlePrev}
-              disabled={step === 1}
-              className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all ${
-                step === 1
-                  ? "text-gray-300 cursor-not-allowed"
-                  : "text-gray-600 hover:bg-gray-100 border border-gray-200"
-              }`}
-            >
-              <ChevronLeft className="w-4 h-4" />
-              이전
-            </button>
+          <div className="mt-8 pt-6 border-t border-gray-100">
+            {/* 에러 메시지 */}
+            {submitError && (
+              <div className="flex items-start gap-2 mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{submitError}</span>
+              </div>
+            )}
 
-            <span className="text-xs text-gray-400">
-              {step} / {STEPS.length - 1}단계
-            </span>
+            <div className="flex items-center justify-between">
+              <button
+                onClick={handlePrev}
+                disabled={step === 1 || submitting}
+                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium text-sm transition-all ${
+                  step === 1 || submitting
+                    ? "text-gray-300 cursor-not-allowed"
+                    : "text-gray-600 hover:bg-gray-100 border border-gray-200"
+                }`}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                이전
+              </button>
 
-            <button
-              onClick={handleNext}
-              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2.5 rounded-lg transition-all shadow-sm hover:shadow-md"
-            >
-              {step === 4 ? "주문 제출" : "다음"}
-              <ChevronRight className="w-4 h-4" />
-            </button>
+              <span className="text-xs text-gray-400">
+                {step} / {STEPS.length - 1}단계
+              </span>
+
+              <button
+                onClick={handleNext}
+                disabled={submitting}
+                className={`inline-flex items-center gap-2 font-medium px-6 py-2.5 rounded-lg transition-all shadow-sm ${
+                  submitting
+                    ? "bg-blue-400 text-white cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700 text-white hover:shadow-md"
+                }`}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    저장 중...
+                  </>
+                ) : (
+                  <>
+                    {step === 4 ? "주문 제출" : "다음"}
+                    <ChevronRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
       </div>

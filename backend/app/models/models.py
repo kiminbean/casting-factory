@@ -37,8 +37,15 @@ class Order(Base):
     status = Column(String, nullable=False, default="pending")
     requested_delivery = Column(String, nullable=True)
     confirmed_delivery = Column(String, nullable=True, default="")
-    created_at = Column(String, nullable=False)
-    updated_at = Column(String, nullable=False)
+    created_at = Column(
+        String, nullable=False,
+        default=lambda: datetime.now(timezone.utc).isoformat(),
+    )
+    updated_at = Column(
+        String, nullable=False,
+        default=lambda: datetime.now(timezone.utc).isoformat(),
+        onupdate=lambda: datetime.now(timezone.utc).isoformat(),
+    )
     notes = Column(String, nullable=True, default="")
 
 

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -54,6 +55,7 @@ async def update_order_status(
     if not order:
         raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
     order.status = payload.status
+    order.updated_at = datetime.now(timezone.utc).isoformat()
     db.commit()
     db.refresh(order)
     return order
