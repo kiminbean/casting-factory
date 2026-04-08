@@ -4,12 +4,12 @@ import { usePathname } from "next/navigation";
 import { Bell } from "lucide-react";
 import { useEffect, useState } from "react";
 
+// 웹에서 접근 가능한 페이지만 타이틀 매핑 유지
+// (생산 모니터링·생산 계획·물류/이송은 PyQt5 monitoring 앱으로 이관됨)
 const PAGE_TITLES: Record<string, string> = {
-  "/": "대시보드",
-  "/production": "생산 모니터링",
+  "/": "관리자 포털",
   "/orders": "주문 관리",
   "/quality": "품질 검사",
-  "/logistics": "물류/이송",
 };
 
 const ALERT_COUNT = 3;

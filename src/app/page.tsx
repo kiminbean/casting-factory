@@ -5,29 +5,20 @@
  *
  * 기존 대시보드(모니터링용)는 PyQt5 monitoring 앱으로 분리됨
  * (Confluence 17956894 결정). 이 페이지는 관리자 업무 네비게이션 역할만 수행.
+ *
+ * 2026-04-08 개편: 생산 계획(우선순위 계산)과 입출고 내역 페이지를
+ * PyQt5로 이관하여 웹 카드에서도 제거. 생산 승인은 주문 관리 페이지에서
+ * 수행한다.
  */
 
 import Link from "next/link";
-import {
-  ClipboardList,
-  FlaskConical,
-  CalendarClock,
-  Package,
-  Monitor,
-} from "lucide-react";
+import { ClipboardList, FlaskConical, Monitor } from "lucide-react";
 
 const cards = [
   {
-    href: "/production/schedule",
-    label: "생산 계획",
-    desc: "작업 지시, 스케줄, 생산 목표 관리",
-    icon: CalendarClock,
-    color: "from-blue-500 to-indigo-600",
-  },
-  {
     href: "/orders",
     label: "주문 관리",
-    desc: "수주 주문 확인, 상태 변경, 배송 관리",
+    desc: "주문 검토·승인·생산 승인 (우선순위 계산 대상 등록)",
     icon: ClipboardList,
     color: "from-emerald-500 to-teal-600",
   },
@@ -38,14 +29,7 @@ const cards = [
     icon: FlaskConical,
     color: "from-purple-500 to-pink-600",
   },
-  {
-    href: "/logistics",
-    label: "입출고 내역",
-    desc: "원자재 입고, 완제품 출고, 재고 이력",
-    icon: Package,
-    color: "from-orange-500 to-amber-600",
-  },
-];
+] as const;
 
 export default function AdminHomePage() {
   return (
@@ -53,7 +37,8 @@ export default function AdminHomePage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">관리자 포털</h1>
         <p className="mt-2 text-gray-600">
-          주물공장 관제 시스템 관리자 웹. 실시간 모니터링은 관제실 데스크톱 앱을 사용하세요.
+          주물공장 관제 시스템 관리자 웹. 실시간 모니터링과 생산 계획(우선순위 계산)은
+          관제실 PyQt5 데스크톱 앱을 사용하세요.
         </p>
       </div>
 
@@ -92,8 +77,8 @@ export default function AdminHomePage() {
               관제 모니터링 앱 (PyQt5 데스크톱)
             </h2>
             <p className="mt-1 text-sm text-blue-700">
-              실시간 대시보드, 생산 모니터링, 품질 검사, 물류 이송 화면은
-              관제실 PyQt5 데스크톱 앱에서 제공됩니다.
+              실시간 대시보드, 생산 모니터링, <strong>생산 계획(우선순위 계산)</strong>,
+              품질 검사, 물류 이송 화면은 관제실 PyQt5 데스크톱 앱에서 제공됩니다.
             </p>
             <div className="mt-3 rounded-md bg-white px-4 py-3 font-mono text-xs text-gray-700 border border-blue-100">
               cd monitoring && python main.py
