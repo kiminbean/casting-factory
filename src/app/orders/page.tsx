@@ -28,6 +28,7 @@ import {
   fetchOrders,
   fetchOrderDetails,
   updateOrderStatus,
+  startProduction,
 } from "@/lib/api";
 import { orderStatusMap, formatDate, formatCurrency, cn } from "@/lib/utils";
 import type { Order, OrderStatus, OrderDetail } from "@/lib/types";
@@ -129,10 +130,11 @@ interface OrderDetailPanelProps {
   order: Order;
   details: OrderDetail[];
   onStatusChange: (orderId: string, status: OrderStatus) => void;
+  onApproveProduction: (orderId: string) => void;
   actionLoading: boolean;
 }
 
-function OrderDetailPanel({ order, details, onStatusChange, actionLoading }: OrderDetailPanelProps) {
+function OrderDetailPanel({ order, details, onStatusChange, onApproveProduction, actionLoading }: OrderDetailPanelProps) {
   const statusInfo = orderStatusMap[order.status];
   const estimatedDays = calcEstimatedDays(details);
   const estimatedDelivery = calcEstimatedDelivery(order, details);
@@ -489,11 +491,12 @@ function OrderDetailPanel({ order, details, onStatusChange, actionLoading }: Ord
               <button
                 type="button"
                 disabled={actionLoading}
-                onClick={() => onStatusChange(order.id, "in_production")}
+                onClick={() => onApproveProduction(order.id)}
                 className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 text-white rounded-lg font-semibold text-base hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                title="생산 대기열에 등록합니다. 실제 순위 계산과 착수는 PyQt5 생산 계획 페이지에서 수행됩니다."
               >
                 {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Factory size={16} />}
-                생산 시작
+                생산 승인
               </button>
             )}
           </div>
@@ -516,6 +519,12 @@ export default function OrdersPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 생산 승인 확인 모달
+  const [productionConfirmOrderId, setProductionConfirmOrderId] = useState<string | null>(null);
+  const [productionApproveResult, setProductionApproveResult] = useState<{
+    jobId: string;
+    orderId: string;
+  } | null>(null);
 
   // 주문 목록 로드
   const loadOrders = useCallback(async () => {
@@ -547,7 +556,7 @@ export default function OrdersPage() {
     }
   }, []);
 
-  // 상태 변경 (승인/반려/생산시작)
+  // 상태 변경 (승인/반려 — 사무실 검토 단계)
   const handleStatusChange = useCallback(async (orderId: string, status: OrderStatus) => {
     try {
       setActionLoading(true);
@@ -560,6 +569,42 @@ export default function OrdersPage() {
       setActionLoading(false);
     }
   }, []);
+
+  // 생산 승인 요청 (확인 모달 오픈)
+  const handleRequestApproveProduction = useCallback((orderId: string) => {
+    setProductionConfirmOrderId(orderId);
+  }, []);
+
+  // 생산 승인 확정 (확인 모달에서 "승인" 클릭 시)
+  //
+  // 동작:
+  // 1. POST /api/production/schedule/start — ProductionJob 생성 + 주문 상태 in_production 전이
+  // 2. 백엔드가 ProductionJob 레코드를 생성해 PyQt5 생산 계획 페이지 풀에 들어감
+  // 3. 우선순위 계산/순서 조정/실제 개시는 PyQt5에서 수행
+  const handleConfirmApproveProduction = useCallback(async () => {
+    if (!productionConfirmOrderId) return;
+    const orderId = productionConfirmOrderId;
+    try {
+      setActionLoading(true);
+      const jobs = await startProduction([orderId]);
+      // 주문 목록/상세 갱신 (백엔드가 이미 in_production으로 전환함)
+      const refreshed = await fetchOrders();
+      setOrders(refreshed);
+      const updatedOrder = refreshed.find((o) => o.id === orderId);
+      if (updatedOrder) setSelectedOrder(updatedOrder);
+
+      // 성공 결과 배너 (3초 후 자동 사라짐)
+      if (jobs.length > 0) {
+        setProductionApproveResult({ jobId: jobs[0].id, orderId });
+        setTimeout(() => setProductionApproveResult(null), 5000);
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "생산 승인 실패");
+    } finally {
+      setActionLoading(false);
+      setProductionConfirmOrderId(null);
+    }
+  }, [productionConfirmOrderId]);
 
   // 탭 필터
   const filteredOrders =
@@ -695,6 +740,101 @@ export default function OrdersPage() {
           </div>
         </div>
 
+        {/* -- 성공 배너 (생산 승인 완료) -- */}
+        {productionApproveResult && (
+          <div className="fixed top-6 right-6 z-50 max-w-sm bg-white rounded-xl shadow-lg border border-green-200 p-4 animate-in slide-in-from-top-2">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                <CheckCircle size={18} className="text-green-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-gray-900">생산 승인 완료</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  주문 <span className="font-mono">{productionApproveResult.orderId}</span>
+                </p>
+                <p className="text-xs text-gray-500">
+                  생산 작업 ID: <span className="font-mono">{productionApproveResult.jobId}</span>
+                </p>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  PyQt5 생산 계획 페이지에서 우선순위 계산 및 실제 착수를 진행하세요.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* -- 확인 모달 (생산 승인) -- */}
+        {productionConfirmOrderId && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => !actionLoading && setProductionConfirmOrderId(null)}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+                  <Factory size={24} className="text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-bold text-gray-900">생산 승인 확인</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    주문{" "}
+                    <span className="font-mono font-semibold text-gray-800">
+                      {productionConfirmOrderId}
+                    </span>
+                    을 생산 대기열에 등록하시겠습니까?
+                  </p>
+                  <ul className="mt-3 space-y-1.5 text-xs text-gray-600">
+                    <li className="flex items-start gap-2">
+                      <ChevronRight size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                      주문 상태가 <span className="font-semibold">생산 중</span>으로
+                      전환됩니다.
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <ChevronRight size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                      ProductionJob 레코드가 생성되어 PyQt5 생산 계획 페이지 풀에
+                      들어갑니다.
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <ChevronRight size={14} className="text-gray-400 mt-0.5 shrink-0" />
+                      우선순위 계산 · 순서 조정 · 실제 착수는{" "}
+                      <span className="font-semibold">PyQt5</span>에서 수행됩니다.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={() => setProductionConfirmOrderId(null)}
+                  className="flex-1 py-2.5 px-4 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={handleConfirmApproveProduction}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                >
+                  {actionLoading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Factory size={16} />
+                  )}
+                  생산 승인
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* -- 우측: 주문 상세 -- */}
         <div className="flex-1 bg-gray-50 flex flex-col">
           {selectedOrder ? (
@@ -707,6 +847,7 @@ export default function OrdersPage() {
                 order={selectedOrder}
                 details={selectedDetails}
                 onStatusChange={handleStatusChange}
+                onApproveProduction={handleRequestApproveProduction}
                 actionLoading={actionLoading}
               />
             )

@@ -27,6 +27,7 @@ from app.pages.logistics import LogisticsPage
 from app.pages.map import FactoryMapPage
 from app.pages.production import ProductionPage
 from app.pages.quality import QualityPage
+from app.pages.schedule import SchedulePage
 from app.widgets.alert_widgets import ToastNotification, _normalize_level
 from app.ws_worker import WebSocketWorker
 from config import APP_NAME, APP_VERSION, REFRESH_INTERVAL_MS
@@ -36,6 +37,7 @@ NAV_ITEMS: list[tuple[str, str]] = [
     ("dashboard", "대시보드"),
     ("map", "공장 맵"),
     ("production", "생산 모니터링"),
+    ("schedule", "생산 계획"),
     ("quality", "품질 검사"),
     ("logistics", "물류 / 이송"),
 ]
@@ -93,11 +95,12 @@ class MainWindow(QMainWindow):
 
         root.addWidget(sidebar)
 
-        # 우측 스택
+        # 우측 스택 (NAV_ITEMS 순서와 반드시 일치)
         self._stack = QStackedWidget()
         self._dashboard = DashboardPage(self._api)
         self._map = FactoryMapPage(self._api)
         self._production = ProductionPage(self._api)
+        self._schedule = SchedulePage(self._api)
         self._quality = QualityPage(self._api)
         self._logistics = LogisticsPage(self._api)
 
@@ -105,6 +108,7 @@ class MainWindow(QMainWindow):
             self._dashboard,
             self._map,
             self._production,
+            self._schedule,
             self._quality,
             self._logistics,
         ):
@@ -156,8 +160,8 @@ class MainWindow(QMainWindow):
         # 알림 중복 방지 (같은 critical 5초 내 재발행 차단)
         self._seen_alerts: set[str] = set()
 
-        # 페이지 단축키 Ctrl+1..5
-        for i in range(5):
+        # 페이지 단축키 Ctrl+1..6
+        for i in range(len(NAV_ITEMS)):
             action = QAction(f"Page {i + 1}", self)
             action.setShortcut(QKeySequence(f"Ctrl+{i + 1}"))
             action.triggered.connect(lambda _=False, idx=i: self._nav.setCurrentRow(idx))
@@ -239,6 +243,7 @@ class MainWindow(QMainWindow):
             self._dashboard,
             self._map,
             self._production,
+            self._schedule,
             self._quality,
             self._logistics,
         ):
@@ -270,6 +275,7 @@ class MainWindow(QMainWindow):
             self._dashboard,
             self._map,
             self._production,
+            self._schedule,
             self._quality,
             self._logistics,
         ):

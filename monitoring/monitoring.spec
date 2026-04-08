@@ -32,6 +32,7 @@ hiddenimports = [
     "app.pages.map",
     "app.pages.production",
     "app.pages.quality",
+    "app.pages.schedule",
     "app.widgets.alert_widgets",
     "app.widgets.amr_card",
     "app.widgets.camera_view",

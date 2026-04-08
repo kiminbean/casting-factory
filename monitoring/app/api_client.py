@@ -66,6 +66,49 @@ class ApiClient:
             return mock_value
         return data
 
+    def _post(self, path: str, payload: dict[str, Any]) -> Any:
+        """POST 요청. 실패 시 예외 발생. mock_only 모드에선 None 반환.
+
+        상태 변경 계열(생산 승인, 우선순위 계산 등)은 mock fallback 대신
+        명시적으로 실패를 알려야 하므로 GET과 동작이 다름.
+        """
+        if self._mock_only:
+            logger.info("mock_only mode — skipping POST %s", path)
+            return None
+
+        url = f"{self._base}{path}"
+        try:
+            response = self._session.post(
+                url,
+                json=payload,
+                timeout=self._timeout,
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            logger.error("POST %s failed: %s", url, exc)
+            raise  # 호출자가 처리하도록 재전파
+
+    def _patch(self, path: str, payload: dict[str, Any]) -> Any:
+        """PATCH 요청. 실패 시 예외 발생."""
+        if self._mock_only:
+            return None
+
+        url = f"{self._base}{path}"
+        try:
+            response = self._session.patch(
+                url,
+                json=payload,
+                timeout=self._timeout,
+                headers={"Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            logger.error("PATCH %s failed: %s", url, exc)
+            raise
+
     # ===== Dashboard =====
     def get_dashboard_stats(self) -> dict[str, Any] | None:
         data = self._get("/api/dashboard/stats", mock_value=mock_data.DASHBOARD_STATS)
@@ -324,6 +367,96 @@ class ApiClient:
                 })
             return normalized
         return mock_data.RECENT_ORDERS
+
+    # ===== Production Scheduling (생산 계획) =====
+    # Web에서 "생산 승인" 버튼을 누르면 in_production 상태 + ProductionJob 레코드 생성됨.
+    # 그 이후 PyQt5 생산 계획 페이지에서 우선순위 계산/순서 조정/실제 착수를 수행한다.
+
+    def get_production_jobs(self) -> list[dict[str, Any]]:
+        """생산 작업 목록 조회 (웹에서 승인된 order로부터 생성된 ProductionJob들).
+
+        Returns: ProductionJob 딕셔너리 리스트 (id, order_id, priority_score,
+                 priority_rank, status, estimated_completion 등).
+        """
+        data = self._get("/api/production/schedule/jobs", mock_value=[])
+        return data if isinstance(data, list) else []
+
+    def get_approved_and_running_orders(self) -> list[dict[str, Any]]:
+        """생산 계획 화면에서 볼 주문 목록.
+
+        - approved: 생산 승인되지 않은 대기 주문 (참고용)
+        - in_production: 승인 완료 → ProductionJob 존재, 우선순위 계산 대상
+
+        Returns: 정규화된 주문 리스트 (id, company_name, total_amount,
+                 requested_delivery, status 등).
+        """
+        data = self._get("/api/orders", mock_value=[])
+        if not isinstance(data, list):
+            return []
+
+        target_statuses = {"approved", "in_production"}
+        result: list[dict[str, Any]] = []
+        for item in data:
+            status = str(item.get("status", "")).lower()
+            if status not in target_statuses:
+                continue
+            result.append({
+                "id": item.get("id", ""),
+                "company_name": item.get("company_name") or item.get("companyName") or "-",
+                "customer_name": item.get("customer_name") or item.get("customerName") or "-",
+                "total_amount": item.get("total_amount") or item.get("totalAmount") or 0,
+                "requested_delivery": (
+                    item.get("requested_delivery")
+                    or item.get("requestedDelivery")
+                    or ""
+                ),
+                "confirmed_delivery": (
+                    item.get("confirmed_delivery")
+                    or item.get("confirmedDelivery")
+                    or ""
+                ),
+                "created_at": item.get("created_at") or item.get("createdAt") or "",
+                "status": status,
+            })
+        return result
+
+    def calculate_priority(self, order_ids: list[str]) -> dict[str, Any]:
+        """선택 주문들의 우선순위를 계산 (dry-run, DB 상태 변경 없음).
+
+        Args:
+            order_ids: 계산 대상 주문 ID 리스트
+
+        Returns:
+            {"results": [PriorityResult, ...]} 형식. 각 PriorityResult는
+            order_id, total_score, rank, factors, recommendation_reason,
+            delay_risk, ready_status, blocking_reasons 등 포함.
+
+        Raises:
+            requests.RequestException: 네트워크/서버 에러 (UI에서 잡아서 표시)
+        """
+        result = self._post(
+            "/api/production/schedule/calculate",
+            {"order_ids": order_ids},
+        )
+        return result if isinstance(result, dict) else {"results": []}
+
+    def create_priority_log(
+        self,
+        order_id: str,
+        old_rank: int,
+        new_rank: int,
+        reason: str,
+    ) -> dict[str, Any] | None:
+        """우선순위 수동 변경 이력 기록."""
+        return self._post(
+            "/api/production/schedule/priority-log",
+            {
+                "order_id": order_id,
+                "old_rank": old_rank,
+                "new_rank": new_rank,
+                "reason": reason,
+            },
+        )
 
     def get_amr_status(self) -> list[dict[str, Any]] | None:
         # 우선 전용 엔드포인트 시도, 없으면 equipment 에서 amr 타입만 추출
