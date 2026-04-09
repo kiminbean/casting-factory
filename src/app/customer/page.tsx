@@ -56,7 +56,6 @@ interface FormData {
   postProcessing: string[];
   quantity: number;
   desiredDelivery: string;
-  notes: string;
   // Step 4
   companyName: string;
   contactPerson: string;
@@ -569,18 +568,6 @@ function Step2SpecInput({
           })}
         </div>
       </div>
-
-      {/* 비고 */}
-      <div className="mt-5">
-        <label className="block text-sm font-medium text-gray-700 mb-1">비고</label>
-        <textarea
-          value={formData.notes}
-          onChange={(e) => onChange("notes", e.target.value)}
-          rows={3}
-          placeholder="특이사항이나 요청사항을 입력해 주세요."
-          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-        />
-      </div>
     </div>
   );
 }
@@ -730,13 +717,6 @@ function Step3QuoteReview({
             </div>
           </div>
         </div>
-
-        {formData.notes && (
-          <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">비고</h3>
-            <p className="text-sm text-gray-600">{formData.notes}</p>
-          </div>
-        )}
 
         {/* 안내 */}
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
@@ -956,14 +936,6 @@ function Step5OrderComplete({
             <span className="font-medium text-gray-900">{formData.desiredDelivery}</span>
           </div>
 
-          {/* 비고 */}
-          {formData.notes && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">비고</span>
-              <span className="font-medium text-gray-900 text-right max-w-[60%]">{formData.notes}</span>
-            </div>
-          )}
-
           {/* 예상 금액 */}
           <div className="flex justify-between border-t border-gray-100 pt-2.5">
             <span className="text-gray-500">예상 금액</span>
@@ -1027,7 +999,6 @@ const INITIAL_FORM: FormData = {
   postProcessing: [],
   quantity: 10,
   desiredDelivery: "",
-  notes: "",
   companyName: "",
   contactPerson: "",
   phone: "",
@@ -1116,7 +1087,7 @@ export default function CustomerOrderPage() {
         setSubmitting(true);
         setSubmitError(null);
 
-        // 1) 주문 헤더 저장 (email 을 전용 컬럼으로 보냄, notes 에도 기록 유지)
+        // 1) 주문 헤더 저장 (email 을 전용 컬럼으로 보냄, notes 는 비움)
         const orderRes = await fetch("/api/orders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1132,12 +1103,9 @@ export default function CustomerOrderPage() {
             status: "pending",
             requested_delivery: formData.desiredDelivery,
             confirmed_delivery: null,
-            notes: [
-              `이메일: ${formData.email}`,
-              formData.notes ? `비고: ${formData.notes}` : null,
-            ]
-              .filter(Boolean)
-              .join(" / "),
+            // 비고 입력란 제거 (2026-04-09). email 은 전용 컬럼으로 저장되므로
+            // 기존처럼 notes 에 중복 기록하지 않음.
+            notes: "",
           }),
         });
 
