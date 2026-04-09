@@ -22,6 +22,7 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
+import { SmartCastHeader } from "@/components/SmartCastHeader";
 
 // ─────────────────────────────────────────────
 // Types
@@ -1016,7 +1017,7 @@ export default function CustomerOrderPage() {
         setSubmitting(true);
         setSubmitError(null);
 
-        // 1) 주문 헤더 저장
+        // 1) 주문 헤더 저장 (email 을 전용 컬럼으로 보냄, notes 에도 기록 유지)
         const orderRes = await fetch("/api/orders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1026,6 +1027,7 @@ export default function CustomerOrderPage() {
             customer_name: formData.contactPerson,
             company_name: formData.companyName,
             contact: formData.phone,
+            email: formData.email,
             shipping_address: formData.address,
             total_amount: totalPrice,
             status: "pending",
@@ -1116,7 +1118,9 @@ export default function CustomerOrderPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
+    <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
+      <SmartCastHeader variant="card" />
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-24 pb-8">
       {/* Step indicator */}
       <StepIndicator currentStep={step} />
 
@@ -1216,6 +1220,7 @@ export default function CustomerOrderPage() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

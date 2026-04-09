@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -27,10 +28,19 @@ load_classes_router = APIRouter(prefix="/api/load-classes", tags=["load-classes"
 # ---------------------------------------------------------------------------
 
 @router.get("", response_model=List[OrderResponse])
-async def list_orders(db: Session = Depends(get_db)):
-    """전체 주문 목록을 생성일 역순으로 반환."""
-    orders = db.query(Order).order_by(Order.created_at.desc()).all()
-    return orders
+async def list_orders(
+    db: Session = Depends(get_db),
+    email: Optional[str] = Query(
+        None, description="이메일 정확 일치 필터 (/customer/lookup 에서 사용)"
+    ),
+):
+    """주문 목록 (생성일 역순). email 파라미터 주면 해당 이메일 주문만 반환."""
+    query = db.query(Order)
+    if email:
+        # 공백 제거 + 대소문자 무시 비교
+        normalized = email.strip().lower()
+        query = query.filter(func.lower(Order.email) == normalized)
+    return query.order_by(Order.created_at.desc()).all()
 
 
 @router.post("", response_model=OrderResponse, status_code=201)

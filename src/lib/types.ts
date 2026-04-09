@@ -22,6 +22,8 @@ export interface Order {
   customerName: string;
   companyName: string;
   contact: string;
+  /** 주문자 이메일 — /customer/lookup 의 이메일 기반 조회에 사용 (2026-04-09 추가) */
+  email: string;
   shippingAddress: string;
   totalAmount: number;
   status: OrderStatus;

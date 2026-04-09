@@ -32,6 +32,8 @@ class Order(Base):
     customer_name = Column(String, nullable=False)
     company_name = Column(String, nullable=False)
     contact = Column(String, nullable=True, default="")
+    # 고객 이메일 — /customer/lookup 의 이메일 기반 주문 조회에 사용 (2026-04-09 추가)
+    email = Column(String, nullable=True, default="", index=True)
     shipping_address = Column(String, nullable=True, default="")
     total_amount = Column(Integer, nullable=False, default=0)
     status = Column(String, nullable=False, default="pending")

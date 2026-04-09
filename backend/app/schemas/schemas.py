@@ -13,6 +13,7 @@ class OrderCreate(BaseModel):
     customer_name: str
     company_name: str
     contact: Optional[str] = None
+    email: Optional[str] = None
     shipping_address: Optional[str] = None
     total_amount: float = 0.0
     status: str = "pending"
@@ -40,6 +41,7 @@ class OrderResponse(BaseModel):
     customer_name: str
     company_name: str
     contact: Optional[str] = None
+    email: Optional[str] = None
     shipping_address: Optional[str] = None
     total_amount: float
     status: str

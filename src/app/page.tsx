@@ -1,91 +1,115 @@
 "use client";
 
 /**
- * 관리자 웹 허브 페이지.
+ * 공개 랜딩 페이지 (/).
  *
- * 기존 대시보드(모니터링용)는 PyQt5 monitoring 앱으로 분리됨
- * (Confluence 17956894 결정). 이 페이지는 관리자 업무 네비게이션 역할만 수행.
- *
- * 2026-04-08 개편: 생산 계획(우선순위 계산)과 입출고 내역 페이지를
- * PyQt5로 이관하여 웹 카드에서도 제거. 생산 승인은 주문 관리 페이지에서
- * 수행한다.
+ * 사용자 진입점: 우측 상단 SmartCast Robotics 브랜드 + 중앙 3 카드.
+ *   1. 관리자   → /admin/login (비밀번호 입력)
+ *   2. 주문하기 → /customer (발주 폼)
+ *   3. 주문 조회하기 → /customer/lookup (이메일 입력 후 /customer/orders)
  */
 
 import Link from "next/link";
-import { ClipboardList, FlaskConical, Monitor } from "lucide-react";
+import { ShieldCheck, ShoppingBag, Search, ArrowRight } from "lucide-react";
+import { SmartCastHeader } from "@/components/SmartCastHeader";
 
-const cards = [
+const entries = [
   {
-    href: "/orders",
-    label: "주문 관리",
-    desc: "주문 검토·승인·생산 승인 (우선순위 계산 대상 등록)",
-    icon: ClipboardList,
-    color: "from-emerald-500 to-teal-600",
+    href: "/admin/login",
+    label: "관리자",
+    desc: "주문/품질/생산 관리를 위한 관리자 포털 (비밀번호 필요)",
+    icon: ShieldCheck,
+    accent: "from-slate-700 to-slate-900",
+    hoverAccent: "group-hover:from-slate-800 group-hover:to-slate-950",
   },
   {
-    href: "/quality",
-    label: "품질 관리",
-    desc: "검사 기준 설정, 불량 분석, 품질 리포트",
-    icon: FlaskConical,
-    color: "from-purple-500 to-pink-600",
+    href: "/customer",
+    label: "주문하기",
+    desc: "맨홀 뚜껑·그레이팅 등 주물 제품을 온라인으로 발주",
+    icon: ShoppingBag,
+    accent: "from-red-500 to-orange-500",
+    hoverAccent: "group-hover:from-red-600 group-hover:to-orange-600",
+  },
+  {
+    href: "/customer/lookup",
+    label: "주문 조회하기",
+    desc: "이메일 주소로 내 주문 현황을 실시간 조회",
+    icon: Search,
+    accent: "from-amber-500 to-yellow-500",
+    hoverAccent: "group-hover:from-amber-600 group-hover:to-yellow-600",
   },
 ] as const;
 
-export default function AdminHomePage() {
+export default function LandingPage() {
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">관리자 포털</h1>
-        <p className="mt-2 text-gray-600">
-          주물공장 관제 시스템 관리자 웹. 실시간 모니터링과 생산 계획(우선순위 계산)은
-          관제실 PyQt5 데스크톱 앱을 사용하세요.
-        </p>
-      </div>
+    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
+      {/* 배경 장식 */}
+      <div className="pointer-events-none absolute -right-40 -top-40 h-96 w-96 rounded-full bg-orange-200 opacity-30 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 -left-40 h-96 w-96 rounded-full bg-red-200 opacity-30 blur-3xl" />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {cards.map(({ href, label, desc, icon: Icon, color }) => (
-          <Link
-            key={href}
-            href={href}
-            className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5"
-          >
-            <div
-              className={`absolute top-0 left-0 h-1 w-full bg-gradient-to-r ${color}`}
-            />
-            <div className="flex items-start gap-4">
+      {/* 우측 상단 공용 브랜드 헤더 */}
+      <SmartCastHeader />
+
+      {/* 본문 */}
+      <div className="relative z-10 flex min-h-screen flex-col items-center justify-center px-4 py-20">
+        {/* 히어로 */}
+        <div className="mb-12 max-w-3xl text-center">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-orange-200 bg-white/60 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-orange-600 backdrop-blur">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-orange-500" />
+            Smart Casting · Robotics · Automation
+          </div>
+          <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
+            SmartCast Robotics
+          </h1>
+          <p className="mt-4 text-base text-gray-600 sm:text-lg">
+            주물 생산 전 공정을 자동화하는 스마트 공장 관제 시스템.
+            <br className="hidden sm:block" />
+            원하는 서비스를 선택해 주세요.
+          </p>
+        </div>
+
+        {/* 3 카드 버튼 */}
+        <div className="grid w-full max-w-5xl grid-cols-1 gap-5 sm:grid-cols-3">
+          {entries.map(({ href, label, desc, icon: Icon, accent, hoverAccent }) => (
+            <Link
+              key={href}
+              href={href}
+              className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-6 shadow-md transition-all duration-200 hover:-translate-y-1 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-orange-400"
+            >
+              {/* 상단 컬러바 */}
               <div
-                className={`rounded-lg bg-gradient-to-br ${color} p-3 text-white`}
-              >
-                <Icon className="h-6 w-6" />
-              </div>
-              <div className="flex-1">
-                <h2 className="text-lg font-semibold text-gray-900">{label}</h2>
-                <p className="mt-1 text-sm text-gray-600">{desc}</p>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+                className={`absolute left-0 right-0 top-0 h-1.5 bg-gradient-to-r ${accent}`}
+              />
 
-      <div className="rounded-xl border border-blue-200 bg-blue-50 p-6">
-        <div className="flex items-start gap-4">
-          <div className="rounded-lg bg-blue-600 p-3 text-white">
-            <Monitor className="h-6 w-6" />
-          </div>
-          <div className="flex-1">
-            <h2 className="text-lg font-semibold text-blue-900">
-              관제 모니터링 앱 (PyQt5 데스크톱)
-            </h2>
-            <p className="mt-1 text-sm text-blue-700">
-              실시간 대시보드, 생산 모니터링, <strong>생산 계획(우선순위 계산)</strong>,
-              품질 검사, 물류 이송 화면은 관제실 PyQt5 데스크톱 앱에서 제공됩니다.
-            </p>
-            <div className="mt-3 rounded-md bg-white px-4 py-3 font-mono text-xs text-gray-700 border border-blue-100">
-              cd monitoring && python main.py
-            </div>
-          </div>
+              {/* 아이콘 */}
+              <div
+                className={`mb-4 inline-flex rounded-xl bg-gradient-to-br ${accent} ${hoverAccent} p-3.5 text-white shadow-sm transition`}
+              >
+                <Icon className="h-7 w-7" />
+              </div>
+
+              {/* 텍스트 */}
+              <h2 className="text-xl font-bold text-gray-900">{label}</h2>
+              <p className="mt-2 min-h-[3rem] text-sm leading-relaxed text-gray-600">
+                {desc}
+              </p>
+
+              {/* 화살표 */}
+              <div className="mt-4 flex items-center justify-between text-sm font-semibold text-gray-700">
+                <span className="opacity-0 transition group-hover:opacity-100">
+                  바로가기
+                </span>
+                <ArrowRight className="h-5 w-5 translate-x-0 text-gray-400 transition group-hover:translate-x-1 group-hover:text-orange-500" />
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {/* 푸터 */}
+        <div className="mt-16 text-center text-xs text-gray-400">
+          © 2026 SmartCast Robotics. 주물 공장 스마트 관제 시스템.
         </div>
       </div>
-    </div>
+    </main>
   );
 }

@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { Suspense, useState, useEffect, useMemo, useCallback } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Factory,
   CheckCircle,
@@ -17,10 +19,12 @@ import {
   PackageCheck,
   Loader2,
   AlertTriangle,
+  Mail,
 } from "lucide-react";
-import { fetchOrders, fetchOrderDetails } from "@/lib/api";
+import { fetchOrderDetails, fetchOrdersByEmail } from "@/lib/api";
 import { orderStatusMap, formatDate, formatCurrency as formatKRW } from "@/lib/utils";
 import type { Order, OrderDetail, OrderStatus } from "@/lib/types";
+import { SmartCastHeader } from "@/components/SmartCastHeader";
 
 // ─────────────────────────────────────────────
 // 6단계 상태 파이프라인 (rejected 제외)
@@ -268,7 +272,10 @@ function OrderDetailPanel({
 // Main Page Component
 // ─────────────────────────────────────────────
 
-export default function CustomerOrdersPage() {
+function CustomerOrdersInner() {
+  const searchParams = useSearchParams();
+  const email = searchParams.get("email")?.trim() ?? "";
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -278,17 +285,21 @@ export default function CustomerOrdersPage() {
   const [error, setError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
+    if (!email) {
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchOrders();
+      const data = await fetchOrdersByEmail(email);
       setOrders(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "주문 데이터를 불러오는 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [email]);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
@@ -306,24 +317,50 @@ export default function CustomerOrdersPage() {
     }
   }, []);
 
-  // 주문번호 또는 연락처로 검색
+  // 이메일 필터 결과 내에서 추가로 주문번호/회사명 검색
   const filteredOrders = useMemo(() => {
     if (!searchQuery.trim()) return orders;
     const q = searchQuery.trim().toLowerCase();
     return orders.filter(
       (order) =>
         order.id.toLowerCase().includes(q) ||
-        order.contact.includes(q) ||
         order.companyName.toLowerCase().includes(q)
     );
   }, [searchQuery, orders]);
 
+  // 이메일 파라미터 없음 → 안내 + lookup 유도
+  if (!email) {
+    return (
+      <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
+        <SmartCastHeader variant="card" />
+        <div className="flex min-h-screen items-center justify-center px-4 pt-24 pb-12">
+          <div className="max-w-md rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-lg">
+            <Mail className="mx-auto h-10 w-10 text-amber-500" />
+            <h1 className="mt-3 text-lg font-bold text-gray-900">이메일이 필요합니다</h1>
+            <p className="mt-2 text-sm text-gray-600">
+              주문 조회 페이지는 이메일 파라미터가 있어야 접근할 수 있습니다.
+            </p>
+            <Link
+              href="/customer/lookup"
+              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90"
+            >
+              이메일로 조회하기
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 size={36} className="animate-spin text-blue-500" />
-          <p className="text-base text-gray-500">주문 데이터를 불러오는 중...</p>
+      <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
+        <SmartCastHeader variant="card" />
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 size={36} className="animate-spin text-orange-500" />
+            <p className="text-base text-gray-500">주문 데이터를 불러오는 중...</p>
+          </div>
         </div>
       </div>
     );
@@ -331,11 +368,14 @@ export default function CustomerOrdersPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <AlertTriangle size={36} className="text-red-400" />
-          <p className="text-base text-red-600">{error}</p>
-          <button type="button" onClick={loadOrders} className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">다시 시도</button>
+      <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
+        <SmartCastHeader variant="card" />
+        <div className="flex min-h-screen items-center justify-center">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <AlertTriangle size={36} className="text-red-400" />
+            <p className="text-base text-red-600">{error}</p>
+            <button type="button" onClick={loadOrders} className="mt-2 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600">다시 시도</button>
+          </div>
         </div>
       </div>
     );
@@ -344,60 +384,93 @@ export default function CustomerOrdersPage() {
   // 주문 상세 보기
   if (selectedOrder) {
     return (
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
-          {detailLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 size={28} className="animate-spin text-blue-400" />
-            </div>
-          ) : (
-            <OrderDetailPanel
-              order={selectedOrder}
-              details={selectedDetails}
-              onBack={() => { setSelectedOrder(null); setSelectedDetails([]); }}
-            />
-          )}
+      <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
+        <SmartCastHeader variant="card" />
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-24 pb-12">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
+            {detailLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={28} className="animate-spin text-orange-400" />
+              </div>
+            ) : (
+              <OrderDetailPanel
+                order={selectedOrder}
+                details={selectedDetails}
+                onBack={() => { setSelectedOrder(null); setSelectedDetails([]); }}
+              />
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
-        <h2 className="text-xl font-bold text-gray-900 mb-2">주문 조회</h2>
-        <p className="text-sm text-gray-500 mb-6">
-          주문번호, 연락처 또는 회사명으로 주문 현황을 조회할 수 있습니다.
-        </p>
-
-        {/* 검색 입력 */}
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="주문번호 (예: ORD-2026-001) 또는 연락처, 회사명"
-            className="w-full rounded-lg border border-gray-300 pl-10 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {/* 검색 결과 */}
-        {filteredOrders.length === 0 ? (
-          <div className="text-center py-12">
-            <Search className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-500">검색 결과가 없습니다.</p>
-            <p className="text-xs text-gray-400 mt-1">주문번호, 연락처 또는 회사명을 확인해 주세요.</p>
+    <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
+      <SmartCastHeader variant="card" />
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-24 pb-12">
+        <Link
+          href="/customer/lookup"
+          className="mb-4 inline-flex items-center gap-1.5 text-sm text-gray-500 transition hover:text-gray-800"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          다른 이메일로 조회
+        </Link>
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
+          <div className="mb-6 flex items-center gap-2 text-sm text-gray-500">
+            <Mail className="h-4 w-4 text-amber-500" />
+            <span>조회 이메일:</span>
+            <span className="font-medium text-gray-800">{email}</span>
           </div>
-        ) : (
+
+          <h2 className="text-xl font-bold text-gray-900 mb-2">내 주문 목록</h2>
+          <p className="text-sm text-gray-500 mb-6">
+            {orders.length === 0
+              ? "해당 이메일로 접수된 주문이 없습니다."
+              : `총 ${orders.length}건의 주문이 있습니다.`}
+          </p>
+
+          {/* 결과 내 추가 검색 (주문번호, 회사명) */}
+          {orders.length > 0 && (
+            <div className="relative mb-6">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="주문번호 또는 회사명으로 좁히기"
+                className="w-full rounded-lg border border-gray-300 pl-10 pr-10 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* 검색 결과 */}
+          {filteredOrders.length === 0 ? (
+            <div className="text-center py-12">
+              <Search className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-sm text-gray-500">
+                {orders.length === 0
+                  ? "해당 이메일로 접수된 주문이 없습니다."
+                  : "검색 조건에 맞는 주문이 없습니다."}
+              </p>
+              {orders.length === 0 && (
+                <Link
+                  href="/customer"
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-red-500 to-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-90"
+                >
+                  새 주문 접수하기
+                </Link>
+              )}
+            </div>
+          ) : (
           <div className="space-y-3">
             {filteredOrders.map((order) => {
               const info = orderStatusMap[order.status];
@@ -433,7 +506,25 @@ export default function CustomerOrdersPage() {
             })}
           </div>
         )}
+        </div>
       </div>
     </div>
+  );
+}
+
+export default function CustomerOrdersPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
+          <SmartCastHeader variant="card" />
+          <div className="flex min-h-screen items-center justify-center">
+            <Loader2 size={36} className="animate-spin text-orange-500" />
+          </div>
+        </div>
+      }
+    >
+      <CustomerOrdersInner />
+    </Suspense>
   );
 }
