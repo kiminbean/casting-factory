@@ -99,6 +99,17 @@ class Product(Base):
     model_3d_path = Column(String, nullable=True, default="")
 
 
+class LoadClass(Base):
+    """EN 124 하중 등급 마스터. products.load_class_range 의 코드 부분을 실제 톤수로 풀어줌."""
+
+    __tablename__ = "load_classes"
+
+    code = Column(String(8), primary_key=True)        # "A15", "B125", "C250", "D400", "E600", "F900"
+    load_tons = Column(Float, nullable=False)         # 1.5, 12.5, 25.0, 40.0, 60.0, 90.0
+    use_case = Column(String(200), nullable=False)    # "보행자 전용 구역" 등 설명
+    display_order = Column(Integer, nullable=False)   # UI 정렬용 1~6
+
+
 # ────────────────────────────────────────
 # 2. 생산 모니터링 (Production Monitoring)
 # ────────────────────────────────────────

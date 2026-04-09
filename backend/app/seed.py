@@ -10,6 +10,7 @@ from app.models.models import (
     Equipment,
     InspectionRecord,
     InspectionStandard,
+    LoadClass,
     Order,
     OrderDetail,
     OutboundOrder,
@@ -29,6 +30,7 @@ def seed_database(db: Session) -> None:
     _seed_orders(db)
     _seed_order_details(db)
     _seed_products(db)
+    _seed_load_classes(db)
     _seed_process_stages(db)
     _seed_equipment(db)
     _seed_transport_tasks(db)
@@ -152,6 +154,22 @@ def _seed_products(db: Session) -> None:
             design_image_url="/images/products/grating-500.png",
             model_3d_path="/models/grating-500.glb",
         ),
+    ]
+    db.add_all(rows)
+    db.commit()
+
+
+def _seed_load_classes(db: Session) -> None:
+    """EN 124 하중 등급 마스터 6개."""
+    if db.query(LoadClass).count() > 0:
+        return
+    rows = [
+        LoadClass(code="A15",  load_tons=1.5,  use_case="보행자 전용 구역",                display_order=1),
+        LoadClass(code="B125", load_tons=12.5, use_case="자전거·보행자 도로, 주차장",      display_order=2),
+        LoadClass(code="C250", load_tons=25.0, use_case="길가·갓길 (상용차 주차 가능)",    display_order=3),
+        LoadClass(code="D400", load_tons=40.0, use_case="일반 차도",                        display_order=4),
+        LoadClass(code="E600", load_tons=60.0, use_case="항만·산업 구역",                   display_order=5),
+        LoadClass(code="F900", load_tons=90.0, use_case="공항·특수 중하중 지역",            display_order=6),
     ]
     db.add_all(rows)
     db.commit()

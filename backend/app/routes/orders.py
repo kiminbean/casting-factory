@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import Order, OrderDetail, Product
+from app.models.models import LoadClass, Order, OrderDetail, Product
 from app.schemas.schemas import (
+    LoadClassResponse,
     OrderCreate,
     OrderDetailCreate,
     OrderDetailResponse,
@@ -18,6 +19,7 @@ from app.schemas.schemas import (
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 products_router = APIRouter(prefix="/api/products", tags=["products"])
+load_classes_router = APIRouter(prefix="/api/load-classes", tags=["load-classes"])
 
 
 # ---------------------------------------------------------------------------
@@ -127,3 +129,13 @@ async def list_products(db: Session = Depends(get_db)):
     """전체 제품 목록 반환. JSON 컬럼은 ProductResponse.from_orm_model 에서 파싱."""
     products = db.query(Product).order_by(Product.name).all()
     return [ProductResponse.from_orm_model(p) for p in products]
+
+
+# ---------------------------------------------------------------------------
+# Load classes (EN 124 하중 등급 마스터)
+# ---------------------------------------------------------------------------
+
+@load_classes_router.get("", response_model=List[LoadClassResponse])
+async def list_load_classes(db: Session = Depends(get_db)):
+    """EN 124 하중 등급 마스터 전체 (display_order 오름차순)."""
+    return db.query(LoadClass).order_by(LoadClass.display_order).all()

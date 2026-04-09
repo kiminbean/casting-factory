@@ -169,6 +169,21 @@ class ProductResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# LoadClass schemas (EN 124 하중 등급 마스터)
+# ---------------------------------------------------------------------------
+
+class LoadClassResponse(BaseModel):
+    """EN 124 하중 등급 한 행."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str          # "A15", "B125", ...
+    load_tons: float   # 1.5, 12.5, ...
+    use_case: str      # "보행자 전용 구역" 등 설명
+    display_order: int
+
+
+# ---------------------------------------------------------------------------
 # ProcessStage schemas
 # ---------------------------------------------------------------------------
 

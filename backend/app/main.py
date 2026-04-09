@@ -49,6 +49,7 @@ app.add_middleware(
 # REST routers
 app.include_router(orders.router)
 app.include_router(orders.products_router)
+app.include_router(orders.load_classes_router)
 app.include_router(production.router)
 app.include_router(quality.router)
 app.include_router(logistics.router)
