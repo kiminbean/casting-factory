@@ -68,14 +68,32 @@ class OrderDetail(Base):
 
 
 class Product(Base):
-    """제품 마스터 — types.ts Product 대응"""
+    """제품 마스터 — src/app/customer/page.tsx PRODUCTS 와 1:1 매칭.
+
+    프론트가 source of truth (2026-04-09): 하드코딩된 PRODUCTS 배열의 스키마를
+    그대로 DB 로 옮긴 것. DB 조회 용도 위주이며, 프론트는 여전히 하드코딩을 사용한다.
+    """
 
     __tablename__ = "products"
 
+    # 도메인 ID (D450, D600, D800, GRATING)
     id = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=False)
+    # 프론트 category (영문 키): "manhole" | "grating"
     category = Column(String, nullable=False)
+    # 한글 라벨: "맨홀 뚜껑" | "그레이팅"
+    category_label = Column(String, nullable=False, default="")
+    # 요약 스펙 텍스트: "직경 450mm, KS 규격"
+    spec = Column(String, nullable=False, default="")
+    # 가격 범위 텍스트: "50,000 - 70,000원"
+    price_range = Column(String, nullable=False, default="")
     base_price = Column(Integer, nullable=False, default=0)
+    # 옵션 배열 (JSON 문자열로 저장, API 응답 시 list[str] 변환)
+    diameter_options_json = Column(Text, nullable=False, default="[]")
+    thickness_options_json = Column(Text, nullable=False, default="[]")
+    materials_json = Column(Text, nullable=False, default="[]")
+    load_class_range = Column(String, nullable=False, default="")
+    # 부가 정보 (프론트에는 없으나 3D 뷰어 등에서 사용 예정)
     option_pricing_json = Column(Text, nullable=True, default="{}")
     design_image_url = Column(String, nullable=True, default="")
     model_3d_path = Column(String, nullable=True, default="")

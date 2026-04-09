@@ -124,6 +124,6 @@ async def add_order_detail(
 
 @products_router.get("", response_model=List[ProductResponse])
 async def list_products(db: Session = Depends(get_db)):
-    """전체 제품 목록 반환."""
+    """전체 제품 목록 반환. JSON 컬럼은 ProductResponse.from_orm_model 에서 파싱."""
     products = db.query(Product).order_by(Product.name).all()
-    return products
+    return [ProductResponse.from_orm_model(p) for p in products]

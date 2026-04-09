@@ -80,14 +80,78 @@ def _seed_order_details(db: Session) -> None:
 
 
 def _seed_products(db: Session) -> None:
+    """프론트 src/app/customer/page.tsx PRODUCTS 배열과 동기화된 4개 제품."""
     if db.query(Product).count() > 0:
         return
+
+    def _dump(value) -> str:
+        return json.dumps(value, ensure_ascii=False)
+
     rows = [
-        Product(id="PRD-001", name="맨홀 뚜껑 KS D-600", category="맨홀 뚜껑", base_price=85000, option_pricing_json=json.dumps({"표면 연마": 5000, "방청 코팅": 3000, "로고 삽입": 8000}, ensure_ascii=False), design_image_url="/images/products/manhole-600.png", model_3d_path="/models/manhole-600.glb"),
-        Product(id="PRD-002", name="맨홀 뚜껑 KS D-800", category="맨홀 뚜껑", base_price=120000, option_pricing_json=json.dumps({"표면 연마": 7000, "방청 코팅": 4000, "로고 삽입": 10000}, ensure_ascii=False), design_image_url="/images/products/manhole-800.png", model_3d_path="/models/manhole-800.glb"),
-        Product(id="PRD-003", name="맨홀 뚜껑 KS D-450", category="맨홀 뚜껑", base_price=55000, option_pricing_json=json.dumps({"표면 연마": 3000, "방청 코팅": 2000}, ensure_ascii=False), design_image_url="/images/products/manhole-450.png", model_3d_path="/models/manhole-450.glb"),
-        Product(id="PRD-004", name="빗물받이 KS D-300", category="빗물받이", base_price=42000, option_pricing_json=json.dumps({"방청 코팅": 2500, "아연 도금": 6000}, ensure_ascii=False), design_image_url="/images/products/drain-300.png", model_3d_path="/models/drain-300.glb"),
-        Product(id="PRD-005", name="배수구 그레이팅", category="그레이팅", base_price=35000, option_pricing_json=json.dumps({"아연 도금": 5000, "내식 코팅": 7000}, ensure_ascii=False), design_image_url="/images/products/grating-500.png", model_3d_path="/models/grating-500.glb"),
+        Product(
+            id="D450",
+            name="맨홀 뚜껑 KS D-450",
+            category="manhole",
+            category_label="맨홀 뚜껑",
+            spec="직경 450mm, KS 규격",
+            price_range="50,000 - 70,000원",
+            base_price=55000,
+            diameter_options_json=_dump(["450mm", "460mm", "470mm"]),
+            thickness_options_json=_dump(["25mm", "30mm", "35mm", "40mm"]),
+            materials_json=_dump(["FC200", "FC250", "GCD450"]),
+            load_class_range="B125 ~ D400",
+            option_pricing_json=_dump({"표면 연마": 3000, "방청 코팅": 2000}),
+            design_image_url="/images/products/manhole-450.png",
+            model_3d_path="/models/manhole-450.glb",
+        ),
+        Product(
+            id="D600",
+            name="맨홀 뚜껑 KS D-600",
+            category="manhole",
+            category_label="맨홀 뚜껑",
+            spec="직경 600mm, KS 규격",
+            price_range="75,000 - 100,000원",
+            base_price=85000,
+            diameter_options_json=_dump(["600mm", "610mm", "620mm"]),
+            thickness_options_json=_dump(["30mm", "35mm", "40mm", "45mm"]),
+            materials_json=_dump(["FC200", "FC250", "GCD450", "GCD500"]),
+            load_class_range="B125 ~ F900",
+            option_pricing_json=_dump({"표면 연마": 5000, "방청 코팅": 3000, "로고 삽입": 8000}),
+            design_image_url="/images/products/manhole-600.png",
+            model_3d_path="/models/manhole-600.glb",
+        ),
+        Product(
+            id="D800",
+            name="맨홀 뚜껑 KS D-800",
+            category="manhole",
+            category_label="맨홀 뚜껑",
+            spec="직경 800mm, KS 규격",
+            price_range="110,000 - 140,000원",
+            base_price=120000,
+            diameter_options_json=_dump(["800mm", "810mm", "820mm"]),
+            thickness_options_json=_dump(["35mm", "40mm", "45mm", "50mm"]),
+            materials_json=_dump(["FC250", "GCD450", "GCD500"]),
+            load_class_range="C250 ~ F900",
+            option_pricing_json=_dump({"표면 연마": 7000, "방청 코팅": 4000, "로고 삽입": 10000}),
+            design_image_url="/images/products/manhole-800.png",
+            model_3d_path="/models/manhole-800.glb",
+        ),
+        Product(
+            id="GRATING",
+            name="배수구 그레이팅 500x300",
+            category="grating",
+            category_label="그레이팅",
+            spec="500x300mm, 격자형",
+            price_range="30,000 - 45,000원",
+            base_price=35000,
+            diameter_options_json=_dump(["500x300mm", "500x350mm", "600x300mm"]),
+            thickness_options_json=_dump(["20mm", "25mm", "30mm"]),
+            materials_json=_dump(["FC200", "FC250"]),
+            load_class_range="B125 ~ C250",
+            option_pricing_json=_dump({"아연 도금": 5000, "내식 코팅": 7000}),
+            design_image_url="/images/products/grating-500.png",
+            model_3d_path="/models/grating-500.glb",
+        ),
     ]
     db.add_all(rows)
     db.commit()

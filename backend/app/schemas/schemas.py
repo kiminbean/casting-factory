@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
 
 
@@ -93,23 +93,79 @@ class ProductCreate(BaseModel):
 
     id: str
     name: str
-    category: Optional[str] = None
-    base_price: float = 0.0
+    category: str
+    category_label: str = ""
+    spec: str = ""
+    price_range: str = ""
+    base_price: int = 0
+    diameter_options: List[str] = []
+    thickness_options: List[str] = []
+    materials: List[str] = []
+    load_class_range: str = ""
     option_pricing: Optional[dict] = None
     design_image_url: Optional[str] = None
     model_3d_path: Optional[str] = None
 
 
 class ProductResponse(BaseModel):
+    """프론트 Product interface 와 1:1 매칭 (snake→camel 변환은 src/lib/api.ts 에서)."""
+
     model_config = ConfigDict(from_attributes=True, protected_namespaces=())
 
     id: str
     name: str
-    category: Optional[str] = None
-    base_price: float
+    category: str
+    category_label: str
+    spec: str
+    price_range: str
+    base_price: int
+    diameter_options: List[str] = []
+    thickness_options: List[str] = []
+    materials: List[str] = []
+    load_class_range: str
     option_pricing: Optional[dict] = None
     design_image_url: Optional[str] = None
     model_3d_path: Optional[str] = None
+
+    @classmethod
+    def from_orm_model(cls, product) -> "ProductResponse":
+        """Product ORM 인스턴스의 *_json 컬럼을 파싱해서 list/dict 로 변환."""
+        import json as _json
+
+        def _parse_list(raw: Optional[str]) -> List[str]:
+            if not raw:
+                return []
+            try:
+                val = _json.loads(raw)
+                return val if isinstance(val, list) else []
+            except (ValueError, TypeError):
+                return []
+
+        def _parse_dict(raw: Optional[str]) -> Optional[dict]:
+            if not raw:
+                return None
+            try:
+                val = _json.loads(raw)
+                return val if isinstance(val, dict) else None
+            except (ValueError, TypeError):
+                return None
+
+        return cls(
+            id=product.id,
+            name=product.name,
+            category=product.category,
+            category_label=product.category_label or "",
+            spec=product.spec or "",
+            price_range=product.price_range or "",
+            base_price=product.base_price or 0,
+            diameter_options=_parse_list(product.diameter_options_json),
+            thickness_options=_parse_list(product.thickness_options_json),
+            materials=_parse_list(product.materials_json),
+            load_class_range=product.load_class_range or "",
+            option_pricing=_parse_dict(product.option_pricing_json),
+            design_image_url=product.design_image_url or None,
+            model_3d_path=product.model_3d_path or None,
+        )
 
 
 # ---------------------------------------------------------------------------
