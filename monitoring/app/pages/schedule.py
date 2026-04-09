@@ -224,7 +224,10 @@ class SchedulePage(QWidget):
         self._orders_table.setAlternatingRowColors(True)
         self._orders_table.setStyleSheet(
             "QTableWidget { gridline-color: #e5e7eb; font-size: 12px; "
+            "background-color: #ffffff; "
             "selection-background-color: #dbeafe; selection-color: #1e40af; } "
+            "QTableWidget::item { color: #111827; padding: 6px 8px; } "
+            "QTableWidget::item:alternate { background-color: #f9fafb; } "
             "QHeaderView::section { background-color: #f9fafb; color: #374151; "
             "font-weight: 600; padding: 8px; border: none; "
             "border-bottom: 1px solid #e5e7eb; }"
@@ -280,7 +283,10 @@ class SchedulePage(QWidget):
         self._results_table.setAlternatingRowColors(True)
         self._results_table.setStyleSheet(
             "QTableWidget { gridline-color: #e5e7eb; font-size: 12px; "
+            "background-color: #ffffff; "
             "selection-background-color: #fef3c7; selection-color: #92400e; } "
+            "QTableWidget::item { color: #111827; padding: 6px 8px; } "
+            "QTableWidget::item:alternate { background-color: #f9fafb; } "
             "QHeaderView::section { background-color: #f9fafb; color: #374151; "
             "font-weight: 600; padding: 8px; border: none; "
             "border-bottom: 1px solid #e5e7eb; }"
@@ -319,6 +325,13 @@ class SchedulePage(QWidget):
         self._update_kpis()
 
     def _render_orders_table(self) -> None:
+        # 현재 선택된 주문 ID를 미리 저장 (refresh 후 복원용)
+        selected_ids: set[str] = set()
+        for item in self._orders_table.selectedItems():
+            id_cell = self._orders_table.item(item.row(), 0)
+            if id_cell:
+                selected_ids.add(id_cell.text())
+
         self._orders_table.setRowCount(0)
         for idx, order in enumerate(self._orders):
             self._orders_table.insertRow(idx)
@@ -348,6 +361,13 @@ class SchedulePage(QWidget):
             self._orders_table.setItem(idx, 4, status_item)
 
         self._orders_count_lbl.setText(f"총 {len(self._orders)}건")
+
+        # 이전 선택 복원 (refresh 후에도 선택 상태 유지)
+        if selected_ids:
+            for row in range(self._orders_table.rowCount()):
+                id_cell = self._orders_table.item(row, 0)
+                if id_cell and id_cell.text() in selected_ids:
+                    self._orders_table.selectRow(row)
 
     def _update_kpis(self) -> None:
         approved = sum(1 for o in self._orders if o.get("status") == "approved")
