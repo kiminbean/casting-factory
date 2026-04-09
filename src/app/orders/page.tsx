@@ -11,16 +11,13 @@ import {
   User,
   MapPin,
   Phone,
-  CalendarDays,
   Calculator,
   Truck,
   ThumbsUp,
   ThumbsDown,
   ChevronRight,
-  StickyNote,
   Layers,
   ClipboardList,
-  Settings,
   Loader2,
   AlertTriangle,
 } from "lucide-react";
@@ -51,27 +48,6 @@ const STATUS_TABS: StatusTab[] = [
   { key: "shipping_ready", label: "출고", icon: <Truck size={15} /> },
   { key: "completed", label: "완료", icon: <CheckCircle size={15} /> },
 ];
-
-// ────────────────────────────────────────
-// 견적/납기 계산 유틸
-// ────────────────────────────────────────
-
-function calcEstimatedDays(details: OrderDetail[]): number {
-  // 수량 기반 생산 일수 추정: 기본 3일 + 50개당 1일
-  const totalQty = details.reduce((sum, d) => sum + d.quantity, 0);
-  return 3 + Math.ceil(totalQty / 50);
-}
-
-function calcEstimatedDelivery(order: Order, details: OrderDetail[]): string {
-  const days = calcEstimatedDays(details);
-  const base = new Date(order.createdAt);
-  base.setDate(base.getDate() + days);
-  return base.toLocaleDateString("ko-KR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
 
 // ────────────────────────────────────────
 // 주문 카드 컴포넌트
@@ -228,8 +204,6 @@ interface OrderDetailPanelProps {
 
 function OrderDetailPanel({ order, details, onStatusChange, onApproveProduction, actionLoading }: OrderDetailPanelProps) {
   const statusInfo = orderStatusMap[order.status];
-  const estimatedDays = calcEstimatedDays(details);
-  const estimatedDelivery = calcEstimatedDelivery(order, details);
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -362,15 +336,6 @@ function OrderDetailPanel({ order, details, onStatusChange, onApproveProduction,
               </div>
               견적 / 납기 계산
             </h3>
-            {order.status === "pending" && (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
-              >
-                <Settings size={14} />
-                견적/납기 수정
-              </button>
-            )}
           </div>
           <div className="grid grid-cols-2 gap-5">
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
@@ -380,26 +345,6 @@ function OrderDetailPanel({ order, details, onStatusChange, onApproveProduction,
               </p>
               <p className="text-[11px] text-blue-500 mt-1.5">
                 {details.reduce((s, d) => s + d.quantity, 0)}개 제품 기준
-              </p>
-            </div>
-            <div className="bg-amber-50 border border-amber-100 rounded-xl p-5">
-              <p className="text-sm text-amber-600 font-semibold mb-1">
-                확정 생산 기간
-              </p>
-              <p className="text-2xl font-bold text-amber-800">
-                {estimatedDays}일
-              </p>
-              <p className="text-[11px] text-amber-500 mt-1.5">
-                확정 완료: {estimatedDelivery}
-              </p>
-            </div>
-            <div className="bg-green-50 border border-green-100 rounded-xl p-5">
-              <div className="flex items-center gap-1.5 mb-1">
-                <CalendarDays size={13} className="text-green-600" />
-                <p className="text-sm text-green-600 font-semibold">요청 납기</p>
-              </div>
-              <p className="text-base font-semibold text-green-800">
-                {order.requestedDelivery || "-"}
               </p>
             </div>
             <div className="bg-purple-50 border border-purple-100 rounded-xl p-5">
