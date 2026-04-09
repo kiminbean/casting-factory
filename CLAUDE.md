@@ -79,6 +79,8 @@ Grep "TimescaleDB" docs/CONFLUENCE_FACTS.md
 
 ## 자동 동기화 (launchd)
 
+> **⚠️ Confluence READ-ONLY**: `dayelee313.atlassian.net/wiki/spaces/addinedute` (homepage 753829) 하부 페이지는 **사용자 명시 허락 없이 수정/생성/삭제 금지**. 자동 동기화는 GET 요청만 수행하며, `docs/CONFLUENCE_FACTS.md` 를 로컬에서 업데이트할 뿐 Confluence 원본은 건드리지 않는다. 향후 어떤 스크립트·에이전트·MCP 호출도 PUT/POST/DELETE 는 사용자 확인 후에만 허용된다.
+
 - 스크립트: `scripts/sync_confluence_facts.py` (stdlib only)
 - 스케줄: 매일 **09:07** 로컬 시각 (`~/Library/LaunchAgents/com.casting-factory.confluence-sync.plist`)
 - 인증: macOS Keychain (`service=casting-factory-atlassian`, `account=kiminbean@gmail.com`)

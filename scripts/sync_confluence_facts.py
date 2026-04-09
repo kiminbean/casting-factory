@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Confluence → docs/CONFLUENCE_FACTS.md 동기화 스크립트.
 
+⚠️ READ-ONLY 정책:
+    이 스크립트는 Confluence addinedute space (homepage 753829 하부) 의
+    페이지를 **절대 수정/생성/삭제하지 않는다**. GET 요청만 수행한다.
+    사용자 명시 허락 없이 PUT/POST/DELETE 를 추가하는 것은 금지된다.
+
+
 동작 방식:
   1. docs/CONFLUENCE_FACTS.md 를 파싱해 `### X.Y Title (PAGE_ID)` 형태의 섹션 헤더에서
      page ID 목록을 추출한다.
