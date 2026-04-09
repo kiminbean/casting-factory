@@ -8,13 +8,12 @@
 // ────────────────────────────────────────
 
 export type OrderStatus =
-  | "pending"      // 접수
-  | "reviewing"    // 검토 중
-  | "approved"     // 승인
-  | "in_production"// 생산 중
-  | "shipping_ready"// 출하 준비
-  | "completed"    // 완료
-  | "rejected";    // 반려
+  | "pending"        // 접수
+  | "approved"       // 승인
+  | "in_production"  // 생산
+  | "shipping_ready" // 출고
+  | "completed"      // 완료
+  | "rejected";      // 반려
 
 export interface Order {
   id: string;
@@ -31,6 +30,8 @@ export interface Order {
   confirmedDelivery: string;
   createdAt: string;
   updatedAt: string;
+  /** 출고 처리 타임스탬프 — shipping_ready 전환 시 서버가 기록 (2026-04-09 추가) */
+  shippedAt: string;
 }
 
 export interface OrderDetail {

@@ -45,10 +45,10 @@ interface StatusTab {
 
 const STATUS_TABS: StatusTab[] = [
   { key: "all", label: "전체", icon: <Package size={15} /> },
-  { key: "pending", label: "신규 주문", icon: <Clock size={15} /> },
-  { key: "reviewing", label: "검토 중", icon: <Search size={15} /> },
+  { key: "pending", label: "접수", icon: <Clock size={15} /> },
   { key: "approved", label: "승인", icon: <ThumbsUp size={15} /> },
-  { key: "in_production", label: "생산 중", icon: <Factory size={15} /> },
+  { key: "in_production", label: "생산", icon: <Factory size={15} /> },
+  { key: "shipping_ready", label: "출고", icon: <Truck size={15} /> },
   { key: "completed", label: "완료", icon: <CheckCircle size={15} /> },
 ];
 
@@ -127,23 +127,21 @@ function OrderCard({ order, isSelected, onClick }: OrderCardProps) {
 // ────────────────────────────────────────
 
 const ORDER_STATUS_STEPS = [
-  { key: "pending",       label: "접수",   Icon: Clock       },
-  { key: "reviewing",     label: "검토 중", Icon: Search      },
-  { key: "approved",      label: "승인",   Icon: ThumbsUp    },
-  { key: "in_production", label: "생산 중", Icon: Factory     },
-  { key: "completed",     label: "완료",   Icon: CheckCircle },
+  { key: "pending",        label: "접수", Icon: Clock       },
+  { key: "approved",       label: "승인", Icon: ThumbsUp    },
+  { key: "in_production",  label: "생산", Icon: Factory     },
+  { key: "shipping_ready", label: "출고", Icon: Truck       },
+  { key: "completed",      label: "완료", Icon: CheckCircle },
 ] as const;
 
 function getStepState(
   stepKey: string,
   currentStatus: OrderStatus
 ): "completed" | "active" | "future" {
-  const ORDER = ["pending", "reviewing", "approved", "in_production", "shipping_ready", "completed"];
+  const ORDER = ["pending", "approved", "in_production", "shipping_ready", "completed"];
   const currentIdx = ORDER.indexOf(currentStatus);
   const stepIdx = ORDER.indexOf(stepKey);
 
-  if (stepKey === "in_production" && currentStatus === "shipping_ready") return "completed";
-  if (stepKey === "completed" && currentStatus === "shipping_ready") return "active";
   if (stepIdx < currentIdx) return "completed";
   if (stepIdx === currentIdx) return "active";
   return "future";
@@ -364,7 +362,7 @@ function OrderDetailPanel({ order, details, onStatusChange, onApproveProduction,
               </div>
               견적 / 납기 계산
             </h3>
-            {(order.status === "pending" || order.status === "reviewing") && (
+            {order.status === "pending" && (
               <button
                 type="button"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors"
@@ -532,11 +530,12 @@ function OrderDetailPanel({ order, details, onStatusChange, onApproveProduction,
 
       {/* 하단 액션 버튼 */}
       {(order.status === "pending" ||
-        order.status === "reviewing" ||
-        order.status === "approved") && (
+        order.status === "approved" ||
+        order.status === "in_production" ||
+        order.status === "shipping_ready") && (
         <div className="px-6 py-4 border-t border-gray-200 bg-white sticky bottom-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
           <div className="flex gap-3">
-            {(order.status === "pending" || order.status === "reviewing") && (
+            {order.status === "pending" && (
               <>
                 <button
                   type="button"
@@ -568,6 +567,30 @@ function OrderDetailPanel({ order, details, onStatusChange, onApproveProduction,
               >
                 {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Factory size={16} />}
                 생산 승인
+              </button>
+            )}
+            {order.status === "in_production" && (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => onStatusChange(order.id, "shipping_ready")}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-purple-600 text-white rounded-lg font-semibold text-base hover:bg-purple-700 transition-colors shadow-sm disabled:opacity-50"
+                title="생산 완료된 주문을 출고 단계로 전환합니다. 출고 시각이 자동 기록됩니다."
+              >
+                {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <Truck size={16} />}
+                출고 처리
+              </button>
+            )}
+            {order.status === "shipping_ready" && (
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => onStatusChange(order.id, "completed")}
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-emerald-600 text-white rounded-lg font-semibold text-base hover:bg-emerald-700 transition-colors shadow-sm disabled:opacity-50"
+                title="출고가 완료되어 주문을 최종 완료 처리합니다."
+              >
+                {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+                출고 완료
               </button>
             )}
           </div>

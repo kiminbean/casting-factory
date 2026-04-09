@@ -48,6 +48,8 @@ class Order(Base):
         default=lambda: datetime.now(timezone.utc).isoformat(),
         onupdate=lambda: datetime.now(timezone.utc).isoformat(),
     )
+    # 출고 처리 시점 (shipping_ready 또는 completed 전환 시 자동 기록)
+    shipped_at = Column(String, nullable=True, default="")
 
 
 class OrderDetail(Base):

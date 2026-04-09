@@ -62,12 +62,19 @@ async def update_order_status(
     payload: OrderStatusUpdate,
     db: Session = Depends(get_db),
 ):
-    """주문 상태 변경."""
+    """주문 상태 변경.
+
+    상태가 'shipping_ready' (출고) 로 처음 전환될 때 shipped_at 타임스탬프를
+    자동 기록한다. 이미 기록된 경우 유지.
+    """
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+    now_iso = datetime.now(timezone.utc).isoformat()
     order.status = payload.status
-    order.updated_at = datetime.now(timezone.utc).isoformat()
+    order.updated_at = now_iso
+    if payload.status == "shipping_ready" and not order.shipped_at:
+        order.shipped_at = now_iso
     db.commit()
     db.refresh(order)
     return order

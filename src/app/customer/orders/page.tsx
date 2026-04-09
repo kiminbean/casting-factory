@@ -27,12 +27,11 @@ import type { Order, OrderDetail, OrderStatus } from "@/lib/types";
 import { SmartCastHeader } from "@/components/SmartCastHeader";
 
 // ─────────────────────────────────────────────
-// 6단계 상태 파이프라인 (rejected 제외)
+// 5단계 상태 파이프라인 (rejected 제외)
 // ─────────────────────────────────────────────
 
 const ORDER_STATUS_PIPELINE: OrderStatus[] = [
   "pending",
-  "reviewing",
   "approved",
   "in_production",
   "shipping_ready",
@@ -41,7 +40,6 @@ const ORDER_STATUS_PIPELINE: OrderStatus[] = [
 
 const STATUS_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   pending: ClipboardList,
-  reviewing: Search,
   approved: ShieldCheck,
   in_production: Factory,
   shipping_ready: Truck,

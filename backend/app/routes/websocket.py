@@ -50,7 +50,7 @@ def _get_dashboard_stats() -> dict:
     """DB 조회 후 대시보드 통계 페이로드 생성."""
     db = SessionLocal()
     try:
-        pending_statuses = ["pending", "reviewing", "approved"]
+        pending_statuses = ["pending", "approved"]
         pending_orders = db.query(Order).filter(Order.status.in_(pending_statuses)).count()
 
         equipment_total = db.query(Equipment).count()

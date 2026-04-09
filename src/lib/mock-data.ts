@@ -37,6 +37,7 @@ export const mockOrders: Order[] = [
     confirmedDelivery: "2026-04-12",
     createdAt: "2026-03-25T09:00:00",
     updatedAt: "2026-03-28T14:30:00",
+    shippedAt: "",
   },
   {
     id: "ORD-2026-002",
@@ -52,6 +53,7 @@ export const mockOrders: Order[] = [
     confirmedDelivery: "2026-04-18",
     createdAt: "2026-03-26T10:00:00",
     updatedAt: "2026-03-27T11:00:00",
+    shippedAt: "",
   },
   {
     id: "ORD-2026-003",
@@ -67,6 +69,7 @@ export const mockOrders: Order[] = [
     confirmedDelivery: "",
     createdAt: "2026-03-29T08:30:00",
     updatedAt: "2026-03-29T08:30:00",
+    shippedAt: "",
   },
   {
     id: "ORD-2026-004",
@@ -82,6 +85,7 @@ export const mockOrders: Order[] = [
     confirmedDelivery: "2026-03-27",
     createdAt: "2026-03-15T09:00:00",
     updatedAt: "2026-03-27T16:00:00",
+    shippedAt: "",
   },
   {
     id: "ORD-2026-005",
@@ -92,11 +96,12 @@ export const mockOrders: Order[] = [
     email: "customer5@example.com",
     shippingAddress: "부산광역시 중구 충장대로 206",
     totalAmount: 7000000,
-    status: "reviewing",
+    status: "pending",
     requestedDelivery: "2026-04-25",
     confirmedDelivery: "",
     createdAt: "2026-03-30T07:00:00",
     updatedAt: "2026-03-30T07:00:00",
+    shippedAt: "",
   },
 ];
 

@@ -47,6 +47,7 @@ class OrderResponse(BaseModel):
     confirmed_delivery: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    shipped_at: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

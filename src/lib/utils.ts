@@ -7,10 +7,9 @@ export function cn(...inputs: ClassValue[]) {
 
 export const orderStatusMap: Record<OrderStatus, { label: string; color: string }> = {
   pending: { label: "접수", color: "bg-gray-100 text-gray-800" },
-  reviewing: { label: "검토 중", color: "bg-blue-100 text-blue-800" },
-  approved: { label: "승인됨", color: "bg-green-100 text-green-800" },
-  in_production: { label: "생산 중", color: "bg-yellow-100 text-yellow-800" },
-  shipping_ready: { label: "출하 준비", color: "bg-purple-100 text-purple-800" },
+  approved: { label: "승인", color: "bg-green-100 text-green-800" },
+  in_production: { label: "생산", color: "bg-yellow-100 text-yellow-800" },
+  shipping_ready: { label: "출고", color: "bg-purple-100 text-purple-800" },
   completed: { label: "완료", color: "bg-emerald-100 text-emerald-800" },
   rejected: { label: "반려", color: "bg-red-100 text-red-800" },
 };

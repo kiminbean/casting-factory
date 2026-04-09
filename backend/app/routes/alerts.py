@@ -41,7 +41,7 @@ async def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
 async def get_dashboard_stats(db: Session = Depends(get_db)):
     """대시보드 통계 — 생산 목표 달성률, 가동 로봇, 미처리 주문 등."""
     # 미처리 주문 건수
-    pending_statuses = ["pending", "reviewing", "approved"]
+    pending_statuses = ["pending", "approved"]
     pending_orders = db.query(Order).filter(Order.status.in_(pending_statuses)).count()
 
     # 금일 알람 수 (미확인)
