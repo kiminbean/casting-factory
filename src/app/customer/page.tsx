@@ -133,6 +133,40 @@ const PRODUCTS: Product[] = [
 const LOAD_CLASSES = ["EN124 B125", "EN124 C250", "EN124 D400", "EN124 E600", "EN124 F900"];
 const MATERIALS = ["FC200", "FC250", "GCD450", "GCD500"];
 
+// ─────────────────────────────────────────────
+// 이메일 검증 (Step 4 주문자 정보)
+// ─────────────────────────────────────────────
+// 실용적인 이메일 정규식:
+//   - 로컬 파트: @/공백 제외 1자 이상
+//   - @ 1 개
+//   - 도메인: @/공백/쩜 제외 1자 이상 + "." + 2자 이상 TLD
+//   - 연속 점(..) 금지, 점으로 시작/끝 금지
+// RFC 5322 완벽 호환은 아니지만 99% 실 사용 케이스를 잡는다.
+const EMAIL_REGEX =
+  /^(?!\.)(?!.*\.\.)[^\s@.]+(?:\.[^\s@.]+)*@[^\s@.]+(?:\.[^\s@.]+)*\.[^\s@.]{2,}$/;
+
+/** 이메일 형식이 유효한지 검사 (공백 자동 trim). */
+export function isValidEmail(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return false;
+  if (trimmed.length > 254) return false; // RFC 5321 권장 상한
+  return EMAIL_REGEX.test(trimmed);
+}
+
+/** 사용자 친화적인 이메일 에러 메시지. 빈 값은 "필수" 아닌 "형식" 메시지만 담당. */
+function emailErrorMessage(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null; // 필수 검사와 분리
+  if (!trimmed.includes("@")) return "이메일에 '@' 가 포함되어야 합니다.";
+  const [local, domain] = trimmed.split("@");
+  if (!local) return "'@' 앞에 사용자 이름이 필요합니다.";
+  if (!domain) return "'@' 뒤에 도메인이 필요합니다.";
+  if (!domain.includes(".")) return "도메인에 '.' 이 포함되어야 합니다 (예: gmail.com).";
+  if (trimmed.length > 254) return "이메일이 너무 깁니다 (254자 이하).";
+  if (!EMAIL_REGEX.test(trimmed)) return "올바른 이메일 주소 형식이 아닙니다.";
+  return null;
+}
+
 const POST_PROCESSING_OPTIONS = [
   {
     id: "polish",
@@ -745,11 +779,17 @@ function Step4CustomerInfo({
     { key: "address", label: "배송지 주소", type: "text", placeholder: "서울특별시 강남구 ...", required: true },
   ];
 
-  // 모든 필수 필드가 입력되었는지 확인 (공백만 있는 경우도 비어있는 것으로 취급)
+  // 모든 필수 필드가 입력되었는지 확인 (공백만 있는 경우도 비어있는 것으로 취급).
+  // 이메일은 "입력 완료" 기준에 형식 검증까지 포함한다.
   const allFilled = fields.every((f) => {
     const v = formData[f.key];
-    return typeof v === "string" && v.trim().length > 0;
+    if (typeof v !== "string" || v.trim().length === 0) return false;
+    if (f.key === "email") return isValidEmail(v);
+    return true;
   });
+
+  // 이메일 필드 실시간 형식 에러 (입력 중에 바로 피드백)
+  const liveEmailError = emailErrorMessage(formData.email);
 
   return (
     <div>
@@ -782,26 +822,48 @@ function Step4CustomerInfo({
       </div>
 
       <div className="space-y-4">
-        {fields.map((field) => (
-          <div key={field.key}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {field.label}
-              {field.required && <span className="text-red-500 ml-1">*</span>}
-            </label>
-            <input
-              type={field.type}
-              value={formData[field.key] as string}
-              onChange={(e) => onChange(field.key, e.target.value)}
-              placeholder={field.placeholder}
-              className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                errors[field.key] ? "border-red-400 bg-red-50" : "border-gray-300"
-              }`}
-            />
-            {errors[field.key] && (
-              <p className="mt-1 text-xs text-red-500">{errors[field.key]}</p>
-            )}
-          </div>
-        ))}
+        {fields.map((field) => {
+          // 이메일 필드: 형식 에러는 실시간, 그 외는 validateStep 결과만
+          const fieldError =
+            field.key === "email"
+              ? errors.email ?? liveEmailError ?? null
+              : errors[field.key] ?? null;
+          const showError = Boolean(fieldError);
+
+          return (
+            <div key={field.key}>
+              <label
+                htmlFor={`customer-${field.key}`}
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                {field.label}
+                {field.required && <span className="text-red-500 ml-1">*</span>}
+              </label>
+              <input
+                id={`customer-${field.key}`}
+                type={field.type}
+                value={formData[field.key] as string}
+                onChange={(e) => onChange(field.key, e.target.value)}
+                placeholder={field.placeholder}
+                autoComplete={field.key === "email" ? "email" : undefined}
+                inputMode={field.key === "email" ? "email" : undefined}
+                aria-invalid={showError}
+                aria-describedby={showError ? `customer-${field.key}-error` : undefined}
+                className={`w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  showError ? "border-red-400 bg-red-50" : "border-gray-300"
+                }`}
+              />
+              {showError && (
+                <p
+                  id={`customer-${field.key}-error`}
+                  className="mt-1 text-xs text-red-500"
+                >
+                  {fieldError}
+                </p>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1014,7 +1076,13 @@ export default function CustomerOrderPage() {
       if (!formData.companyName) newErrors.companyName = "회사명을 입력해 주세요.";
       if (!formData.contactPerson) newErrors.contactPerson = "담당자명을 입력해 주세요.";
       if (!formData.phone) newErrors.phone = "연락처를 입력해 주세요.";
-      if (!formData.email) newErrors.email = "이메일을 입력해 주세요.";
+      if (!formData.email) {
+        newErrors.email = "이메일을 입력해 주세요.";
+      } else {
+        // 형식 검증 (실제 발송 가능한 주소인지는 서버/발송 단계에서 추가 확인)
+        const emailErr = emailErrorMessage(formData.email);
+        if (emailErr) newErrors.email = emailErr;
+      }
       if (!formData.address) newErrors.address = "배송지 주소를 입력해 주세요.";
     }
 
@@ -1148,13 +1216,13 @@ export default function CustomerOrderPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // Step 4 (주문자 정보) 의 5개 필수 필드가 모두 채워졌는지.
-  // 모두 입력되어야 "주문 제출" 버튼이 활성화된다.
+  // Step 4 (주문자 정보) 의 5개 필수 필드가 모두 채워지고
+  // 이메일 형식도 유효해야 "주문 제출" 버튼이 활성화된다.
   const isStep4Valid =
     formData.companyName.trim().length > 0 &&
     formData.contactPerson.trim().length > 0 &&
     formData.phone.trim().length > 0 &&
-    formData.email.trim().length > 0 &&
+    isValidEmail(formData.email) &&
     formData.address.trim().length > 0;
 
   // 현재 단계 기준으로 "다음" / "주문 제출" 버튼을 비활성화해야 하는가?
