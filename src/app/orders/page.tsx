@@ -484,22 +484,6 @@ function OrderDetailPanel({ order, details, onStatusChange, onApproveProduction,
                 </p>
               </div>
             </div>
-            {order.notes && (
-              <>
-                <div className="border-t border-gray-100" />
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center shrink-0">
-                    <StickyNote size={14} className="text-gray-500" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">비고</p>
-                    <p className="text-base text-gray-700 bg-gray-50 rounded-lg p-2.5 mt-1 border border-gray-100">
-                      {order.notes}
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         </section>
 

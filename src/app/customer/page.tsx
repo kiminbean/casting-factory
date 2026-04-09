@@ -1087,7 +1087,7 @@ export default function CustomerOrderPage() {
         setSubmitting(true);
         setSubmitError(null);
 
-        // 1) 주문 헤더 저장 (email 을 전용 컬럼으로 보냄, notes 는 비움)
+        // 1) 주문 헤더 저장 (email 을 전용 컬럼으로 저장)
         const orderRes = await fetch("/api/orders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1103,9 +1103,6 @@ export default function CustomerOrderPage() {
             status: "pending",
             requested_delivery: formData.desiredDelivery,
             confirmed_delivery: null,
-            // 비고 입력란 제거 (2026-04-09). email 은 전용 컬럼으로 저장되므로
-            // 기존처럼 notes 에 중복 기록하지 않음.
-            notes: "",
           }),
         });
 

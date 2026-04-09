@@ -48,7 +48,6 @@ class Order(Base):
         default=lambda: datetime.now(timezone.utc).isoformat(),
         onupdate=lambda: datetime.now(timezone.utc).isoformat(),
     )
-    notes = Column(String, nullable=True, default="")
 
 
 class OrderDetail(Base):

@@ -79,7 +79,7 @@ async def update_order(
     payload: OrderUpdate,
     db: Session = Depends(get_db),
 ):
-    """주문 필드 부분 수정 (견적 금액, 확정 납기, 비고)."""
+    """주문 필드 부분 수정 (견적 금액, 확정 납기)."""
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail=f"Order {order_id} not found")

@@ -31,7 +31,6 @@ export interface Order {
   confirmedDelivery: string;
   createdAt: string;
   updatedAt: string;
-  notes: string;
 }
 
 export interface OrderDetail {

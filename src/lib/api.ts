@@ -146,7 +146,7 @@ export function updateOrderStatus(
 
 export function updateOrder(
   orderId: string,
-  data: { total_amount?: number; confirmed_delivery?: string; notes?: string },
+  data: { total_amount?: number; confirmed_delivery?: string },
 ): Promise<Order> {
   return apiPatch<Order>(`/api/orders/${orderId}`, data);
 }

@@ -198,12 +198,6 @@ function OrderDetailPanel({
             <p className="font-medium text-blue-600 mt-0.5">{formatKRW(order.totalAmount)}</p>
           </div>
         </div>
-        {order.notes && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <span className="text-gray-500 text-sm">비고</span>
-            <p className="text-sm text-gray-700 mt-0.5">{order.notes}</p>
-          </div>
-        )}
       </div>
 
       {/* 상태 타임라인 */}

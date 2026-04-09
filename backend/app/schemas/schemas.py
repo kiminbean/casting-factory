@@ -19,7 +19,6 @@ class OrderCreate(BaseModel):
     status: str = "pending"
     requested_delivery: Optional[str] = None
     confirmed_delivery: Optional[str] = None
-    notes: Optional[str] = None
 
 
 class OrderStatusUpdate(BaseModel):
@@ -27,10 +26,9 @@ class OrderStatusUpdate(BaseModel):
 
 
 class OrderUpdate(BaseModel):
-    """주문 필드 부분 수정 (견적 금액, 확정 납기, 비고 등)."""
+    """주문 필드 부분 수정 (견적 금액, 확정 납기)."""
     total_amount: Optional[float] = None
     confirmed_delivery: Optional[str] = None
-    notes: Optional[str] = None
 
 
 class OrderResponse(BaseModel):
@@ -49,7 +47,6 @@ class OrderResponse(BaseModel):
     confirmed_delivery: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-    notes: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
