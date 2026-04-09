@@ -59,3 +59,7 @@ firmware/conveyor_controller/wiring_diagram_image_only.png
 # PyInstaller build outputs
 monitoring/build/
 monitoring/dist/
+
+# Confluence sync (launchd)
+logs/
+docs/.confluence_snapshot.json
