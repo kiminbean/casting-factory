@@ -745,10 +745,41 @@ function Step4CustomerInfo({
     { key: "address", label: "배송지 주소", type: "text", placeholder: "서울특별시 강남구 ...", required: true },
   ];
 
+  // 모든 필수 필드가 입력되었는지 확인 (공백만 있는 경우도 비어있는 것으로 취급)
+  const allFilled = fields.every((f) => {
+    const v = formData[f.key];
+    return typeof v === "string" && v.trim().length > 0;
+  });
+
   return (
     <div>
       <h2 className="text-xl font-bold text-gray-900 mb-2">주문자 정보 입력</h2>
-      <p className="text-sm text-gray-500 mb-6">주문자 정보를 입력해 주세요.</p>
+      <p className="text-sm text-gray-500 mb-4">주문자 정보를 입력해 주세요.</p>
+
+      {/* 필수 입력 안내 배너 — 모든 필드가 입력되어야 "주문 제출" 버튼이 활성화됨 */}
+      <div
+        className={`mb-6 flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${
+          allFilled
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+            : "border-amber-200 bg-amber-50 text-amber-800"
+        }`}
+        role="status"
+      >
+        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+        <p className="leading-relaxed">
+          {allFilled ? (
+            <>
+              주문자 정보 <strong>5가지 항목</strong>이 모두 입력되었습니다. 하단의{" "}
+              <strong>&quot;주문 제출&quot;</strong> 버튼을 눌러 주문을 완료해 주세요.
+            </>
+          ) : (
+            <>
+              <strong>주문자 정보 5가지 항목(회사명·담당자명·연락처·이메일·배송지 주소)</strong>
+              을 모두 입력해야 <strong>&quot;주문 제출&quot;</strong> 버튼이 활성화됩니다.
+            </>
+          )}
+        </p>
+      </div>
 
       <div className="space-y-4">
         {fields.map((field) => (
@@ -1117,6 +1148,18 @@ export default function CustomerOrderPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  // Step 4 (주문자 정보) 의 5개 필수 필드가 모두 채워졌는지.
+  // 모두 입력되어야 "주문 제출" 버튼이 활성화된다.
+  const isStep4Valid =
+    formData.companyName.trim().length > 0 &&
+    formData.contactPerson.trim().length > 0 &&
+    formData.phone.trim().length > 0 &&
+    formData.email.trim().length > 0 &&
+    formData.address.trim().length > 0;
+
+  // 현재 단계 기준으로 "다음" / "주문 제출" 버튼을 비활성화해야 하는가?
+  const nextDisabled = submitting || (step === 4 && !isStep4Valid);
+
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
       <SmartCastHeader variant="card" />
@@ -1198,10 +1241,15 @@ export default function CustomerOrderPage() {
 
               <button
                 onClick={handleNext}
-                disabled={submitting}
+                disabled={nextDisabled}
+                title={
+                  step === 4 && !isStep4Valid
+                    ? "주문자 정보 5가지 항목(회사명·담당자명·연락처·이메일·배송지 주소)을 모두 입력해 주세요."
+                    : undefined
+                }
                 className={`inline-flex items-center gap-2 font-medium px-6 py-2.5 rounded-lg transition-all shadow-sm ${
-                  submitting
-                    ? "bg-blue-400 text-white cursor-not-allowed"
+                  nextDisabled
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                     : "bg-blue-600 hover:bg-blue-700 text-white hover:shadow-md"
                 }`}
               >
