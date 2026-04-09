@@ -8,12 +8,13 @@
 // ────────────────────────────────────────
 
 export type OrderStatus =
-  | "pending"        // 접수
-  | "approved"       // 승인
-  | "in_production"  // 생산
-  | "shipping_ready" // 출고
-  | "completed"      // 완료
-  | "rejected";      // 반려
+  | "pending"              // 접수
+  | "approved"             // 승인
+  | "in_production"        // 생산 (공정 진행 중)
+  | "production_completed" // 생산 완료 (DB 에서만 전환, PyQt5 생산 시스템이 기록)
+  | "shipping_ready"       // 출고 (출고 처리 완료, 배송 대기)
+  | "completed"            // 완료 (고객 수령 완료)
+  | "rejected";            // 반려
 
 export interface Order {
   id: string;
