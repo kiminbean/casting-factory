@@ -840,7 +840,7 @@ export default function ProductionPage() {
                 <th className="text-right py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">냉각률 (%)</th>
                 <th className="text-right py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">진행률</th>
                 <th className="text-left py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider">시작 시간</th>
-                <th className="text-left py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider rounded-tr-lg">예상 완료</th>
+                <th className="text-left py-2.5 px-3 font-semibold text-gray-600 uppercase tracking-wider rounded-tr-lg">확정 완료</th>
               </tr>
             </thead>
             <tbody>

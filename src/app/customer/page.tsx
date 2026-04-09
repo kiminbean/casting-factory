@@ -680,11 +680,11 @@ function Step3QuoteReview({
           </div>
         </div>
 
-        {/* 예상 견적 */}
+        {/* 확정 견적 */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
             <FileText className="w-4 h-4 text-blue-600" />
-            예상 견적
+            확정 견적
           </h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between text-gray-600">
@@ -706,27 +706,18 @@ function Step3QuoteReview({
               <span>{formData.quantity.toLocaleString()}개</span>
             </div>
             <div className="flex justify-between text-lg font-bold text-gray-900 border-t border-gray-200 pt-3 mt-2">
-              <span>예상 합계</span>
+              <span>확정 합계</span>
               <span className="text-blue-600">{formatCurrency(totalPrice)}</span>
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-gray-100">
             <div className="flex justify-between text-sm text-gray-600">
-              <span>예상 납기</span>
+              <span>확정 납기</span>
               <span className="font-medium">주문 확정 후 약 2-3주</span>
             </div>
           </div>
         </div>
 
-        {/* 안내 */}
-        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-          <div className="w-5 h-5 rounded-full bg-amber-400 flex items-center justify-center shrink-0 mt-0.5">
-            <span className="text-white text-xs font-bold">!</span>
-          </div>
-          <p className="text-sm text-amber-800">
-            최종 견적은 관리자 검토 후 확정됩니다. 실제 견적은 위 금액과 다를 수 있습니다.
-          </p>
-        </div>
       </div>
     </div>
   );
@@ -936,9 +927,9 @@ function Step5OrderComplete({
             <span className="font-medium text-gray-900">{formData.desiredDelivery}</span>
           </div>
 
-          {/* 예상 금액 */}
+          {/* 확정 금액 */}
           <div className="flex justify-between border-t border-gray-100 pt-2.5">
-            <span className="text-gray-500">예상 금액</span>
+            <span className="text-gray-500">확정 금액</span>
             <span className="font-bold text-blue-600">{formatCurrency(totalPrice)}</span>
           </div>
 

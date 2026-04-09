@@ -194,7 +194,7 @@ function OrderDetailPanel({
             <p className="font-medium text-gray-900 mt-0.5">{order.shippingAddress || "-"}</p>
           </div>
           <div>
-            <span className="text-gray-500">예상 금액</span>
+            <span className="text-gray-500">확정 금액</span>
             <p className="font-medium text-blue-600 mt-0.5">{formatKRW(order.totalAmount)}</p>
           </div>
         </div>
@@ -488,7 +488,7 @@ function CustomerOrdersInner() {
                     <span>{order.customerName}</span>
                     <span>{formatDate(order.createdAt)}</span>
                     <span className="ml-auto font-medium text-gray-700">
-                      예상 {formatKRW(order.totalAmount)}
+                      확정 {formatKRW(order.totalAmount)}
                     </span>
                   </div>
                   {/* 미니 타임라인 */}

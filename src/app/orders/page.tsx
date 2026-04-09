@@ -386,13 +386,13 @@ function OrderDetailPanel({ order, details, onStatusChange, onApproveProduction,
             </div>
             <div className="bg-amber-50 border border-amber-100 rounded-xl p-5">
               <p className="text-sm text-amber-600 font-semibold mb-1">
-                예상 생산 기간
+                확정 생산 기간
               </p>
               <p className="text-2xl font-bold text-amber-800">
                 {estimatedDays}일
               </p>
               <p className="text-[11px] text-amber-500 mt-1.5">
-                예상 완료: {estimatedDelivery}
+                확정 완료: {estimatedDelivery}
               </p>
             </div>
             <div className="bg-green-50 border border-green-100 rounded-xl p-5">
@@ -546,15 +546,6 @@ function OrderDetailPanel({ order, details, onStatusChange, onApproveProduction,
                 >
                   {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <ThumbsUp size={16} />}
                   승인
-                </button>
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => onStatusChange(order.id, "reviewing")}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-amber-500 text-white rounded-lg font-semibold text-base hover:bg-amber-600 transition-colors shadow-sm disabled:opacity-50"
-                >
-                  {actionLoading ? <Loader2 size={16} className="animate-spin" /> : <ClipboardList size={16} />}
-                  수정 요청
                 </button>
                 <button
                   type="button"
