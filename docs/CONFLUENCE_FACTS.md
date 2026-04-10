@@ -2,7 +2,7 @@
 
 > **addinedute(addinedu_team_2)** space 주요 설계/기술 문서의 팩트 체크 정리본
 > 원본 페이지 변경 시 이 파일을 업데이트해야 함
-> **마지막 업데이트**: 2026-04-08 (Atlassian 검색 장애 우회: `fetchAtlassian` + ARI 포맷 직접 호출로 22개 페이지 전량 수집 완료)
+> **마지막 업데이트**: 2026-04-10 (cron sync: 4건)
 > **READ-ONLY**: 이 문서는 로컬 참조용이며 Confluence 원본은 수정하지 않음
 
 ## 사용 원칙
@@ -60,76 +60,592 @@
 
 Root page: **3145739** (`01_Project_Design`)
 
-### 1.1 System Architecture (3375131)
+### System Architecture (3375131)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/3375131
-**최종 수정**: v26 (2026-03-26 초안, 이후 V1~V4 진화)
+**최종 수정**: v33 (2026-04-10 sync)
 
-#### 핵심 팩트 — 4버전 진화
+# SA 설계 방법 
+System architecture (기능 명세서)에서 정의한 스펙 구현을 위해 HW/SW system level 설계해야한다. 
+<SA 작업 전 선행 조건>
 
-| 버전 | 구조 | 핵심 변경 |
-|---|---|---|
-| **V1** | Interface → Decision → Execution → Equipment (4-layer) | 초기 개념 (GUI / Main Server / FMS / 실제 장비) |
-| **V2** | Admin/Customer PC 분리, Control Server + AI Server + Cloud Server + HW/Arm/AMR Controller | PC와 컨트롤러 물리 분리 |
-| **V3** | Interface Service 레이어 추가 | UI 바꿔도 backend 무영향 (decoupling) |
-| **V4** | Interface Service ↔ DB Server 단방향 연결 (read-only) | 단순 조회는 DB direct read, 해석 필요 조회만 Control Service 경유. **Factory PC(PyQt5)** vs **Admin/Customer PC(Next.js/React)** 분리 |
+- 
+GUI 설계 → 동작 시나리오 구성  
 
-#### V4 최종 아키텍처 규칙
-- **Interface Service → DB read-only direct**: 단순 조회 (주문 목록, 적재 이력, 알람 이력)
-- **Interface Service → Control Service**: 해석 필요 (이송 가능 여부, 공정 승인, 라우팅, 작업 추천)
-- **Factory PC**: PyQt5 기반 관제 모니터링
-- **Admin PC / Customer PC**: 웹 (Next.js + React)
-- **GUI는 DB 직접 저장 금지**: Control Server 경유 (UI/DB 디커플링)
+- 
+Interface layer 설계: 컴포넌트 간 인터페이스를 계층적으로 정리한 구조
 
-#### 4-Layer 책임 분리 (V1 모델, 여전히 유효)
-- **Interface Layer (GUI)**: 입력창 + 모니터링 화면. 검사 요청, 발주, 컨베이어 제어, 로봇 상태, 모니터링
-- **Control Layer (Main Server)**: 검증 → 비즈니스 로직 → DB 저장 → AI 호출 → FMS 명령 생성. "중앙 두뇌"
-- **Execution Layer (FMS)**: 로봇 작업 분배, 충돌 방지, 경로 계획, 상태 수집
-- **Equipment Layer**: Conveyor, Laser (TOF), Camera, Robot Arm, AMR
+  - 
+들어가야하는 정보  
 
-#### 코드베이스 교차검증
-- ✅ V4 분리 구조와 일치: `backend/` (Control), `src/` (Next.js Admin/Customer), `monitoring/` (PyQt5 Factory PC), 향후 FMS는 `casting_factory_fleet` 별도 레포 계획
-- ✅ Interface Layer 개념 ↔ `backend/app/routes/` 구조 (REST API)
-- ⚠️ **Open-RMF 미사용**: Confluence는 FMS 개념만 언급, 실제 구현은 자체 스케줄러 (`backend/app/routes/schedule.py`)
+    - 
+누가 누구와 통신하는지 
 
----
+    - 
+데이터 구조
 
-### 1.2 Detailed Design (6651919)
+    - 
+타이밍: 언제 보내고 응답하는지 
+
+# SA 설계 예시 
+
+## HW 예시 
+
+### Interface (GUI)
+관리자나 일반 사용자가 시스템에 요청을 보내거나 현재 상태를 확인하는 화면이다.
+예를 들어 GUI에서는 다음과 같은 작업을 할 수 있다.
+
+- 
+검사 시작 요청
+
+- 
+제품 발주 요청
+
+- 
+conveyor belt 작동 / 정지 요청
+
+- 
+로봇 상태 확인
+
+- 
+현재 공정 상태 모니터링
+즉, GUI는 **입력창이자 모니터링 화면**이다.
+
+#### 왜 GUI가 DB에 직접 저장하지 않는가.
+GUI가 DB에 바로 저장하면 DB 구조가 바뀔 때 UI도 함께 수정되어야 한다.
+반면, Main Server를 중간에 두면 GUI는 단순히 요청만 보내면 되고, 실제 저장 형식은 Main Server가 처리하므로 **UI와 DB를 분리**할 수 있다.
+예시 요청: <GUI → Main Server>
+<간단한 frontend 예시>
+
+### Main Server  (Decision Layer)
+Main Server는 시스템의 **중앙 관리자** 역할을 한다.
+단순히 데이터를 저장하는 서버가 아니라, 요청을 받아서 **판단하고 연결하는 계층**이다.
+주요 역할은 다음과 같다.
+
+- 
+UI 요청 받기
+
+- 
+입력 검증 / 권한 검증
+
+- 
+DB 저장
+
+- 
+AI 서비스 호출
+
+- 
+FMS에 작업 전달
+
+- 
+결과를 다시 UI로 전달
+
+- 
+전체 상태를 통합 관리
+<추천 폴더 구조>
+<Main server → FMS 명령 예시> 
+
+### FMS (Execution Layer)
+FMS는 **실행 매니저** 역할을 한다.
+Main Server가 “무엇을 할지” 결정했다면, FMS는 그것을 실제 로봇이 수행할 수 있는 방식으로 바꿔서 실행한다.
+주요 역할은 다음과 같다.
+
+- 
+로봇에게 작업 분배
+
+- 
+작업 순서 관리
+
+- 
+여러 장비 간 충돌 방지
+
+- 
+AMR / Robot Arm 제어
+
+- 
+경로 계획 및 실행
+
+- 
+장비 상태 수집
+즉, Main Server가 “pick and place 하라”고 하면, FMS는
+“어느 로봇이 할지, 어느 경로로 갈지, 지금 가능한지”를 판단한다.
+
+### AI Server 
+AI Server는 카메라나 센서에서 들어온 데이터를 분석하는 역할을 한다.
+예를 들어:
+
+- 
+제품 검출
+
+- 
+segmentation
+
+- 
+defect detection
+
+- 
+객체 위치 추정
+
+- 
+정상 / 불량 판별
+즉, Main Server가 “이 제품 상태를 분석해줘”라고 요청하면,
+AI Server가 분석 결과를 반환한다.
+<Main Server → AI Server>
+<AI Server → Main Server> 
+
+### DB Cloud  
+DB는 시스템의 상태와 이력을 저장하는 저장소 역할을 한다.
+예를 들어 저장하는 정보는 다음과 같다.
+
+- 
+작업 요청 정보
+
+- 
+제품 정보
+
+- 
+생산 조건
+
+- 
+장비 상태 로그
+
+- 
+AI 분석 결과
+
+- 
+작업 완료 / 실패 이력
+즉, DB는 판단을 하는 곳이 아니라 **기록과 조회를 담당하는 저장소**다.
+
+### Equipment 
+Equipment Layer는 실제로 물리적인 작업을 수행하는 장비들이 있는 계층이다.
+이 구조에서는 다음 장비들이 포함된다.
+
+- 
+Conveyor Belt
+
+- 
+Laser (Depth Detector)
+
+- 
+Camera
+
+- 
+Robot Arm
+
+- 
+AMR
+
+#### Conveyor Belt
+
+- 
+제품을 이동시키는 장치
+
+- 
+Arduino 기반 Conveyor Controller가 제어 가능
+
+- 
+시작 / 정지 / 상태 보고 가능
+
+#### Laser
+
+- 
+거리 또는 깊이 정보 측정
+
+- 
+conveyor belt 위 제품 유무나 높이 감지 가능
+
+#### Camera
+
+- 
+이미지 획득
+
+- 
+AI Server로 이미지 전송
+
+#### Robot Arm
+
+- 
+pick / place 작업 수행
+
+- 
+특정 좌표에서 물체를 집고 놓음
+
+#### AMR
+
+- 
+물체나 장비를 다른 위치로 운반
+
+- 
+Nav2 기반 자율주행 가능
+
+## V2
+
+### HW Architecture
+
+- 
+**Admin PC**:** **관리자용 PC
+
+- 
+**Customer PC**: 고객 PC
+
+- 
+**Control Server**: 관제 시스템을 구동시키는 서버
+
+- 
+**AI Server**: AI 모델을 작동시키는 서버.
+
+- 
+**Cloud Server**: DB 사용을 위한 서버. 시스템의 상태, 이력을 저장하는 저장소 역할
+
+- 
+**HW Controller**: 컨베이어, Laser 센서 등을 연결하는 하드웨어
+
+- 
+**Arm Controller**: 로봇팔 작동을 위한 하드웨어
+
+  - 
+주물 제작 과정, 적재/출고 과정에서 사용하는 기능이 다르기 때문에 나눔
+
+- 
+**AMR Controller**: AMR 작동을 위한 하드웨어
+
+### SW Architecture
+
+- 
+**Management Service**
+
+  - 
+관리자에게 공정 관리를 위한 서비스를 제공한다. 
+
+  - 
+Control Server의 Control Service와 연결된다.
+
+  - 
+관리자 / 고객을 구분하기 위해 유저 인증 기능 필요
+
+- 
+**Ordering Service**
+
+  - 
+고객에게 주물 발주를 위한 서비스를 제공한다.
+
+  - 
+발주 기능을 제외한 서비스에 접근이 불가능 하도록 권한 설정이 필요하다.
+
+  - 
+AI Server, Cloud Server로 접근이 불가해야 함.
+
+- 
+**Control Service(Server)**
+
+  - 
+공정 전체 시스템에 대한 관리자 역할을 한다.
+
+  - 
+HW 제어, AI Service, DB Service 등 전반적인 시스템 서비스를 관리한다.
+
+- 
+**Fleet Management System**
+
+  - 
+HW 제어의 실행 부분을 담당한다.
+
+  - 
+Control Server(Server)가 제어 명령을 내리면 하드웨어가 실제로 동작할 수 있도록 실행 명령을 내림
+
+- 
+**AI Service**
+
+  - 
+제품 검출/ segmentation / defect detection / 객체 위치 추정 / 정상, 불량 판별을 수행한다.
+
+  - 
+Control Service(Server)로부터 추론 요청이 들어오면 AI Service는 추론 결과를 응답한다.
+
+- 
+**DB Service**
+
+  - 
+데이터를 기록/조회 하기 위한 서비스
+
+  - 
+반드시 Control Service(Server)를 통해 데이터를 핸들링 한다.
+
+- 
+**Control Service(HW)**
+
+  - 
+컨베이어, Laser 센서 등을 연결하는 서비스
+
+- 
+**Arm Control Service**
+
+  - 
+로봇팔 작동을 위한 서비스
+
+- 
+**AMR Control Service**
+
+  - 
+AMR 작동을 위한 서비스
+
+## V3
+
+### HW 
+
+- 
+이전 피드백: 화살표는 뭉쳐지면 안된다. 
+
+- 
+Arm Controller 쪽 화살표 추가 
+
+- 
+Cloud Server X → DB Server 하고 cloud 에서 쓸거면 따로 표시 
+
+### SW 
+
+- 
+피드백 
+
+  - 
+점선은 다른 거 의미해서, 실선으로 교체 
+
+  - 
+FMS랑 control service가 따로 있으면, DB랑 AI가 control을 무조건 거쳐서 FMS로 가니까 비효율적이다. 
+
+    - 
+차라리 Interface layer를 넣어서, ui갈아끼우면 유지보수 잘 할 수 있도록 해라
+
+- 
+Interface Layer (Interface Service)
+
+  - 
+역할
+
+    - 
+UI (Admin / Customer)와 시스템 사이의 **입출력 창구**
+
+    - 
+요청을 **표준 API 형태(JSON 등)**로 변환해서 Control Layer로 전달
+
+    - 
+응답도 UI에 맞게 가공해서 전달
+
+  - 
+필요 이유: 
+
+    - 
+UI와 내부 시스템을 **완전히 분리 (Decoupling)**
+
+    - 
+UI 바꿔도 backend 안 바꿔도 됨
+
+    - 
+ex)
+
+      - 
+웹 → 앱 → 태블릿 UI 바뀌어도 **backend 그대로 사용 가능**
+
+      - 
+유지보수 비용 ↓
+
+- 
+ Control Layer (Control Service)
+
+  - 
+역할:
+
+    - 
+전체 시스템의 **중앙 두뇌 (Decision Layer)**
+
+  - 
+하는 일:
+
+    - 
+요청 검증 (권한, 데이터 형식)
+
+    - 
+비즈니스 로직 처리
+
+    - 
+DB 저장
+
+    - 
+AI 호출
+
+    - 
+HW/로봇 제어 명령 생성
+
+    - 
+상태 관리
+
+  - 
+필요 이유: 
+
+    - 
+모든 로직을 한 곳에서 관리 → **시스템 일관성 유지**
+
+    - 
+UI, AI, DB, HW를 **서로 직접 연결하지 않게 막음**
+
+- 
+AI Server (AI Service)
+
+  - 
+역할: AI 모델 실행
+
+    - 
+품질 검사
+
+    - 
+객체 인식 (YOLO, SAM 등)
+
+    - 
+상태 판단
+
+    - 
+Control Server의 요청을 받아 결과 반환
+
+  - 
+필요 이유 
+
+    - 
+AI는 **GPU + 무거운 연산**
+
+    - 
+일반 서버와 분리해야 성능 안정
+
+- 
+DB Server (Cloud)
+
+  - 
+역할: 모든 데이터 저장
+
+    - 
+Control Server가 CRUD 수행
+
+  - 
+필요 이유: 
+
+    - 
+데이터는 **단일 source of truth**로 관리해야 
+
+    - 
+Cloud에 두면:
+
+      - 
+백업
+
+      - 
+확장
+
+      - 
+접근성 ↑
+
+## V4
+
+### SW 
+
+- 
+**V3와 다르게, Interface Service와 DB Server가 ‘단방향’ 연결되어있다.  **
+
+  - 
+이유1: Interface Service는 **read-only**, Control Service를 거쳐야만 하면 비효율적 
+
+  - 
+이유2: Control Service 입장에서도 (작업 순서 결정, HW 명령 등) 이미 바쁜 제어 로직을 맡고 있어 조회 트래픽을 따로 안게 되지 않아도 된다. 
+
+  - 
+예상 문제 상황:
+
+    - 
+direct read가 위험한 경우
+
+      - 
+“현재 작업 가능 여부”처럼 **비즈니스 규칙 해석이 필요한 값**
+
+      - 
+여러 테이블을 조합해서 계산해야 하는 값
+
+      - 
+DB raw state와 실제 시스템 state가 다를 수 있는 값
+
+      - 
+아직 commit 안 된 중간 상태
+이런 건 Interface가 DB만 보고 판단하면 안 되고,
+**Control Service가 계산한 결과**를 보여줘야 해.
+
+  - 
+**결론:  조회를 두 종류로 나눔.** 
+
+    - 
+단순 조회: Interface Service → DB direct read 
+
+      - 
+ex) 주문 목록, 적재 이력, 알람 이력, .. 
+
+    - 
+해석이 필요한 조회: Interface Service → Control Service 
+
+      - 
+ex) 이송 가능 여부, 현재 공정 승인 가능 여부, 라우팅 결정 결과, 작업 추천/최적화 결과 
+
+- 
+Factory PC vs. Admin PC vs. Customer PC 분리 
+
+  - 
+Facotory PC는 PyQT 기반 
+
+  - 
+Admin PC, Cutomer PC: 웹페이지 (Next.js, React)
+
+### HW
+
+## V5
+
+### SW
+**pyqt 관련**
+
+- 
+V3에서는 pyqt에서 monitoring service를 UI와 Server에서 분리하였는데,
+
+- 
+pyqt는 web과 다르게 하나의 프로그램으로 web의 frontend와 backend가 하나의 프로그램으로 실행됨.
+
+  - 
+pyqt는 UI의 역할이 더 강하기 때문에 UI 파트로 이동x
+**Interface service - Control Service 통신 방식 관련**
+
+- 
+기존 통신 방식을 양방향 http에서 Interface service → Control Service tcp로 변경
+
+  - 
+변경 이유: 불필요한 오버헤드를 줄이고 단방향으로만 받기 때문에 http의 복잡한 구조가 필요없다.
+**추가적으로 변경해야하는 사항**
+Jetson(cam) → Control Service에서 Jetson(cam) → AI Server로 변경해야함.
+Jetson 컴포넌트를 하나 추가해서 Main Server에 바로 연결하도록 수정 필요.
+
+1. 
+포토센서가 주물을 확인하는 게 trigger가 되어서
+
+1. 
+비전 노드가 비전 검사 요청을 받으면,
+
+1. 
+카메라가 사진을 찍고, jetson에서 바로 AI Server로 보낸 후에,
+
+1. 
+AI Server에서 Control Service에게 추론 결과만 보내는 구조
+
+### HW
+
+### Detailed Design (6651919)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/6651919
-**최종 수정**: v10 (2026-03-30)
+**최종 수정**: v11 (2026-04-10 sync)
 
-#### Confluence 원문 팩트
-
-**HW SPEC**:
-- RaspberryPi 4
-- RaspberryPi 5
-- ESP32
-- Jetson Orin NX (16GB)
-- Conveyor Belt
-- Web Camera
-- **JetCobot280** ← 오타/오기, 실제는 MyCobot280
-- Pinkypro
-
-**SW Stack**:
-- **Frontend**: React / Next.js
-- **Backend**: FastAPI
-- **DB**: PostgreSQL
-- **Develop Env**: Ubuntu / VSCode / Jupyter
-- **Language**: Python, C++
-- **Model**: YOLO, PatchCore
-- **Robotics**: ROS2 / Nav2
-- **Communication**: Mosquitto (MQTT)
-- **기타**: PyQt5, NumPy, OpenCV
-- **협업**: Confluence, Jira, Slack, GitHub
-
-#### 코드베이스 교차검증
-- ✅ HW 대부분 일치 (RPi 4/5, ESP32, Jetson Orin NX, Pinkypro)
-- ❌ **JetCobot280 → MyCobot280**: `blender/MyCobot280.step/stl`, `.moai/project/structure.md` 모두 MyCobot280 명시
-- ✅ SW Stack 일치: Next.js(16.2.1) + React(19.2.4) + FastAPI + PostgreSQL 16 + TimescaleDB + YOLO + PatchCore + ROS2 Jazzy + Nav2 + Mosquitto MQTT + PyQt5
-- ⚠️ Confluence는 버전 명시 없음 → 코드베이스 버전(Next.js 16.2.1 등)을 정답으로 취급
-
----
+[https://dayelee313.atlassian.net/wiki/spaces/753667/pages/6389808/?draftShareId=37718f45-2634-4a3e-821b-d2a51e5be9c1](https://dayelee313.atlassian.net/wiki/spaces/753667/pages/6389808/?draftShareId=37718f45-2634-4a3e-821b-d2a51e5be9c1)
+[https://dayelee313.atlassian.net/wiki/spaces/753667/pages/6488115/?draftShareId=a01472c4-992c-4548-b921-4241acda15d7](https://dayelee313.atlassian.net/wiki/spaces/753667/pages/6488115/?draftShareId=a01472c4-992c-4548-b921-4241acda15d7)
 
 ### 1.3 v_model (3506182)
 
@@ -594,214 +1110,311 @@ Root page: **3703084** (`04_Implementation`)
 
 ---
 
-### 4.4 DB (5898574)
+### DB (5898574)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/5898574
-**최종 수정**: v10 (2026-03-29)
-**도구**: [dbdiagram.io](https://dbdiagram.io/home) (ERD 작성)
+**최종 수정**: v21 (2026-04-10 sync)
 
-#### Confluence 원문 팩트 — DB 스키마 (16개 테이블)
+# INFO: DB Schema 작성 요령 
+[https://dayelee313.atlassian.net/wiki/spaces/753667/pages/7471353/?draftShareId=06a0aaa7-f832-4ddc-a47e-e03a51e82bb9](https://dayelee313.atlassian.net/wiki/spaces/753667/pages/7471353/?draftShareId=06a0aaa7-f832-4ddc-a47e-e03a51e82bb9)
 
-##### 공통/기준 정보
-1. **company** — 고객사 정보
-   - `company_id (PK, SERIAL)`, `company_name (NN)`, `manager_name`, `manager_phone`, `manager_email`
+# ERD Image 
 
-2. **user_account** — 사용자 정보
-   - `user_id (PK)`, `company_id (FK)`, `user_name (NN)`, `role` (`customer` | `admin` | `operator`), `phone`, `email (Unique)`, `password_hash`
+# 공통 / 기준 정보
+|   |   |
+|---|---|
 
-3. **product** — 표준 제품
-   - `product_id (PK)`, `category_id`, `category_name (Unique)`, `product_name (NN)`, `material_type`, `base_price DECIMAL(12,2)`, `image_url`, `created_at`
+## category 
 
-4. **product_option** — 제품 옵션
-   - `option_id (PK)`, `product_id (FK)`, `option_type` (`diameter` | `thickness` | `material` | `postprocess` | `logo`), `option_name`, `option_value`, `extra_price DECIMAL(12,2)`, `is_active`
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
 
-##### 발주/주문
-5. **customer_order** — 주문서 헤더
-   - `order_id (PK, VARCHAR)`, `company_id (FK)`, `user_id (FK)`, `order_status` (`received` | `reviewing` | `approved` | `in_production` | `ready_to_ship` | `completed` | `rejected`), `total_estimated_price`, `total_confirmed_price`, `requested_due_date`, `confirmed_due_date`, `shipping_address`, `memo`, `created_at`
+| cate_code | VARCHAR | 카테고리 코드 | Primary Key (EX.MH/GT) |
+| cate_name | VARCHAR | 카테고리명 | Unique,Not Null |
 
-##### 생산 관리
-6. **work_order** — 생산 작업지시
-   - `work_order_id (PK)`, `order_item_id (FK)`, `priority_score`, `work_status` (`waiting` | `processing` | `completed` | `failed`), `planned_start_at`, `actual_start_at`, `actual_end_at`
+## product
 
-7. **production_process_log** — 공정 이력
-   - `process_log_id (PK)`, `work_order_id (FK)`, `process_status` (`running` | `completed` | `failed`), `process_type` (`material_input` | `melting` | `molding` | `pouring` | `cooling` | `demolding`), `equipment_id (FK)`, `started_at`, `ended_at`, `result_note`
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+| prod_id | SERIAL | 제품 id | Primary Key |
+| cate_code | VARCHAR | 카테고리 코드 | FK, Not Null (ex.MH) |
+| prod_name | VARCHAR | 제품명 | Not Null |
+| base_price | DECIMAL(12,2) | 기본 단가 |   |
+| img_url | VARCHAR | 기본 이미지 경로 |   |
 
-##### 관제/설비
-8. **equipment** — 설비
-   - `equipment_id (PK)`, `equipment_name`, `equipment_type` (`furnace` | `molding_machine` | `pouring_robot` | `conveyor` | `inspection_device` | `sorter`), `zone_id (FK)`, `status` (`idle` | `running` | `stopped` | `error` | `maintenance`), `installed_at`
+## product_option
+표준 주조 제품별로 조합 가능한 재질과 하중 등급을 저장하는 테이블
 
-9. **equipment_status_history** — 설비 상태 이력
-   - `equipment_status_history_id (PK)`, `equipment_id (FK)`, `previous_status`, `new_status`, `changed_at`, `reason`
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+| prod_option_id | SERIAL | 표준 제품 옵션  ID | Primary Key |
+| prod_id | INTEGER | 연결된 제품 ID | FK, Not Null |
+| material_type | VARCHAR(30) | 재질 옵션 | (ex. 회주철, 덕타일) |
+| load_class | VARCHAR(20) | 하중 등급 옵션 | (ex.A15, D400, F900) |
 
-10. **transport_resource** — 이송 자원 (AMR)
-    - `resource_id (PK)`, `resource_name`, `status` (`idle` | `working` | `charging` | `unavailable`), `battery_level INT (%)`, `current_zone_id (FK)`, `updated_at`
+## 발주 / 주문 관리
+  생산 중 | DONE 생신 완료 |  RDY 출고 준비 |  COMP 완료
 
-11. **notification** — 알림
-    - `notification_id (PK)`, `user_id (FK)`, `notification_type` (`order` | `transport` | `equipment` | `inspection` | `shipment`), `title`, `message`, `is_read BOOLEAN`, `created_at`
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+| ord_id | VARCHAR | 주문 번호 | Primary Key,FK (customer_order 참조) |
+| appr_stat | boolean | 주문 승인 여부 | false 반려  \| true 승인 |
+| step | VARCHAR | 공정 상태 | CHECK ('ING', 'DONE', 'RDY', 'COMP') |
+| updated_at | TIMESTAMP | 상태 변경 일시 | DEFAULT now() |
 
-##### 공정 간 이송
-12. **transport_request** — 이송 요청
-    - `transport_request_id (PK)`, `task_code (Unique)`, `request_type` (`internal_move` | `shipment_move` | `postprocess_move`), `source_zone_id (FK)`, `destination_zone_id (FK)`, `product_id (FK)`, `quantity`, `priority`, `status` (`pending` | `assigned` | `moving_to_source` | `loading` | `moving_to_destination` | `unloading` | `completed` | `failed`), `requested_at`
+## customer_order_product_option(order_detail)
+주문 받은 제품 옵션 관리 테이블
 
-13. **transport_task** — 이송 수행
-    - `transport_task_id (PK)`, `transport_request_id (FK)`, `resource_id (FK)`, `task_status` (`assigned` | `in_progress` | `completed` | `failed`), `started_at`, `ended_at`, `failure_reason`
+- 
+가정 
 
-##### 품질 검사
-14. **inspection_result** — 품질 검사 결과
-    - `inspection_result_id (PK)`, `work_order_id (FK)`, `product_id (FK)`, `result` (`pass` | `fail`), `passed_quantity`, `failed_quantity`, `inspected_at`
+  - 
+UI에서 비고란 제거 
 
-##### 적재/창고
-15. **storage_zone** — 적재 구역
-    - `zone_id (PK)`, `zone_name`, `product_type`, `capacity INT`
+  - 
+고객이 주문한 정보에서 변경 불가능해서, 발주 입력 완료 순간 특히 가격을 포함한 모든 정보가 변동없음 
 
-16. **storage_location** — 적재 위치
-    - `location_id (PK)`, `zone_id (FK)`, `product_id (FK)`, `shelf`, `column_no`, `status` (`empty` | `occupied` | `reserved`), `stored_at`
+  - 
+즉, 하나의 order_id는 하나의 option_id만 가짐 (1:1)
 
-##### 출고
-17. **shipment_order** — 출고 지시서
-    - `shipment_order_id (PK)`, `order_id (FK)`, `quantity`, `shipment_date`, `shipment_status` (`created` | `completed`), `created_at`
+- 
+`customer_order`와 **1:1 관계** 가짐. 따라서  `order_id` 자체를 PK이자 FK로 사용하는 것이 관리하기 좋음
 
-**총 17개 테이블** (Confluence 원문 명시. 상위 주석의 "16개"는 약간의 누락)
+선택된 표준제품명/직경/두께/하중 등급/후처리/로고/문구/재질 옵션/수량/희망납기일/비고/디자인(이미지
+로고 이미지 넣는 ui가 있었나..?
 
-#### 코드베이스 교차검증
-- ✅ 대부분 테이블 구조 일치
-- ✅ order_status 6단계 ↔ Confluence 7단계 (`rejected` 추가)
-- ✅ `transport_resource.status` 4단계 ↔ 코드 `e95724a` 구현
-- ⚠️ Confluence는 "15개 + production_jobs/priority_change_logs (신규)" 라고 했지만 실제 리스트는 17개
-- ⚠️ `production_jobs`, `priority_change_logs` 2개는 SPEC-CTL-001 (commit `0952f86`)에서 `backend/app/models/models.py`에 추가됨
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+| ord_id | VARCHAR | 주문 번호 | Primary Key,FK (customer_order 참조) |
 
----
+| prod_id | INT | 선택한 표준 제품 | FK (product 테이블 참조) |
+| diameter | DECIMAL | 직경 |   |
+| thickness | DECIMAL | 두께 |   |
+| material | VARCHAR(30) | 재질 |   |
+| load | VARCHAR(20) | 하중 등급 |   |
+| logo | VARCHAR | 각인 문구 |   |
+| drawing | VARCHAR | 도면 이미지 경로 |   |
+| qty | INT | 주문 수량 |   |
+| final_price | DECIMAL | 확정 금액 |   |
+| due_date | DATE | 확정납기일 |   |
+| ship_addr | VARCHAR | 배송지 주소 |   |
 
-### 4.5 GUI (6389916)
+## post_process
+후처리 옵션을 관리하는 테이블
+
+- 
+후처리 옵션과 주문서는 N:M 관계
+
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+| post_id | SERIAL | 후처리 ID | Primary Key |
+| post_name | VARCHAR | 후처리 명칭 |   |
+| extra_cost | DECIMAL | 추가 단가 |   |
+
+## order_post_map
+어떤 주문에 어떤 후처리들이 선택되었는지 기록하는 테이블
+
+- 
+`order_id`와 `post_id` 두 개를 묶어서 복합 키(Composite PK)로 사용
+
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+
+| ord_id | VARCHAR | 주문 번호 | PK, FK (order_detail 참조) |
+
+| post_id | INTEGER | 후처리 ID | PK, FK (post_process 참조) |
+
+# 생산 관리
+
+#  
+
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+| equipment_id | SERIAL | 설비 id | Primary Key |
+| equipment_name | VARCHAR | 설비명 |   |
+````````````
+| equipment_type | VARCHAR | 설비 유형 | furnace \| molding_machine \| pouring_robot \| conveyor \| inspection_device \| sorter |
+|   | INT | 소속 구역 id | REF storage_zone(zone_id) 또는 별도 zone 테이블 |
+``````````
+| status | VARCHAR | 현재 상태 | idle \| running \| stopped \| error \| maintenance |
+| installed_at | TIMESTAMP | 설치 일시 |   |
+
+## equipment_status_history
+설비 상태 변경 이력 스키마
+
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+| equipment_status_history_id | SERIAL | 설비 상태 이력 id | Primary Key |
+| equipment_id | INT | 설비 id | REF equipment(equipment_id) |
+|   | VARCHAR | 이전 상태 |   |
+| new_status | VARCHAR | 변경 상태 |   |
+| changed_at | TIMESTAMP | 변경 시각 | Default now() |
+| reason | VARCHAR | 변경 사유 |   |
+
+## transport_resource
+이송 자원 (AMR) 관리 스키마. 
+
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+|   | SERIAL | 이송 자원 id | Primary Key |
+|   | VARCHAR | 자원명 |   |
+````````
+| status | VARCHAR | 현재 상태 | idle \| working \| charging \| unavailable |
+| battery_level | INT | 배터리 잔량(%) |   |
+| current_zone_id | INT | 현재 구역 id | REF storage_zone(zone_id) 또는 별도 zone 테이블 |
+| updated_at | TIMESTAMP | 상태 갱신 시각 | Default now() |
+
+## 
+
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+| notification_id | SERIAL | 알림 id | Primary Key |
+| user_id | INT | 수신 사용자 id | REF user_account(user_id) |
+``````````
+| notification_type | VARCHAR | 알림 유형 | order \| transport \| equipment \| inspection \| shipment |
+| title | VARCHAR | 알림 제목 |   |
+| message | VARCHAR | 알림 내용 |   |
+| is_read | BOOLEAN | 읽음 여부 | Default false |
+| created_at | TIMESTAMP | 생성 시각 | Default now( |
+
+# 공정 간 이송 관리
+| created_at | TIMESTAMP | 생성 시각 | Default now( | Default now( | Unique |
+``````
+| request_type | VARCHAR | 이송 유형 | internal_move \| shipment_move \| postprocess_move |
+| source_zone_id | INT | 출발 구역 id | REF storage_zone(zone_id) |
+| destination_zone_id | INT | 도착 구역 id | REF storage_zone(zone_id) |
+| product_id | INT | 대상 제품 id | REF product(product_id) |
+| quantity | INT | 이송 수량 |   |
+| priority | INT | 우선순위 |   |
+````````````````
+|   | VARCHAR | 현재 이송 상태 | pending \| assigned \| moving_to_source \| loading \| moving_to_destination \| unloading \| completed \| failed |
+| requested_at | TIMESTAMP | 요청 시각 | Default now() |
+
+## transport_task
+이송 수행 관리 테이블. transport_request 테이블에서 받은 요청을 특정 이송 자원에 배정한 실행 단위 
+
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+| transport_task_id | SERIAL | 이송 수행 id | Primary Key |
+| transport_request_id | INT | 이송 요청 id | REF transport_request(transport_request_id) |
+| resource_id | INT | 배정 이송 자원 id | REF transport_resource(resource_id) |
+````````
+| task_status | VARCHAR | 수행 상태 | assigned \| in_progress \| completed \| failed |
+| started_at | TIMESTAMP | 시작 시각 |   |
+| ended_at | TIMESTAMP | 종료 시각 |   |
+| failure_reason | VARCHAR | 실패 사유 |   |
+
+# 품질 검사 / 분류 관리
+| failure_reason | VARCHAR | 실패 사유 |   |   | INT | 양품 수량 |   |
+| failed_quantity | INT | 불량 수량 |   |
+| inspected_at | TIMESTAMP | 검사 시각 | Default now() |
+
+# 적재 / 창고 관리
+| inspected_at | TIMESTAMP | 검사 시각 | Default now() | Default now() | Primary Key |
+| zone_name | VARCHAR | 구역 이름(ex: A구역, B구역) |   |
+| product_type | VARCHAR | 적재 가능한 품목 유형 |   |
+| capacity | INT | 최대 수용량 |   |
+
+## storage_location
+적재 위치 관리 스키마
+물품 위치는 
+
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+| location_id | SERIAL | 적재 위치 id | Primary Key |
+| zone_id | INT | 적재구역 id | REF storage_zone(zone_id) |
+| product_id | INT | 제품 id | REF product(product_id) |
+| shelf | INT | 선반 위치 |   |
+| column_no | INT | 열 위치 |   |
+``````
+| status | VARCHAR | 위치 상태 | empty \| occupied \| reserved |
+| stored_at | TIMESTAMP | 적재된 시간 | Default now() |
+
+## NEW! product_stock 
+현재 재고 수량, 어느 위치에 얼마나 있는지 
+
+****
+****
+****
+****
+| 필드명 | 데이터 타입 | 설명 | 비고 |
+|---|---|---|---|
+|   |   |   |   |
+|   |   |   |   |
+|   |   |   |   |
+|   |   |   |   |
+
+# 출고 관리
+
+### GUI (6389916)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/6389916
-**최종 수정**: v25 (2026-03-30)
+**최종 수정**: v27 (2026-04-10 sync)
 
-#### Confluence 원문 팩트 — 페이지 구성 (8개 라우트)
+### 
+SR기반 수정부분
+[수정부분](https://docs.google.com/spreadsheets/d/1vdl_fzm-zxK0YW1tkRD4mgcHUxKWJKJCHD_buLzKk0Q/edit?usp=sharing)
 
-| # | 라우트 | 페이지명 | 레이아웃 |
-|---|---|---|---|
-| 1 | `/` | 대시보드 | 관리자 (사이드바) |
-| 2 | `/production` | 생산 모니터링 | 관리자 |
-| 3 | `/production/schedule` | 생산 계획 | 관리자 |
-| 4 | `/orders` | 주문 관리 | 관리자 |
-| 5 | `/quality` | 품질 검사 | 관리자 |
-| 6 | `/logistics` | 물류/이송 | 관리자 |
-| 7 | `/customer` | 고객 발주 (5단계 폼) | 독립 |
-| 8 | `/customer/orders` | 고객 주문 조회 | 독립 |
+# 데이터/상태 정의 리스트
 
-#### 사이드바 메뉴
-대시보드 / 생산 모니터링 / 생산 계획 / 주문 관리 / 품질 검사 / 물류/이송
+- 
+SR내용+ GUI내용 통합 버전
 
-#### 대시보드 KPI 4개
-1. 생산 목표 달성률 (게이지) — 예: 47%
-2. 실시간 가동 로봇 (로봇 아이콘) — 예: 1대
-3. 미처리 주문 (카트) — 예: 2건
-4. 금일 발생 알람 (종) — 예: 2건
+## 데이터 모델 (15개 테이블)-GUI기반(참고)
 
-#### 대시보드 3D 공장 맵 탭 4개
-- 3D 공장 / 인터렉티브 맵 / 공정 레이아웃 / 3D 실시간
-
-#### 공정 흐름 5단계
-원재료 투입/용해 → 조형 → 주탕 → 냉각/탈형 → 후처리/검사
-
-#### 실시간 수치 데이터 (생산 모니터링)
-| 항목 | 상세 |
-|---|---|
-| 용해로 온도 | 라인 차트, 현재 **1420°C**, 목표 **1450°C**, 가열 출력 **92%** |
-| 조형/주탕 데이터 | 제품: 맨홀 뚜껑 **KS D-600** (`MLD-001`) |
-| 성형 압력 | 85 bar |
-| 주입 각도 | 45° |
-| 주물 온도 | 1400°C |
-| 냉각 진행률 | 80%, 목표 25°C |
-| 시간별 생산량 | 불량 61개, 생산량 1412개 |
-
-#### 설비 ID 예시 (로그 테이블)
-- `FRN-001`: 용해로 #1
-- `MLD-001`: 주체 제작 #1
-
-#### AMR 플릿 (3대)
-- AMR #1: 가동 중, 가동률 **78%**
-- AMR #2: 유휴
-- AMR #3: 충전 중, 배터리 **15%**
-
-#### 창고 랙 (6×4 = 24 슬롯)
-- 비어있음: 9개
-- 점유: 12개
-- 예약: 2개
-- 사용불가: 1개
-
-#### 검사 기준 (품질 검사 페이지)
-- **KS D-600**: 외경 600mm / 두께 50mm / 허용 오차 **±0.5mm**
-- **KS D-450**: 외경 450mm / 두께 40mm / 허용 오차 **±0.4mm**
-
-#### TOP 3 불량 유형
-1. 표면 균열 (25%)
-2. 기포 불량 (25%)
-3. 수축 결함 (16.7%)
-
-#### 생산 계획 — 우선순위 계산 엔진 (7요소, 100점 만점)
-
-| 요소 | 배점 | 산출 방식 |
-|---|---|---|
-| 납기일 긴급도 | **25점** | D-day (3일 이내=25, 7일=20, 14일=15, 30일=10) |
-| 착수 가능 여부 | **20점** | 공정 idle + 용해로/조형기/AMR 가용성 |
-| 주문 체류 시간 | **15점** | 승인 후 경과일 |
-| 지연 위험도 | **15점** | 예상완료일 vs 납기일 마진 |
-| 고객 중요도 | **10점** | 주문 금액 상위 20% 판별 |
-| 수량 효율 | **10점** | 소량 우선 |
-| 세팅 변경 비용 | **5점** | 직전 작업 제품 연속 시 보너스 |
-
-#### 백엔드 API 전체 목록 (27개 + WebSocket)
-
-| Method | Endpoint |
-|---|---|
-| GET | `/api/dashboard/stats` |
-| GET/POST | `/api/orders` |
-| PATCH | `/api/orders/{id}/status` |
-| PATCH | `/api/orders/{id}` |
-| GET/POST | `/api/orders/{id}/details` |
-| GET | `/api/products` |
-| GET/PATCH | `/api/production/stages`, `/api/production/stages/{id}` |
-| GET | `/api/production/metrics` |
-| GET | `/api/production/equipment` |
-| POST | `/api/production/schedule/calculate` |
-| POST | `/api/production/schedule/start` |
-| GET | `/api/production/schedule/jobs` |
-| POST/GET | `/api/production/schedule/priority-log`, `/api/production/schedule/priority-log/{id}` |
-| GET | `/api/quality/inspections` |
-| GET | `/api/quality/stats` |
-| GET | `/api/quality/standards` |
-| GET | `/api/quality/sorter-logs` |
-| GET/POST | `/api/logistics/tasks` |
-| PATCH | `/api/logistics/tasks/{id}/status` |
-| GET | `/api/logistics/warehouse` |
-| GET | `/api/logistics/outbound-orders` |
-| PATCH | `/api/logistics/outbound-orders/{id}/complete` |
-| GET | `/api/alerts` |
-| WS | `ws://localhost:8000/ws/dashboard` (5초 주기) |
-
-#### 주문 상태 전이
-접수 → 검토 → 승인 → 생산 중 → 출하 준비 → 완료 (또는 반려)
-
-#### Confluence 명시 기술 스택
-- **GitHub**: [kiminbean/casting-factory](https://github.com/kiminbean/casting-factory)
-- **Tech**: Next.js 16 + TypeScript + Tailwind CSS + FastAPI + **SQLite** + Three.js
-- **종합 모니터링**: http://192.168.0.16:3000
-- **고객 주문**: http://192.168.0.16:3000/customer
-
-#### PyQt5 GUI (관제 대시보드)
-- Factory PC용 별도 GUI
-
-#### 코드베이스 교차검증
-- ✅ **8개 라우트 완전 일치** (`src/app/` 구조)
-- ✅ **27개 API 엔드포인트 완전 일치** (`backend/app/routes/`)
-- ✅ `schedule.py` 7요소 계산 엔진 일치
-- ✅ 설비 ID (FRN-001, MLD-001) 일치
-- ❌ **SQLite → PostgreSQL 16 + TimescaleDB** (실제 코드베이스는 PostgreSQL로 마이그레이션 완료/진행 중)
-- ❌ **Next.js 16 → Next.js 16.2.1 + React 19.2.4** (구체 버전 불일치)
-
----
+## GUI 페이지 리스트
 
 ### 4.6 SmartCast Robotics GitHub 폴더 구조 초안 (20217883)
 
