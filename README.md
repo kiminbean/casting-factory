@@ -25,6 +25,8 @@ cd casting-factory
 ### 2. 프론트엔드 설치 및 실행
 
 ```bash
+# 프로젝트 루트 디렉터리에서 실행 (casting-factory/)
+cd casting-factory
 npm install
 
 # .env.local 생성 (관리자 비밀번호)
@@ -36,10 +38,11 @@ npm run dev
 
 프론트엔드: http://localhost:3000
 
-### 3. 백엔드 설치 및 실행
+### 3. 백엔드 설치 및 실행 (별도 터미널)
 
 ```bash
-cd backend
+# 프로젝트 루트에서 backend/ 디렉터리로 이동
+cd casting-factory/backend
 python3 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt

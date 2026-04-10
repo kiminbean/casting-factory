@@ -53,7 +53,8 @@ cd casting-factory
 ## Step 3: 프론트엔드 설치
 
 ```bash
-# Node.js 의존성 설치
+# 프로젝트 루트 디렉터리에서 실행 (casting-factory/)
+cd casting-factory
 npm install
 ```
 
@@ -89,10 +90,11 @@ LAN 에서 다른 기기로 접근하려면 `http://<내IP>:3000` 으로 접속 
 
 ---
 
-## Step 4: 백엔드 설치
+## Step 4: 백엔드 설치 (별도 터미널)
 
 ```bash
-cd backend
+# 프로젝트 루트에서 backend/ 디렉터리로 이동
+cd casting-factory/backend
 
 # Python 가상환경 생성 및 활성화
 python3 -m venv venv
