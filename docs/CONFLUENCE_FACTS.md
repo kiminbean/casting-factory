@@ -2,7 +2,7 @@
 
 > **addinedute(addinedu_team_2)** space 주요 설계/기술 문서의 팩트 체크 정리본
 > 원본 페이지 변경 시 이 파일을 업데이트해야 함
-> **마지막 업데이트**: 2026-04-10 (cron sync: 4건)
+> **마지막 업데이트**: 2026-04-11 (cron sync: 2건)
 > **READ-ONLY**: 이 문서는 로컬 참조용이며 Confluence 원본은 수정하지 않음
 
 ## 사용 원칙
@@ -63,7 +63,7 @@ Root page: **3145739** (`01_Project_Design`)
 ### System Architecture (3375131)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/3375131
-**최종 수정**: v33 (2026-04-10 sync)
+**최종 수정**: v38 (2026-04-11 sync)
 
 # SA 설계 방법 
 System architecture (기능 명세서)에서 정의한 스펙 구현을 위해 HW/SW system level 설계해야한다. 
@@ -622,20 +622,48 @@ pyqt는 UI의 역할이 더 강하기 때문에 UI 파트로 이동x
   - 
 변경 이유: 불필요한 오버헤드를 줄이고 단방향으로만 받기 때문에 http의 복잡한 구조가 필요없다.
 **추가적으로 변경해야하는 사항**
-Jetson(cam) → Control Service에서 Jetson(cam) → AI Server로 변경해야함.
-Jetson 컴포넌트를 하나 추가해서 Main Server에 바로 연결하도록 수정 필요.
 
 1. 
-포토센서가 주물을 확인하는 게 trigger가 되어서
+**Jetson(cam) → Control Service → AI Server로 변경해야함.**
+
+  1. 
+포토센서가 주물을 확인하는 게 trigger가 되어서 카메라가 사진을 찍음.
+
+  1. 
+이미지를 Control Service로 보냄
+
+  1. 
+Control Service는 AI Service에 이미지와 함께 추론 요청을 보냄
+
+  1. 
+AI Service는 추론 결과를 Control Server로 보냄
 
 1. 
-비전 노드가 비전 검사 요청을 받으면,
+**HW Controller의 통신을 ROS2 → MQTT로 변경**
 
 1. 
-카메라가 사진을 찍고, jetson에서 바로 AI Server로 보낸 후에,
+**HW Controller의 Control Service 이름 변경**
+
+  1. 
+Main Server의 Control Service와 네이밍 겹침
 
 1. 
-AI Server에서 Control Service에게 추론 결과만 보내는 구조
+**Arm Control Service 이름 변경**
+
+  1. 
+Main Server의 Control Service와 네이밍 겹침
+
+1. 
+**AMR Control Service 이름 변경**
+
+  1. 
+Main Server의 Control Service와 네이밍 겹침
+
+### HW
+
+## V6
+
+### SW
 
 ### HW
 
@@ -1416,233 +1444,198 @@ SR내용+ GUI내용 통합 버전
 
 ## GUI 페이지 리스트
 
-### 4.6 SmartCast Robotics GitHub 폴더 구조 초안 (20217883)
+### SmartCast Robotics GitHub 폴더 구조 초안 (20217883)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/20217883
-**최종 수정**: v3 (2026-04-08)
+**최종 수정**: v16 (2026-04-11 sync)
 
-#### Confluence 원문 팩트 — 폴더 구조
+# SmartCast Robotics GitHub 폴더 구조 초안
 
-```
-SmartCast_Robotics/
-├── README.md
-├── .gitignore
-├── LICENSE
-├── docs/
-│   ├── overview/           # project_overview, system_architecture, team_roles
-│   ├── requirements/       # system/functional/nonfunctional_requirements
-│   ├── db/                 # erd.dbml, erd_relationships, schema_notes
-│   ├── api/                # api_spec, message_flow
-│   ├── uiux/               # screen_flow, wireframes
-│   ├── hardware/           # equipment_list, sensor_actuator_map, network_topology
-│   └── ops/                # deployment, monitoring, troubleshooting
-├── backend/                # app, services, models, routes, schemas, utils, tests
-├── frontend/               # src, public, components, pages, assets, tests
-├── database/               # migrations, seeds, init
-├── plc/                    # ladder, structured_text, tags, hmi
-├── edge/                   # collectors, mqtt, opcua, modbus
-├── ai/                     # notebooks, datasets, preprocessing, training, inference, models
-├── simulation/             # process, logistics, layout
-├── data/                   # raw, processed, external, sample
-├── scripts/                # setup, import, export, maintenance
-├── configs/                # dev, prod, local
-├── infra/                  # docker, nginx, k8s, terraform
-└── .github/                # workflows, ISSUE_TEMPLATE, PULL_REQUEST_TEMPLATE
-```
+## 폴더 초안 구조
 
-#### 폴더별 역할 (Confluence 원문)
-- `docs/` — 요구사항, 아키텍처, DB, API, 장비 문서
-- `backend/` — 관제, 주문, 이송, 검사, 적재, 출고 로직
-- `frontend/` — 관리자/현장/주문 화면
-- `database/` — 스키마 초기화, 마이그레이션, 시드
-- `plc/` — PLC 로직, 태그, HMI
-- `edge/` — 센서/설비 데이터 수집, 프로토콜, 메시지 브로커
-- `ai/` — 품질 검사, 이상 감지, 예측 모델
-- `simulation/` — 공정/이송/레이아웃 시뮬레이션
-- `data/` — 원천/전처리/외부 데이터
-- `scripts/` — 환경 세팅, 유지보수
-- `configs/` — dev/prod/local 환경 설정
-- `infra/` — Docker, 배포, 인프라
-- `.github/` — CI/CD, 템플릿
+## 폴더별 역할
 
-#### 코드베이스 교차검증
-- ⚠️ **별도 레포 구상**: "SmartCast_Robotics" 이름은 별개 프로젝트/제안 (현재 레포는 `casting-factory`)
-- ⚠️ 실제 우리 레포는 훨씬 단순한 구조 (monorepo: `backend/`, `src/`(Next.js), `monitoring/`, `blender/`, `firmware/`, `docs/`)
-- ⚠️ PLC, OPC-UA, Modbus 등은 **미사용** (ESP32 + MQTT 기반)
-- ⚠️ Kubernetes, Terraform 등은 **단일 PC 배포 수준이라 불필요**
+- 
+`docs/` — 요구사항, 아키텍처, DB, API, 장비 문서 정리
 
----
+- 
+`backend/` — 관제, 주문, 이송, 검사, 적재, 출고 로직 구현
 
-## 통합 팩트 시트 (Quick Reference)
+- 
+`frontend/` — 관리자 화면, 현장 모니터링 화면, 주문 화면 구현
 
-### Hardware Stack (확정)
-| 카테고리 | 모델 | 용도 |
+- 
+`database/` — 스키마 초기화, 마이그레이션, 시드 데이터 관리
+
+- 
+`plc/` — PLC 로직, 태그 정의, HMI 관련 파일 관리
+
+- 
+`edge/` — 센서/설비 데이터 수집, 프로토콜 연동, 메시지 브로커 연결
+
+- 
+`ai/` — 품질 검사 모델, 이상 감지, 예측 모델 실험 및 배포 코드
+
+- 
+`simulation/` — 공정 흐름, 이송 동선, 레이아웃 검토용 시뮬레이션 자료
+
+- 
+`data/` — 원천 데이터, 전처리 데이터, 외부 샘플 데이터 보관
+
+- 
+`scripts/` — 환경 세팅, 데이터 적재, 유지보수용 스크립트
+
+- 
+`configs/` — 개발/운영 환경 설정 파일 분리
+
+- 
+`infra/` — Docker, 배포, 인프라 구성 파일 관리
+
+- 
+`.github/` — CI/CD, 이슈 템플릿, PR 템플릿 관리
+
+# v0.2 — 실제 프로젝트 기반 팀 협업 구조
+작성일: 2026-04-10 | 기준: casting-factory 프로젝트
+v0.1(초안)은 범용 스마트팩토리 템플릿이었고, v0.2는 **실제 프로젝트 기반**으로 `ui / server / device` 3분류 체계로 재구성한 팀 협업 구조입니다.
+프로젝트 문서(설치 가이드, 아키텍처, DB 스키마 등)는 **Confluence 위키**에서 관리합니다.
+
+## v0.1 → v0.2 주요 변경점
+
+| 항목 | v0.1 (초안) | v0.2 (실제 반영) |
 |---|---|---|
-| SBC | **Raspberry Pi 4** | AMR 컨트롤러 (3대) |
-| SBC | **Raspberry Pi 5** | Cobot 컨트롤러 / Vision edge |
-| MCU | **ESP32** | 컨베이어 + TOF250 x2 + L298N 모터 |
-| AI | **Jetson Orin NX 16GB** | YOLO / PatchCore 추론 서버 |
-| 로봇팔 | **MyCobot280** (Elephant Robotics) | 주탕/탈형/후처리 2대 *(Confluence는 JetCobot280로 오기)* |
-| AMR | **Pinkypro** | 3대 (0.12m × 0.12m, differential drive) |
-| 컨베이어 | 자체 제작 | L298N + JGB37-555 모터 + TOF250 x2 ASCII UART 9600 |
-| 비전 | Web Camera | USB, Jetson 연결 |
+****
+| 최상위 분류 | 기능별 13개 폴더 | ui / server / device 3분류 |
+| 프론트엔드 | frontend/ | ui/web/ (Next.js 16 App Router) |
+| 모니터링 | 없음 | ui/monitoring/ (PyQt5 데스크톱 앱) |
+| 백엔드 | backend/ | server/main_service/ (FastAPI) |
+| AI 서비스 | ai/ | server/ai_service/ (Jetson Orin NX) |
+| 데이터베이스 | database/ | server/smart_cast_db/ (SQL 마이그레이션) |
+| 협동로봇 | 없음 | device/cobot/ (MyCobot280 + RPi5) |
+| AMR | 없음 | device/amr/ (Pinkypro + RPi4) |
+| 컨베이어 | edge/ | device/conveyor_controller/ (ESP32) |
+| PLC | plc/ | 해당 없음 (ESP32 기반 제어) |
+| docs | docs/ (Git 내 문서) | Confluence 위키로 이전 |
+[](http://README.md)
+****
+| README.md | 폴더마다 존재 | 최상위 1개만 |
 
-### Software Stack (확정, 2026-04 기준)
-| 카테고리 | 기술 | 버전/세부 |
-|---|---|---|
-| Frontend | **Next.js** | 16.2.1 (App Router) |
-| | **React** | 19.2.4 |
-| | Tailwind CSS | ✓ |
-| | TypeScript | ✓ |
-| | Three.js, @react-three/fiber 9.5.0 | 3D 맵 |
-| Backend | **FastAPI** | Python 3.11 |
-| DB | **PostgreSQL 16** | + TimescaleDB (Phase 1 마이그레이션, SQLite 폐기) |
-| Factory PC | **PyQt5** | 관제 모니터링 앱 (v1.0 빌드 완료) |
-| OS | Ubuntu | VSCode, Jupyter |
-| AI | YOLO, PatchCore | Vision 검사 |
-| Robotics | **ROS 2 Jazzy**, Nav2 | 계획 (아직 미구축) |
-| Comm | Mosquitto MQTT | ESP32 ↔ Backend |
-| Vision Lib | NumPy, OpenCV | |
-| 협업 | Confluence, Jira, Slack, GitHub | |
+## 폴더 구조 v0.2
 
-### 8단계 생산 공정 (확정)
-1. 주문/생산 계획 (UR_01)
-2. 원자재 처리 (용해로 투입)
-3. 주형 및 주조 (조형 → 주탕)
-4. 냉각 및 탈형
-5. 이송 / 물류 (AMR)
-6. 후처리 (수작업 기반, 청소 포함)
-7. 검사 (Vision AI)
-8. 분류 / 출하 (양품/불량 분류 + 적재)
+## 3분류 체계 설명
 
-### 8개 GUI 라우트 (확정)
-1. `/` 대시보드
-2. `/production` 생산 모니터링
-3. `/production/schedule` 생산 계획
-4. `/orders` 주문 관리
-5. `/quality` 품질 검사
-6. `/logistics` 물류/이송
-7. `/customer` 고객 발주 (5단계 폼)
-8. `/customer/orders` 고객 주문 조회
+| 분류 | 폴더 | 담당 | 하드웨어 | 역할 |
+|---|---|---|---|---|
+****
+``
+| UI | ui/web/ | 프론트엔드 | — | Next.js 16 웹 앱 (관리자 + 고객 포털) |
+****
+``
+| UI | ui/monitoring/ | 현장 SW | — | PyQt5 데스크톱 관제 앱 (6페이지) |
+****
+``
+| Server | server/main_service/ | 백엔드 | — | FastAPI REST API (31개 엔드포인트 + WebSocket) |
+****
+``
+| Server | server/ai_service/ | AI | Jetson Orin NX 16GB | YOLO + PatchCore 품질 검사 추론 |
+****
+``
+| Server | server/smart_cast_db/ | 백엔드 | — | DB 마이그레이션 SQL 스크립트 |
+****
+``
+| Device | device/cobot/ | 로봇 | MyCobot280 x2 + RPi5 | 주탕/탈형/후처리 협동로봇 제어 |
+****
+``
+| Device | device/amr/ | 물류 | Pinkypro x3 + RPi4 | 자율주행 물류 이송 (Nav2) |
+****
+``
+| Device | device/conveyor_controller/ | 임베디드 | ESP32 + TOF250 x2 | 컨베이어 벨트 제어 (Arduino + MQTT) |
 
-### 27개 REST API + WebSocket (확정)
-(상세는 [4.5 GUI](#45-gui-6389916) 참조)
+## 하드웨어 구성
 
-### SR 카테고리 (9개)
-- SR-ORD (주문)
-- SR-CTL (관제)
-- SR-CAST (주조)
-- SR-TR (이송)
-- SR-INS (검사)
-- SR-CONV (컨베이어)
-- SR-STO (적재)
-- SR-OUT (출고)
-- SR-POST (후처리, 일부 문서는 별도)
-- SR-CLN (청소)
+| 카테고리 | 모델 | 수량 | 컨트롤러 | 용도 |
+|---|---|---|---|---|
+| 협동로봇 | MyCobot280 (Elephant Robotics) | 2대 | Raspberry Pi 5 | 주탕/탈형/후처리 |
+| AMR | Pinkypro | 3대 | Raspberry Pi 4 | 자율주행 물류 이송 |
+| 컨베이어 | 자체 제작 (L298N + JGB37-555) | 1대 | ESP32-WROOM-32 | 벨트 이송 + TOF250 센서 |
+| 비전 AI | Jetson Orin NX 16GB | 1대 | — | YOLO/PatchCore 추론 |
+| 비전 카메라 | USB Web Camera | 1대 | Jetson 연결 | 품질 검사 촬영 |
 
-**총 구조적 SR ID 수**: 약 **60~70개** (Confluence 내 중복 및 draft 제외)
+## 문서 관리 정책
+프로젝트 문서는 **Confluence 위키**에서 중앙 관리합니다. Git 저장소에는 코드만 유지합니다.
 
-### 주요 NFR 수치 (확정)
-| 항목 | 값 |
+| 문서 유형 | 관리 위치 |
 |---|---|
-| 공정 상태 갱신 주기 | ≤ 1초 |
-| 제어 명령 반영 | ≤ 1초 |
-| 이상 감지 | ≤ 1초 |
-| AMR 위치 오차 | ±5cm |
-| AMR 자세 오차 | ±5° |
-| AMR 직진 속도 | ≤ 1.0 m/s |
-| AMR 회전 속도 | ≤ 0.5 m/s |
-| 품질 검증 정확도 | ≥ 95% |
-| 분류 정확도 | ≥ 99% |
-| 창고 공간 활용률 목표 | ≥ 90% |
-| 주문 절차 | ≤ 5단계 |
+| 설치 가이드 | Confluence |
+| 아키텍처 설계 | Confluence |
+| DB 스키마/ERD | Confluence |
+| API 명세 | Confluence |
+| GUI 페이지 목록 | Confluence |
+[](http://README.md)
+| 코드 설명 | README.md (Git 루트) |
 
-### 생산 계획 — 7요소 우선순위 엔진 (확정)
-총점 100점:
-- 납기일 긴급도 25점
-- 착수 가능 여부 20점
-- 주문 체류 시간 15점
-- 지연 위험도 15점
-- 고객 중요도 10점
-- 수량 효율 10점
-- 세팅 변경 비용 5점
+## 기술 스택 (2026-04 기준)
 
-구현: `backend/app/routes/schedule.py` (SPEC-CTL-001, commit `0952f86`)
+| 레이어 | 기술 | 버전 |
+|---|---|---|
+| 프론트엔드 프레임워크 | Next.js + React + TypeScript | 16.2 / 19.2 / 5 |
+| UI 스타일링 | Tailwind CSS | 4 |
+| UI 차트 | Recharts | 3.8 |
+| UI 아이콘 | Lucide Icons | 1.7 |
+| 백엔드 프레임워크 | FastAPI | 0.115 |
+| ORM | SQLAlchemy | 2.0 |
+| 데이터 검증 | Pydantic | 2.9 |
+| DB 드라이버 | psycopg | 3.2 |
+| 데이터베이스 | PostgreSQL (Tailscale VPN 원격) | 16 |
+| 실시간 통신 | WebSocket (FastAPI) + MQTT (ESP32) | — |
+| 모니터링 앱 | PyQt5 (데스크톱) | 5 |
+| 로봇 미들웨어 | ROS2 Jazzy | — |
+| AMR 네비게이션 | Nav2 | — |
+| AI 추론 | YOLO + PatchCore | — |
+| 펌웨어 | Arduino (ESP32-WROOM-32) | v4.0 |
 
-### Factory 제품 (확정)
-- **맨홀 뚜껑** (manhole cover)
-- 무게: 20 ~ 80 kg
-- 형상: 원형 / 네모
-- 규격 예: **KS D-600** (외경 600mm, 두께 50mm, ±0.5mm), **KS D-450** (외경 450mm, 두께 40mm, ±0.4mm)
-- 생산 방식: 다품종 소량
-- MVP 데모용 재료: **양초** (실제 금속 용탕 불가)
-- 참고 기업: 기남금속
+## 아키텍처 개요
 
----
+## 주문 상태 파이프라인
 
-## 알려진 Confluence ↔ 코드 불일치
+## Git 브랜치 전략 (팀 협업용)
+**브랜치 규칙:**
 
-| 항목 | Confluence | 코드 (정답) | 출처 파일 |
-|---|---|---|---|
-| 로봇팔 모델 | JetCobot280 | **MyCobot280** (Elephant Robotics) | `blender/MyCobot280.step/stl`, `.moai/project/tech.md` |
-| Frontend 버전 | "Next.js 16" (구체 버전 없음) | **Next.js 16.2.1 + React 19.2.4** | `.moai/project/tech.md`, `package.json` |
-| DB | **SQLite** (GUI 페이지 하단 기재) | **PostgreSQL 16 + TimescaleDB** | `backend/app/database.py`, memory `feedback_postgres_decision.md` |
-| Open-RMF | (암시만, 명시 없음) FMS 개념 | **자체 스케줄러 `backend/app/routes/schedule.py`** (Open-RMF 미사용) | SPEC-CTL-001, memory `project_fleet_traffic_design.md` |
-| micro-ROS | (언급 없음) | **plain Arduino JSON** (1:1 ESP32↔RPi5 serial로 micro-ROS 불필요) | memory `feedback_microros_decision.md` |
-| TOF 센서 프로토콜 | (세부 없음) | **ASCII UART 9600** (I2C 아님) | `firmware/conveyor_controller/`, memory `feedback_tof250_protocol.md` |
-| SR ID 총 개수 | "85개" (초기 문서 언급) | **약 60~70개** (실제 파싱 결과) | 본 파일 §1.5 |
-| 후처리 자동화 | (일부 SR에 로봇암 포함) | **수작업 기반** (UR 페이지에서 로봇암 후처리 삭제선) | UR page §1.4 |
-| Layout/Scenarios/VLA/LLM/HW Research/SW Research | 페이지 존재 | **모두 빈 페이지** (placeholder) | 본 파일 §1.6~§4.3 |
-| SmartCast_Robotics 레포 구조 | 별도 제안 (PLC/OPC-UA/K8s 포함) | **실제 레포는 `casting-factory`, 훨씬 단순** | 본 파일 §4.6 |
+| 브랜치 | 용도 | 머지 대상 |
+|---|---|---|
+``
+| main | 안정 배포 버전 | develop → main (PR 필수) |
+``
+| develop | 팀원 작업 통합 | feature/fix/docs → develop (PR 필수) |
+``
+| feature/* | 새 기능 개발 | develop에서 분기 |
+``
+| fix/* | 버그 수정 | develop에서 분기 |
+``
+| docs/* | 문서 작업 | develop에서 분기 |
 
----
+## 팀원 온보딩 절차
+**1단계 — 저장소 클론**
+**2단계 — **[**README.md**](http://README.md)** 읽기**
+프로젝트 개요, 아키텍처, 기술 스택 파악
+**3단계 — Confluence 위키 확인**
+상세 설치 가이드, DB 접속 설정, 아키텍처 문서 참조
+**4단계 — 담당 영역 환경 구성**
 
-## 참조 정책
+| 담당 | 실행 명령 |
+|---|---|
+````
+| 프론트엔드 (ui/web) | npm install → npm run dev (포트 3000) |
+````
+| 백엔드 (server) | cd server && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt → uvicorn main_service.main:app --reload (포트 8000) |
+````
+| 모니터링 (ui/monitoring) | cd ui/monitoring && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt → python main.py |
+````
+| 협동로봇 (device/cobot) | RPi5에서 ROS2 Jazzy 환경 설정 → colcon build → ros2 launch |
+````
+| AMR (device/amr) | RPi4에서 ROS2 Jazzy + Nav2 환경 설정 → colcon build → ros2 launch |
+````
+| 펌웨어 (device/conveyor) | config.example.h → config.h 복사 후 WiFi/MQTT 인증정보 입력, Arduino IDE에서 업로드 |
+**5단계 — 브랜치 생성 및 작업**
+**6단계 — Pull Request 생성**
+GitHub에서 develop 브랜치 대상으로 PR 생성 → 팀원 리뷰 → 머지
 
-1. **이 파일은 프로젝트 작업 시 Confluence 대신 우선 참조**할 사실 모음
-2. **원본 Confluence는 read-only**: 우리는 수정 권한 있는 특정 페이지만 업데이트 (예: 20774933 관제 기술조사). 대부분의 설계 페이지는 건드리지 않음
-3. **코드베이스와 Confluence가 충돌 시 코드베이스가 정답**
-4. **주기적 재검증 필요**: Confluence가 업데이트될 수 있으므로 월 1회 이상 `fetchAtlassian`으로 재수집
-5. **재수집 순서** (권장):
-   - 우선순위 높은 페이지: System_Requirements_v3 (6258774), GUI (6389916), DB (5898574), User_Requirements (3375120), System Architecture (3375131), Detailed Design (6651919)
-   - 보통: Terminology (3407906), Casting (3375162), MVP_Prioritization (3375144)
-   - 낮음: 나머지 (대부분 빈 페이지)
-6. **장애 회피**: `getConfluencePage` 실패 시 `fetchAtlassian` + ARI 포맷 (`ari:cloud:confluence:{cloudId}:page/{pageId}`)으로 우회
-
-### 페이지 ID 빠른 참조
-
-```
-01_Project_Design (root: 3145739):
-  3375131  System Architecture           ← 핵심, v26
-  6651919  Detailed Design                ← 핵심, v10 (HW/SW stack)
-  3506182  v_model                        (거의 비어있음)
-  3375120  User_Requirements              ← 핵심, v25 (UR table)
-  6258774  System_Requirements_v3         ← 최중요, v28 (모든 SR ID)
-  4915220  Layout                          (비어있음)
-  3375144  MVP_Prioritization              (Priority 1~3 정의)
-  15729093 Scenarios                       (비어있음)
-
-02_Domain_Research (root: 3342354):
-  3211297  intro                           (비어있음)
-  3375162  Casting                         (맨홀뚜껑 스펙, 최적화 목표)
-  3637320  Logistics                       (VDA 5050 언급만)
-  3407906  Terminology                    ← 핵심 (주조/물류 용어)
-
-03_Technical_Research (root: 6488246):
-  8552537  HW_Research                     (비어있음)
-  8552545  SW_Research                     (비어있음)
-  8585277  DB_Research                     (링크만)
-  15433852 SW_Control                      (다른 팀 GitHub 링크만)
-
-04_Implementation (root: 3703084):
-  3276898  VLA                              (비어있음)
-  3703098  LLM                              (비어있음)
-  3407954  Prototypes                       (비어있음)
-  5898574  DB                              ← 핵심, v10 (16~17개 테이블 스키마)
-  6389916  GUI                             ← 핵심, v25 (8 routes, 27 API, KPI 전체)
-  20217883 SmartCast Robotics GitHub 구조   (v3, 별도 제안)
-```
-
----
-
-*Generated 2026-04-08 by casting-factory project. Source: Confluence space addinedute, homepage 753829. Read-only policy enforced.*
