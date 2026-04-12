@@ -2,7 +2,7 @@
 
 > **addinedute(addinedu_team_2)** space 주요 설계/기술 문서의 팩트 체크 정리본
 > 원본 페이지 변경 시 이 파일을 업데이트해야 함
-> **마지막 업데이트**: 2026-04-11 (cron sync: 2건)
+> **마지막 업데이트**: 2026-04-12 (cron sync: 1건)
 > **READ-ONLY**: 이 문서는 로컬 참조용이며 Confluence 원본은 수정하지 않음
 
 ## 사용 원칙
@@ -63,7 +63,7 @@ Root page: **3145739** (`01_Project_Design`)
 ### System Architecture (3375131)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/3375131
-**최종 수정**: v38 (2026-04-11 sync)
+**최종 수정**: v39 (2026-04-12 sync)
 
 # SA 설계 방법 
 System architecture (기능 명세서)에서 정의한 스펙 구현을 위해 HW/SW system level 설계해야한다. 
