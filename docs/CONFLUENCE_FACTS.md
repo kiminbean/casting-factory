@@ -2,7 +2,7 @@
 
 > **addinedute(addinedu_team_2)** space 주요 설계/기술 문서의 팩트 체크 정리본
 > 원본 페이지 변경 시 이 파일을 업데이트해야 함
-> **마지막 업데이트**: 2026-04-13 (cron sync: 1건)
+> **마지막 업데이트**: 2026-04-13 (cron sync: 3건)
 > **READ-ONLY**: 이 문서는 로컬 참조용이며 Confluence 원본은 수정하지 않음
 
 ## 사용 원칙
@@ -63,7 +63,7 @@ Root page: **3145739** (`01_Project_Design`)
 ### System Architecture (3375131)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/3375131
-**최종 수정**: v41 (2026-04-13 sync)
+**최종 수정**: v42 (2026-04-13 sync)
 
 # SA 설계 방법 
 System architecture (기능 명세서)에서 정의한 스펙 구현을 위해 HW/SW system level 설계해야한다. 
@@ -705,19 +705,19 @@ HW Controller
 HW Control Service
 
 - 
-좌측 Arm Controller → Manufacturing Operator
+좌측 Arm Controller → Manufacturing Controller
 
   - 
 Arm Control Service → Manufacturing Service
 
 - 
-우측 Arm Controller → Stacking Operator
+우측 Arm Controller → Stacking Controller
 
   - 
 Arm Control Service → Stacking Service
 
 - 
-AMR Controller → Transport Operator
+AMR Controller → Transport Controller
 
   - 
 AMR Control Service → Transport Service
@@ -1147,12 +1147,10 @@ VDA 5050는 독일 자동차 산업 연합(VDA)이 정의한 Fleet Management In
 
 Root page: **6488246** (`03_Technical_Research`)
 
-### 3.1 HW_Research (8552537)
+### HW_Research (8552537)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/8552537
-- **빈 페이지** (2026-03-31 생성, 내용 없음)
-
----
+**최종 수정**: v2 (2026-04-13 sync)
 
 ### 3.2 SW_Research (8552545)
 
@@ -1207,7 +1205,7 @@ Root page: **3703084** (`04_Implementation`)
 ### DB (5898574)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/5898574
-**최종 수정**: v21 (2026-04-10 sync)
+**최종 수정**: v29 (2026-04-13 sync)
 
 # INFO: DB Schema 작성 요령 
 [https://dayelee313.atlassian.net/wiki/spaces/753667/pages/7471353/?draftShareId=06a0aaa7-f832-4ddc-a47e-e03a51e82bb9](https://dayelee313.atlassian.net/wiki/spaces/753667/pages/7471353/?draftShareId=06a0aaa7-f832-4ddc-a47e-e03a51e82bb9)
@@ -1259,7 +1257,8 @@ Root page: **3703084** (`04_Implementation`)
 | load_class | VARCHAR(20) | 하중 등급 옵션 | (ex.A15, D400, F900) |
 
 ## 발주 / 주문 관리
-  생산 중 | DONE 생신 완료 |  RDY 출고 준비 |  COMP 완료
+ 생산 중 | DONE 생산 완료 |  Delivering 출고 중 | Shipped 출고완료 
+MFG                              | DONE                 | DLVR                     | SHIP
 
 ****
 ****
@@ -1269,7 +1268,7 @@ Root page: **3703084** (`04_Implementation`)
 |---|---|---|---|
 | ord_id | VARCHAR | 주문 번호 | Primary Key,FK (customer_order 참조) |
 | appr_stat | boolean | 주문 승인 여부 | false 반려  \| true 승인 |
-| step | VARCHAR | 공정 상태 | CHECK ('ING', 'DONE', 'RDY', 'COMP') |
+| step | VARCHAR | 공정 상태 | CHECK ('MFG', ‘DONE', ‘DLVR',’SHIP’) |
 | updated_at | TIMESTAMP | 상태 변경 일시 | DEFAULT now() |
 
 ## customer_order_product_option(order_detail)
@@ -1291,7 +1290,7 @@ UI에서 비고란 제거
 `customer_order`와 **1:1 관계** 가짐. 따라서  `order_id` 자체를 PK이자 FK로 사용하는 것이 관리하기 좋음
 
 선택된 표준제품명/직경/두께/하중 등급/후처리/로고/문구/재질 옵션/수량/희망납기일/비고/디자인(이미지
-로고 이미지 넣는 ui가 있었나..?
+로고 이미지 넣는 ui가 있었나..?-
 
 ****
 ****
@@ -1312,6 +1311,7 @@ UI에서 비고란 제거
 | final_price | DECIMAL | 확정 금액 |   |
 | due_date | DATE | 확정납기일 |   |
 | ship_addr | VARCHAR | 배송지 주소 |   |
+| pattern_id | VARCHAR | 패턴 ID(커스텀된 패턴) | ex.pattern01 |
 
 ## post_process
 후처리 옵션을 관리하는 테이블
@@ -1333,7 +1333,7 @@ UI에서 비고란 제거
 어떤 주문에 어떤 후처리들이 선택되었는지 기록하는 테이블
 
 - 
-`order_id`와 `post_id` 두 개를 묶어서 복합 키(Composite PK)로 사용
+`ord_id`와 `post_id` 두 개를 묶어서 복합 키(Composite PK)로 사용
 
 ****
 ****
@@ -1349,40 +1349,19 @@ UI에서 비고란 제거
 # 생산 관리
 
 #  
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-| equipment_id | SERIAL | 설비 id | Primary Key |
-| equipment_name | VARCHAR | 설비명 |   |
-````````````
-| equipment_type | VARCHAR | 설비 유형 | furnace \| molding_machine \| pouring_robot \| conveyor \| inspection_device \| sorter |
-|   | INT | 소속 구역 id | REF storage_zone(zone_id) 또는 별도 zone 테이블 |
-``````````
-| status | VARCHAR | 현재 상태 | idle \| running \| stopped \| error \| maintenance |
-| installed_at | TIMESTAMP | 설치 일시 |   |
-
-## equipment_status_history
-설비 상태 변경 이력 스키마
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-| equipment_status_history_id | SERIAL | 설비 상태 이력 id | Primary Key |
-| equipment_id | INT | 설비 id | REF equipment(equipment_id) |
-|   | VARCHAR | 이전 상태 |   |
+| post_id | INTEGER | 후처리 ID | PK, FK (post_process 참조) | PK, FK (post_process 참조) | VARCHAR | 이전 상태 |   |
 | new_status | VARCHAR | 변경 상태 |   |
 | changed_at | TIMESTAMP | 변경 시각 | Default now() |
 | reason | VARCHAR | 변경 사유 |   |
 
 ## transport_resource
-이송 자원 (AMR) 관리 스키마. 
+이송 자원 (AMR) 관리 테이블. 
+
+- 
+`CHECK` 제약 조건 
+trans_res_stat (transport_resource_status)
+idle  유휴 | working   이송중 | charging    충전중 | error   사용불가
+IDLE       | WORK                 | CHARG                   | ERROR
 
 ****
 ****
@@ -1390,42 +1369,16 @@ UI에서 비고란 제거
 ****
 | 필드명 | 데이터 타입 | 설명 | 비고 |
 |---|---|---|---|
-|   | SERIAL | 이송 자원 id | Primary Key |
-|   | VARCHAR | 자원명 |   |
+| trans_res_id | VARCHAR | 이송 자원 id | Primary Key(amr1,2,3) |
 ````````
-| status | VARCHAR | 현재 상태 | idle \| working \| charging \| unavailable |
-| battery_level | INT | 배터리 잔량(%) |   |
-| current_zone_id | INT | 현재 구역 id | REF storage_zone(zone_id) 또는 별도 zone 테이블 |
+| trans_res_stat | VARCHAR | 현재 상태 | CHECK ('IDLE', 'WORK','CHARG', 'ERROR') |
+| batt | INT | 배터리 잔량(%) |   |
+| current_zone_id | INT | 현재 구역 id |   |
 | updated_at | TIMESTAMP | 상태 갱신 시각 | Default now() |
 
-## 
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-| notification_id | SERIAL | 알림 id | Primary Key |
-| user_id | INT | 수신 사용자 id | REF user_account(user_id) |
-``````````
-| notification_type | VARCHAR | 알림 유형 | order \| transport \| equipment \| inspection \| shipment |
-| title | VARCHAR | 알림 제목 |   |
-| message | VARCHAR | 알림 내용 |   |
-| is_read | BOOLEAN | 읽음 여부 | Default false |
-| created_at | TIMESTAMP | 생성 시각 | Default now( |
-
 # 공정 간 이송 관리
-| created_at | TIMESTAMP | 생성 시각 | Default now( | Default now( | Unique |
-``````
-| request_type | VARCHAR | 이송 유형 | internal_move \| shipment_move \| postprocess_move |
-| source_zone_id | INT | 출발 구역 id | REF storage_zone(zone_id) |
-| destination_zone_id | INT | 도착 구역 id | REF storage_zone(zone_id) |
-| product_id | INT | 대상 제품 id | REF product(product_id) |
-| quantity | INT | 이송 수량 |   |
-| priority | INT | 우선순위 |   |
 ````````````````
-|   | VARCHAR | 현재 이송 상태 | pending \| assigned \| moving_to_source \| loading \| moving_to_destination \| unloading \| completed \| failed |
+| updated_at | TIMESTAMP | 상태 갱신 시각 | Default now() | Default now() | VARCHAR | 현재 이송 상태 | pending \| assigned \| moving_to_source \| loading \| moving_to_destination \| unloading \| completed \| failed |
 | requested_at | TIMESTAMP | 요청 시각 | Default now() |
 
 ## transport_task
