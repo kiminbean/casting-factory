@@ -134,8 +134,10 @@ class MainWindow(QMainWindow):
         status.addPermanentWidget(self._clock_label)
 
         self._ws_status_label = QLabel("WS: disconnected")
+        self._ws_status_label.setStyleSheet("color: #9ca3af; padding: 0 10px;")
         status.addPermanentWidget(self._ws_status_label)
         self._mqtt_status_label = QLabel("MQTT: disabled")
+        self._mqtt_status_label.setStyleSheet("color: #9ca3af; padding: 0 10px;")
         status.addPermanentWidget(self._mqtt_status_label)
 
         # 시계 타이머 (1초)
@@ -234,8 +236,16 @@ class MainWindow(QMainWindow):
         )
 
     def _on_ws_state(self, connected: bool) -> None:
-        text = "WS: connected" if connected else "WS: disconnected"
-        self._ws_status_label.setText(text)
+        if connected:
+            self._ws_status_label.setText("WS: connected")
+            self._ws_status_label.setStyleSheet(
+                "color: #16a34a; font-weight: bold; padding: 0 10px;"
+            )
+        else:
+            self._ws_status_label.setText("WS: disconnected")
+            self._ws_status_label.setStyleSheet(
+                "color: #9ca3af; padding: 0 10px;"
+            )
 
     def _on_ws_message(self, payload: dict[str, Any]) -> None:
         # 모든 페이지에 브로드캐스트 (각자 타입 필터링)
@@ -266,8 +276,16 @@ class MainWindow(QMainWindow):
             self._mqtt_status_label.setText(f"MQTT: error {exc}")
 
     def _on_mqtt_state(self, connected: bool) -> None:
-        text = "MQTT: connected" if connected else "MQTT: disconnected"
-        self._mqtt_status_label.setText(text)
+        if connected:
+            self._mqtt_status_label.setText("MQTT: connected")
+            self._mqtt_status_label.setStyleSheet(
+                "color: #16a34a; font-weight: bold; padding: 0 10px;"
+            )
+        else:
+            self._mqtt_status_label.setText("MQTT: disconnected")
+            self._mqtt_status_label.setStyleSheet(
+                "color: #9ca3af; padding: 0 10px;"
+            )
 
     def _on_mqtt_message(self, topic: str, payload: dict[str, Any]) -> None:
         # 모든 페이지에 전달 (현재는 Dashboard만 처리)

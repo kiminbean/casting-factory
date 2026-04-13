@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (
     QHeaderView,
     QLabel,
     QMessageBox,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -33,9 +34,19 @@ class ProductionPage(QWidget):
         self.refresh()
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(14)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        outer.addWidget(scroll)
+
+        content = QWidget()
+        scroll.setWidget(content)
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(24, 20, 24, 24)
+        layout.setSpacing(16)
 
         title = QLabel("생산 모니터링")
         title.setObjectName("pageTitle")
@@ -55,8 +66,8 @@ class ProductionPage(QWidget):
         gauge_container.setObjectName("gaugeCard")
         gauge_container.setFrameShape(QFrame.StyledPanel)
         gauge_layout = QVBoxLayout(gauge_container)
-        gauge_layout.setContentsMargins(12, 12, 12, 12)
-        gauge_layout.setSpacing(6)
+        gauge_layout.setContentsMargins(12, 8, 12, 8)
+        gauge_layout.setSpacing(4)
 
         gauge_title = QLabel("실시간 공정 파라미터")
         gauge_title.setStyleSheet(
@@ -131,6 +142,7 @@ class ProductionPage(QWidget):
         )
         self._stages_table.verticalHeader().setVisible(False)
         self._stages_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._stages_table.setAlternatingRowColors(True)
         self._stages_table.setMaximumHeight(220)
         layout.addWidget(self._stages_table)
 
@@ -146,6 +158,7 @@ class ProductionPage(QWidget):
         self._param_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self._param_table.verticalHeader().setVisible(False)
         self._param_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._param_table.setAlternatingRowColors(True)
         layout.addWidget(self._param_table)
 
     def refresh(self) -> None:

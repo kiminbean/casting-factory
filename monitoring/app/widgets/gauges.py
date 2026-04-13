@@ -143,7 +143,7 @@ class ArcGauge(QWidget):
         self._warn_ratio = warn_ratio
         self._danger_ratio = danger_ratio
         self._value: float = minimum
-        self.setMinimumSize(200, 140)
+        self.setMinimumSize(200, 160)
 
     def set_value(self, value: float) -> None:
         self._value = max(self._min, min(self._max, float(value)))
@@ -164,62 +164,72 @@ class ArcGauge(QWidget):
 
         w = self.width()
         h = self.height()
-        size = min(w, h * 2) - 20
+
+        pen_w = 14
+        half_pen = pen_w / 2  # 7px — 아크 stroke가 rect 밖으로 넘치는 양
+
+        # 영역 배분: 제목(28px) | pen여백(7px) | 반원 | pen여백(7px) | 라벨(20px)
+        title_h = 28
+        bottom_label_h = 20
+        arc_avail = h - title_h - bottom_label_h - pen_w  # pen 상/하 overshoot 포함
+        size = min(w - 20, arc_avail * 2)
+        size = max(size, 40)
+
         cx = (w - size) / 2
-        cy = h - size / 2 - 20
+        cy = title_h + half_pen  # 제목 아래 + pen 상단 여유
+        center_y = cy + size / 2  # 반원 중심선 (수평 직선 위치)
         rect = QRectF(cx, cy, size, size)
-
-        # 배경 아크 (180도)
-        bg_pen = QPen(QColor(TRACK), 14, Qt.SolidLine, Qt.FlatCap)
-        painter.setPen(bg_pen)
-        painter.drawArc(rect, 180 * 16, -180 * 16)
-
-        # 값 아크
-        ratio = (self._value - self._min) / max(self._max - self._min, 1e-6)
-        ratio = max(0.0, min(1.0, ratio))
-        arc_pen = QPen(self._value_color(), 14, Qt.SolidLine, Qt.RoundCap)
-        painter.setPen(arc_pen)
-        painter.drawArc(rect, 180 * 16, int(-180 * 16 * ratio))
 
         # 제목 (상단)
         if self._title:
             painter.setPen(QPen(QColor(GRAY)))
             painter.setFont(QFont("Helvetica Neue", 10))
             painter.drawText(
-                QRectF(0, 6, w, 20), Qt.AlignCenter, self._title
+                QRectF(0, 2, w, title_h), Qt.AlignCenter, self._title
             )
 
-        # 값 (중앙)
+        # 배경 아크 (180도)
+        bg_pen = QPen(QColor(TRACK), pen_w, Qt.SolidLine, Qt.FlatCap)
+        painter.setPen(bg_pen)
+        painter.drawArc(rect, 180 * 16, -180 * 16)
+
+        # 값 아크
+        ratio = (self._value - self._min) / max(self._max - self._min, 1e-6)
+        ratio = max(0.0, min(1.0, ratio))
+        arc_pen = QPen(self._value_color(), pen_w, Qt.SolidLine, Qt.RoundCap)
+        painter.setPen(arc_pen)
+        painter.drawArc(rect, 180 * 16, int(-180 * 16 * ratio))
+
+        # 값 (반원 하단 근처)
         painter.setPen(QPen(QColor(DARK)))
         painter.setFont(QFont("Helvetica Neue", 22, QFont.Bold))
-        val_text = f"{self._value:.0f}"
         painter.drawText(
-            QRectF(0, cy + size * 0.25, w, size * 0.4),
+            QRectF(0, center_y - 30, w, 32),
             Qt.AlignCenter,
-            val_text,
+            f"{self._value:.0f}",
         )
 
-        # 단위
-        if self._unit:
-            painter.setPen(QPen(QColor(GRAY)))
-            painter.setFont(QFont("Helvetica Neue", 10))
-            painter.drawText(
-                QRectF(0, cy + size * 0.62, w, 18), Qt.AlignCenter, self._unit
-            )
-
-        # 최소/최대 라벨
+        # 최소/최대 + 단위 라벨 (반원 중심선 아래)
+        label_y = center_y + half_pen + 2
         painter.setPen(QPen(QColor(GRAY)))
         painter.setFont(QFont("Helvetica Neue", 8))
         painter.drawText(
-            QRectF(cx - 5, cy + size * 0.55, size / 2, 16),
+            QRectF(cx - 5, label_y, size / 2, 16),
             Qt.AlignLeft,
             f"{self._min:.0f}",
         )
         painter.drawText(
-            QRectF(cx + size / 2, cy + size * 0.55, size / 2 + 5, 16),
+            QRectF(cx + size / 2, label_y, size / 2 + 5, 16),
             Qt.AlignRight,
             f"{self._max:.0f}",
         )
+
+        if self._unit:
+            painter.setFont(QFont("Helvetica Neue", 10))
+            painter.drawText(
+                QRectF(0, label_y, w, 16), Qt.AlignCenter, self._unit
+            )
+
         painter.end()
 
 
