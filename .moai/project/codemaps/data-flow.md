@@ -1,232 +1,178 @@
 # 데이터 흐름
 
-> **Last updated**: 2026-04-09 (PG 전환 + api.ts 활성화 상태 반영)
+> **Last updated**: 2026-04-13 (주문 스텝 재배치, PG 전환 상태 반영)
 
-## 1. 핵심 요청 흐름: 관리자 주문 관리
+## 1. 핵심 요청 흐름: 고객 온라인 발주
 
-```
-[관리자 브라우저 /orders]
- │   page.tsx (962줄): 주문 탭 클릭, 상세 조회, 생산 승인
- │
- ├── (1) 주문 목록 로드
- │    └─> useEffect → fetchOrders() [src/lib/api.ts]
- │         └─> apiFetch<Order[]>("/api/orders")
- │              └─> fetch(`${API_BASE}/api/orders`)
- │                    │  API_BASE = ""  (next.config.ts rewrite 경유)
- │                    ▼
- │              [Next.js rewrites: /api/:path* → http://localhost:8000/api/:path*]
- │                    ▼
- │              [FastAPI /api/orders]
- │                    │  routes/orders.py:29 list_orders(db)
- │                    ▼
- │              db.query(Order).order_by(Order.created_at.desc()).all()
- │                    │  SQLAlchemy → PostgreSQL 16
- │                    ▼
- │              [PostgreSQL 16: orders 테이블]
- │                    ▲
- │                    │  OrderResponse (Pydantic)
- │                    │  JSON (snake_case)
- │                    ▲
- │              [convertKeys 재귀 snake→camel] in api.ts
- │              [Order[] 반환 (camelCase)]
- │                    ▲
- │        setOrders(data) → 리스트 렌더
- │
- ├── (2) 주문 상태 변경 (승인)
- │    └─> updateOrderStatus(id, "approved")
- │         └─> PATCH /api/orders/{id}/status  (body: { status: "approved" })
- │              └─> orders.py:49 update_order_status
- │                    └─> 상태 갱신 + db.commit()
- │
- └── (3) 생산 승인 → 생산 개시
-      └─> startProduction([order_ids])
-           └─> POST /api/production/schedule/start
-                └─> schedule.py:316
-                     ├─> calculate 우선순위 (7요소)
-                     ├─> INSERT ProductionJob
-                     ├─> UPDATE Order.status = "in_production"
-                     └─> return ProductionJob[]
+```mermaid
+sequenceDiagram
+    actor C as 고객 (브라우저)
+    participant NX as Next.js :3000
+    participant RW as Rewrite Proxy
+    participant FA as FastAPI :8000
+    participant PY as Pydantic
+    participant SA as SQLAlchemy
+    participant DB as PostgreSQL
+
+    Note over C,NX: Step 1: 주문자 정보 입력
+    Note over C,NX: Step 2: 제품 선택
+    Note over C,NX: Step 3: 사양 입력
+    Note over C,NX: Step 4: 견적 확인
+
+    C->>NX: "주문 제출" 클릭 (Step 4→5)
+    NX->>NX: validateStep() + 금액 계산
+    NX->>RW: POST /api/orders {JSON}
+    RW->>FA: POST /api/orders
+    FA->>PY: OrderCreate 검증
+    PY-->>FA: OK
+    FA->>SA: Order(**data)
+    SA->>DB: INSERT INTO orders
+    DB-->>SA: OK
+    SA-->>FA: refresh
+    FA-->>NX: 201 + OrderResponse
+
+    NX->>RW: POST /api/orders/{id}/details
+    RW->>FA: POST /api/orders/{id}/details
+    FA->>PY: OrderDetailCreate 검증
+    FA->>SA: OrderDetail(**data)
+    SA->>DB: INSERT INTO order_details
+    DB-->>FA: OK
+    FA-->>NX: 201 + OrderDetailResponse
+
+    NX->>C: Step 5 주문 완료 화면
 ```
 
-## 2. 고객 발주 흐름 (api.ts 우회)
+### 데이터 변환 체인
 
 ```
-[고객 브라우저 /customer]
- │   page.tsx (1222줄): 4단계 발주 폼
- │   ├─ Step 1: 제품 선택 (하드코딩 PRODUCTS 배열, D450/D600/D800/GRATING)
- │   ├─ Step 2: 사양 선택 (diameter/thickness/material/loadClass/postProcessing/quantity)
- │   ├─ Step 3: 고객 정보 (company/name/phone/email/address)
- │   └─ Step 4: 확인 → 제출
- │
- ├── (1) 주문 생성  (직접 fetch, api.ts 미경유)
- │    └─> fetch("/api/orders", { method: "POST", body: JSON.stringify({snake_case}) })
- │         ▼
- │    [FastAPI POST /api/orders] orders.py:36 create_order
- │         ├─ OrderCreate Pydantic 검증
- │         ├─ 중복 체크 (id 조회) → 있으면 409
- │         └─ db.add(Order); db.commit(); db.refresh()
- │
- └── (2) 품목 상세 추가
-      └─> fetch(`/api/orders/${orderId}/details`, { method: "POST", body: {...} })
-           ▼
-      [orders.py:103 add_order_detail]
-           └─> OrderDetail INSERT
+[React State (camelCase)]
+    │ formData.contactPerson → customer_name
+    │ formData.companyName → company_name
+    │ formData.phone → contact
+    ▼
+[fetch() JSON Body (snake_case)]
+    │ Next.js Rewrite: /api/* → localhost:8000/api/*
+    ▼
+[FastAPI Route Handler]
+    │ Pydantic OrderCreate.model_dump()
+    ▼
+[SQLAlchemy Model]
+    │ Order(**payload) → db.add() → db.commit()
+    ▼
+[PostgreSQL Row]
+    orders.customer_name, orders.company_name, orders.contact
 ```
 
-## 3. PyQt5 모니터링 데이터 수집 흐름
+## 2. 관리자 주문 관리 흐름
 
-```
-[Factory PC: monitoring/main.py]
- │
- ├── 초기화
- │    ├─> MainWindow 생성
- │    ├─> ApiClient 인스턴스화 (CASTING_API_HOST=192.168.0.16:8000)
- │    ├─> WSWorker QThread 시작 → ws://192.168.0.16:8000/ws/dashboard
- │    └─> MqttWorker QThread 시작 (optional)
- │
- ├── 3초 주기 refresh
- │    ├─> pages/dashboard: api.get_dashboard_stats(), api.get_alerts()
- │    ├─> pages/production: api.get_process_stages(), api.get_equipment()
- │    ├─> pages/quality: api.get_quality_stats(), api.get_inspections()
- │    ├─> pages/logistics: api.get_transport_tasks(), api.get_warehouse_racks()
- │    ├─> pages/schedule: api.get_production_jobs(), api.calculate_priority()
- │    │    │   ※ PyQt 은 직접 DB 접근하지 않고 모두 HTTP 경유
- │    │    ▼
- │    │   [FastAPI /api/*]
- │    │    │   404 or 빈 응답 시
- │    │    ▼
- │    │   [ApiClient fallback → mock_data.py]
- │    │    │
- │    │    ▼
- │    │   페이지 위젯 업데이트
- │
- ├── WebSocket 메시지 수신 (서버 push)
- │    └─> ws_worker.message_received signal
- │         └─> MainWindow._on_ws_message
- │              └─> 페이지별 handle_ws_message() 호출
- │                   └─> {dashboard_stats, production_update, alert_update}
- │
- └── MQTT 메시지 (optional)
-      └─> vision/1/result → 품질 검사 결과
-      └─> amr/status → AMR 위치·상태
+```mermaid
+sequenceDiagram
+    actor A as 관리자
+    participant OPage as /orders
+    participant API as api.ts
+    participant FA as FastAPI
+    participant DB as PostgreSQL
+
+    A->>OPage: 주문 관리 페이지 접속
+    OPage->>API: fetchOrders()
+    API->>FA: GET /api/orders
+    FA->>DB: SELECT * FROM orders ORDER BY created_at DESC
+    DB-->>FA: rows
+    FA-->>API: OrderResponse[] (snake_case)
+    API->>API: convertKeys() snake→camel
+    API-->>OPage: Order[] (camelCase)
+    OPage->>A: 주문 목록 렌더링
+
+    A->>OPage: 상태 변경 (승인)
+    OPage->>API: updateOrderStatus(id, "approved")
+    API->>FA: PATCH /api/orders/{id}/status
+    FA->>DB: UPDATE orders SET status='approved'
+    DB-->>FA: OK
+    FA-->>OPage: 갱신된 Order
 ```
 
-## 4. 실시간 WebSocket 흐름
+## 3. 실시간 대시보드 흐름
 
-```
-[FastAPI backend/app/routes/websocket.py]
- │
- ├── 연결 수립 (/ws/dashboard)
- │    ├─> ConnectionManager.connect(ws)
- │    ├─> 즉시 송신: dashboard_stats + alert_update (개인 메시지)
- │    └─> while True: asyncio.sleep(5)
- │         ├─ 매 tick (5초):
- │         │   └─ _get_production_update()
- │         │        ├─ running stage.progress += random
- │         │        ├─ temperature += random
- │         │        ├─ db.commit()  ← 서버가 DB 를 직접 mutate
- │         │        └─ broadcast("production_update")
- │         ├─ tick % 2 (10초):
- │         │   └─ broadcast("dashboard_stats")
- │         └─ tick % 3 (15초):
- │             └─ broadcast("alert_update")
- │
- ├── 구독자 (PyQt5 모니터링):
- │    └─ ws_worker.py → QThread 안에서 websocket-client run_forever
- │         ├─ on_message → pyqtSignal(dict)
- │         └─ MainWindow slot 에서 페이지 분배
- │
- └── 재연결:
-      └─ 끊기면 3초 대기 후 재시도
+```mermaid
+flowchart LR
+    subgraph Backend ["Backend (FastAPI)"]
+        WS_ROUTE["/ws/dashboard<br>5초 interval tick"]
+        DB[(PostgreSQL)]
+        REST["REST API<br>GET /api/*"]
+    end
+
+    subgraph Clients ["Clients"]
+        WEB[Next.js 대시보드]
+        PYQT[PyQt5 모니터링]
+    end
+
+    DB -->|SELECT| WS_ROUTE
+    DB -->|SELECT| REST
+    WS_ROUTE -->|WebSocket push<br>공정·알림·통계| WEB
+    WS_ROUTE -->|WebSocket push| PYQT
+    REST -->|HTTP Response| WEB
+    REST -->|HTTP Response| PYQT
 ```
 
-## 5. DB 초기화 흐름 (앱 기동)
+> **참고**: 현재 WebSocket은 MQTT 브리지가 아니라, 서버 내부에서 5초마다
+> DB를 조회하여 공정 진행·알림·대시보드 통계를 클라이언트로 push하는 구조.
+> MQTT 브리지는 `asyncio-mqtt` 의존성이 등록되어 있으나 Phase 2 이후 구현 예정.
 
-```
-uvicorn app.main:app
- │
- ├── backend/app/main.py import
- │    └─> from app.database import Base, SessionLocal, engine
- │         └─> _load_env_local() 호출
- │              ├─> backend/.env.local 읽기
- │              └─> DATABASE_URL 환경변수 주입 (이미 있으면 스킵)
- │         └─> DATABASE_URL 확정 → engine 생성
- │              ├─ postgresql+psycopg:// → PG engine (pool_size=10)
- │              └─ sqlite:/// → SQLite engine (check_same_thread=False)
- │
- ├── lifespan() 시작
- │    ├─> if DATABASE_URL.startswith("sqlite") and os.path.exists(_DB_PATH):
- │    │     └─> engine.dispose() + os.remove(casting_factory.db)  [개발 편의]
- │    ├─> Base.metadata.create_all(bind=engine)  [테이블 없으면 생성]
- │    └─> seed_database(db)
- │         ├─> _seed_orders         (count>0 skip)
- │         ├─> _seed_order_details  (count>0 skip)
- │         ├─> _seed_products       (4개: D450/D600/D800/GRATING)
- │         ├─> _seed_load_classes   (6개: A15~F900)
- │         ├─> _seed_process_stages (8개)
- │         ├─> _seed_equipment      (12개)
- │         ├─> _seed_transport_tasks
- │         ├─> _seed_warehouse_racks (24개)
- │         ├─> _seed_outbound_orders
- │         ├─> _seed_inspection_records  (30개)
- │         ├─> _seed_inspection_standards
- │         ├─> _seed_sorter_logs
- │         ├─> _seed_alerts
- │         └─> _seed_production_metrics
- │
- └── uvicorn 요청 수신 준비 완료
+## 4. 생산 스케줄링 흐름
+
+```mermaid
+flowchart TD
+    A[관리자: 주문 선택] --> B[POST /api/production/schedule/calculate]
+    B --> C{우선순위 엔진<br>7요소 가중 평가}
+    C --> D[PriorityResult 반환<br>점수 + 순위]
+    D --> E[관리자: 순위 확인/조정]
+    E --> F[POST /api/production/schedule/start]
+    F --> G[ProductionJob 생성<br>status=queued]
+    G --> H[Order.status → in_production]
+    H --> I[공정 시작<br>ProcessStage 업데이트]
 ```
 
-## 6. Confluence 문서 동기화 흐름 (launchd)
+## 5. 품질 검사 흐름
 
 ```
-[매일 09:07, launchd: com.casting-factory.confluence-sync]
- │
- ├── scripts/sync_confluence_facts.py 실행
- │    ├─> macOS Keychain → Atlassian API token 조회
- │    │    (service: casting-factory-atlassian, account: kiminbean@gmail.com)
- │    ├─> docs/CONFLUENCE_FACTS.md 파싱 → 22개 page_id 추출
- │    ├─> docs/.confluence_snapshot.json 읽기 (버전 캐시)
- │    │
- │    └─> 각 page_id 에 대해:
- │         ├─> GET /wiki/api/v2/pages/{id}?body-format=storage
- │         ├─> version 비교 (캐시와 동일하면 skip)
- │         ├─> 변경 감지 시:
- │         │    ├─> HTML (storage) → Markdown 변환 (stdlib HTMLParser)
- │         │    ├─> CURATED 마커 블록 추출 보존
- │         │    └─> CONFLUENCE_FACTS.md 섹션 in-place 덮어쓰기
- │         └─> 신규 snapshot 저장
- │
- ├── 변경 감지 건수 > 0 이면:
- │    ├─> git add docs/CONFLUENCE_FACTS.md
- │    └─> git commit -m "chore(docs): Confluence 팩트 자동 동기화 (날짜)"
- │
- └── 로그: logs/confluence_sync.log (gitignored)
+검사 장비 → InspectionRecord INSERT
+    │
+    ├─ result=pass → SorterLog (정방향) → 포장 스테이션
+    │
+    └─ result=fail → SorterLog (역방향) → 재작업 라인
+         │
+         └─ defect_type, defect_detail 기록
+
+통계 집계: GET /api/quality/stats
+    → total, passed, failed, defect_rate, defect_types,
+      defect_type_codes, inspector_stats
 ```
 
-## 7. 제품 + 하중 등급 조회 흐름 (DBeaver)
+## 6. 물류/출고 흐름
 
-```
-[DBeaver: 192.168.0.16:5432]
- │
- ├── SELECT SQL 실행 (예: 제품 × 하중 JOIN)
- │    SELECT p.id, p.name, p.load_class_range,
- │           lc_min.load_tons AS min_tons,
- │           lc_max.load_tons AS max_tons
- │    FROM products p
- │    LEFT JOIN load_classes lc_min
- │      ON lc_min.code = split_part(p.load_class_range, ' ~ ', 1)
- │    LEFT JOIN load_classes lc_max
- │      ON lc_max.code = split_part(p.load_class_range, ' ~ ', 2);
- │
- └── 결과: 4개 제품 × (min_tons, max_tons, use_case)
+```mermaid
+flowchart LR
+    A[생산 완료] --> B[TransportTask 생성<br>status=unassigned]
+    B --> C{AMR 배정}
+    C --> D[status=in_progress<br>assigned_robot_id 기록]
+    D --> E[WarehouseRack 입고<br>status=occupied]
+    E --> F[OutboundOrder 생성]
+    F --> G[출고 처리<br>completed=true]
+    G --> H[Order.status → shipping_ready<br>shipped_at 자동 기록]
 ```
 
-## 8. 특이 사항 / 주의점
+## 7. 데이터 소유권 매트릭스
 
-- **프론트는 PG 에 직접 접근하지 않음**. 반드시 FastAPI 경유.
-- **WebSocket 서버가 DB 를 직접 mutate**: `_get_production_update()` 이 running stage 데이터를 시뮬레이션으로 증분. 실 장비 연동이 아님.
-- **고객 포털만 api.ts 우회**: `customer/page.tsx` 의 fetch 호출 2곳이 직접 `/api/orders`, `/api/orders/{id}/details` 호출.
-- **mock fallback**: PyQt5 ApiClient 가 404 응답을 `_dead_paths` 에 캐시해 재시도 방지 + mock_data.py 로 fallback. 이것은 PC 가 비연결 상태에서도 UI 가 죽지 않도록 한 것.
-- **lifespan의 SQLite 파일 삭제 로직**: `DATABASE_URL.startswith("sqlite")` 가드로 PG 환경에서는 실행되지 않음. PG 데이터 유실 위험 없음.
-- **NEXT_PUBLIC_API_URL 이 비어있으면** (기본) 동일 origin 으로 가고 `next.config.ts` 의 `rewrites()` 가 `/api/*` 를 `http://localhost:8000/api/*` 로 프록시함. LAN 공유 시에는 브라우저가 192.168.0.16:3000 → rewrite → 127.0.0.1:8000 으로 도달.
+| 도메인 | 생성(Write) | 조회(Read) |
+|--------|------------|-----------|
+| 주문 (orders) | 고객 웹 (`/customer`) | 관리자 웹 (`/orders`), PyQt5 |
+| 주문 상세 (order_details) | 고객 웹 (`/customer`) | 관리자 웹 (`/orders`) |
+| 공정 (process_stages) | 시드 / PyQt5 공정 | 관리자 웹 (`/production`), PyQt5 |
+| 설비 (equipment) | 시드 / IoT | 관리자 웹 (`/`), PyQt5 |
+| 알림 (alerts) | 시드 / IoT / 백엔드 | 관리자 웹 (`/`), PyQt5 |
+| 검사 (inspection_records) | 검사 장비 / 시드 | 관리자 웹 (`/quality`), PyQt5 |
+| 이송 (transport_tasks) | 관리자 웹 / 시드 | 관리자 웹 (`/logistics`), PyQt5 |
+| 창고 (warehouse_racks) | 시드 / 이송 완료 | 관리자 웹 (`/logistics`), PyQt5 |
+| 출고 (outbound_orders) | 시드 / 관리자 | 관리자 웹 (`/logistics`) |
+| 생산 작업 (production_jobs) | 스케줄러 | 관리자 웹 (`/orders`), PyQt5 |
+| 생산 통계 (production_metrics) | 시드 / 집계 | 관리자 웹 (`/production`) |

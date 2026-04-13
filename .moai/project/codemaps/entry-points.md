@@ -1,158 +1,128 @@
 # 엔트리 포인트
 
-> **Last updated**: 2026-04-09
+> **Last updated**: 2026-04-13
 
 ## 1. 애플리케이션 진입점
 
-| 계층 | 진입 파일 | 기동 명령 | 포트/주소 |
-|---|---|---|---|
-| Next.js dev | `src/app/layout.tsx` + `src/app/page.tsx` | `npm run dev` (`next dev -H 0.0.0.0`) | `0.0.0.0:3000` (LAN 노출) |
-| Next.js prod | 동일 | `npm run build && npm start` | 3000 |
-| 고객 포털 | `src/app/customer/layout.tsx` | Next 내부 라우트 `/customer` | 3000 |
-| FastAPI | `backend/app/main.py:33` (`app = FastAPI(...)`) | `uvicorn app.main:app --host 127.0.0.1 --port 8000` | 8000 |
-| FastAPI lifespan | `backend/app/main.py:17 lifespan()` | 앱 기동 시 자동 실행 | — |
-| DB 초기화 | lifespan 내 `Base.metadata.create_all` + `seed_database(db)` | 자동 | — |
-| WebSocket | `backend/app/routes/websocket.py:178 websocket_endpoint` | `/ws/dashboard` 경로 | 8000 |
-| PyQt5 모니터링 | `monitoring/main.py` → `monitoring/app/main_window.py:MainWindow` | `cd monitoring && python main.py` | 데스크톱 앱 |
-| PostgreSQL 16 | — | `brew services start postgresql@16` | 127.0.0.1:5432 + LAN 192.168.0.16:5432 |
+### 1.1 Next.js Web App
 
-## 2. 운영 스크립트 진입점
+| 진입점 | 파일 | 실행 방법 |
+|--------|------|----------|
+| 루트 레이아웃 | `src/app/layout.tsx` | `npm run dev` → localhost:3000 |
+| 대시보드 | `src/app/page.tsx` | `/` |
+| 주문 관리 | `src/app/orders/page.tsx` | `/orders` |
+| 생산 모니터링 | `src/app/production/page.tsx` | `/production` |
+| 품질 검사 | `src/app/quality/page.tsx` | `/quality` |
+| 관리자 설정 | `src/app/admin/page.tsx` | `/admin` |
+| 관리자 로그인 | `src/app/admin/login/page.tsx` | `/admin/login` |
+| 고객 발주 | `src/app/customer/page.tsx` | `/customer` |
+| 주문 조회 | `src/app/customer/lookup/page.tsx` | `/customer/lookup` |
+| 내 주문 목록 | `src/app/customer/orders/page.tsx` | `/customer/orders` |
 
-| 스크립트 | 파일 | 실행 방법 | 주기 |
-|---|---|---|---|
-| Confluence 동기화 | `scripts/sync_confluence_facts.py` | launchd or `python3 scripts/sync_confluence_facts.py [--dry-run\|--init-snapshot]` | 매일 09:07 (launchd) |
-| launchd plist | `~/Library/LaunchAgents/com.casting-factory.confluence-sync.plist` | `launchctl load\|unload\|start <label>` | — |
-| SQLite → PG 이관 | `backend/scripts/migrate_sqlite_to_pg.py` | `python scripts/migrate_sqlite_to_pg.py` | 일회성 (2026-04-09 완료) |
-| Product 스키마 확장 | `backend/scripts/migrate_products_front_truth.sql` | `psql $DATABASE_URL -f ...` | 일회성 (멱등) |
-| LoadClass 생성 | `backend/scripts/migrate_load_classes.sql` | `psql $DATABASE_URL -f ...` | 일회성 (멱등) |
+### 1.2 FastAPI Backend
 
-## 3. REST API 엔드포인트 (31개 + 1 WS)
+| 진입점 | 파일 | 실행 방법 |
+|--------|------|----------|
+| FastAPI app | `backend/app/main.py:33` | `uvicorn app.main:app --port 8000 --reload` |
+| Health check | `backend/app/main.py:63` | `GET /health` |
 
-### 주문 (orders.py)
+### 1.3 PyQt5 Monitoring App
 
-| Method | Path | 용도 |
-|---|---|---|
-| GET | `/api/orders` | 주문 목록 (created_at desc) |
-| POST | `/api/orders` | 주문 생성 (409 on duplicate) |
-| PATCH | `/api/orders/{order_id}` | 주문 부분 수정 |
-| PATCH | `/api/orders/{order_id}/status` | 상태 변경 |
-| GET | `/api/orders/{order_id}/details` | 품목 상세 목록 |
-| POST | `/api/orders/{order_id}/details` | 품목 상세 추가 |
+| 진입점 | 파일 | 실행 방법 |
+|--------|------|----------|
+| QApplication | `monitoring/main.py` | `python monitoring/main.py` |
+| MainWindow | `monitoring/app/main_window.py:46` | MainWindow 클래스 |
 
-### 제품 마스터 (orders.py)
+### 1.4 Scripts
 
-| Method | Path | 용도 |
-|---|---|---|
-| GET | `/api/products` | 제품 목록 (JSON 파싱) |
-| GET | `/api/load-classes` | EN 124 하중 등급 6종 (display_order 순) |
+| 진입점 | 파일 | 실행 방법 |
+|--------|------|----------|
+| Confluence 동기화 | `scripts/sync_confluence_facts.py` | `python3 scripts/sync_confluence_facts.py` |
+| SQLite→PG 마이그레이션 | `backend/scripts/migrate_sqlite_to_pg.py` | `python3 backend/scripts/migrate_sqlite_to_pg.py` |
 
-### 생산 (production.py, schedule.py)
+## 2. REST API 엔드포인트 전체 목록 (30개)
 
-| Method | Path | 용도 |
-|---|---|---|
-| GET | `/api/production/stages` | 공정 단계 목록 |
-| PATCH | `/api/production/stages/{stage_id}` | 공정 부분 업데이트 |
-| GET | `/api/production/metrics` | 일별 생산 지표 |
-| GET | `/api/production/equipment` | 설비 목록 |
-| POST | `/api/production/schedule/calculate` | 7요소 우선순위 계산 |
-| POST | `/api/production/schedule/start` | 생산 개시 + ProductionJob 생성 |
-| GET | `/api/production/schedule/jobs` | ProductionJob 목록 |
-| POST | `/api/production/schedule/priority-log` | 수동 우선순위 변경 로그 |
-| GET | `/api/production/schedule/priority-log/{order_id}` | 변경 이력 |
+### 2.1 Orders (`/api/orders`) — 6개
 
-### 품질 (quality.py)
+| Method | Path | 함수 | 파일:라인 |
+|--------|------|------|----------|
+| GET | `/api/orders` | `list_orders()` | orders.py:30 |
+| POST | `/api/orders` | `create_order()` | orders.py:46 |
+| PATCH | `/api/orders/{id}/status` | `update_order_status()` | orders.py:59 |
+| PATCH | `/api/orders/{id}` | `update_order()` | orders.py:83 |
+| GET | `/api/orders/{id}/details` | `get_order_details()` | orders.py:105 |
+| POST | `/api/orders/{id}/details` | `add_order_detail()` | orders.py:120 |
 
-| Method | Path | 용도 |
-|---|---|---|
-| GET | `/api/quality/inspections` | 검사 기록 (desc) |
-| GET | `/api/quality/stats` | 합격/불량 집계 |
-| GET | `/api/quality/standards` | 검사 기준 |
-| GET | `/api/quality/sorter-logs` | 분류기 로그 |
+### 2.2 Products (`/api/products`) — 1개
 
-### 물류 (logistics.py)
+| Method | Path | 함수 | 파일:라인 |
+|--------|------|------|----------|
+| GET | `/api/products` | `list_products()` | orders.py:144 |
 
-| Method | Path | 용도 |
-|---|---|---|
-| GET | `/api/logistics/tasks` | 이송 작업 (desc) |
-| POST | `/api/logistics/tasks` | 이송 작업 생성 |
-| PATCH | `/api/logistics/tasks/{task_id}/status` | 상태 + assigned_robot_id |
-| GET | `/api/logistics/warehouse` | 창고 랙 목록 |
-| GET | `/api/logistics/outbound-orders` | 출고 지시서 |
-| PATCH | `/api/logistics/outbound-orders/{order_id}/complete` | 완료 처리 |
+### 2.3 Load Classes (`/api/load-classes`) — 1개
 
-### 알림 / 대시보드 (alerts.py)
+| Method | Path | 함수 | 파일:라인 |
+|--------|------|------|----------|
+| GET | `/api/load-classes` | `list_load_classes()` | orders.py:155 |
 
-| Method | Path | 용도 |
-|---|---|---|
-| GET | `/api/alerts` | 알림 목록 (desc) |
-| PATCH | `/api/alerts/{alert_id}/acknowledge` | 확인 처리 |
-| GET | `/api/dashboard/stats` | 대시보드 종합 통계 |
+### 2.4 Production (`/api/production`) — 4개
 
-### 시스템
+| Method | Path | 함수 | 파일:라인 |
+|--------|------|------|----------|
+| GET | `/api/production/stages` | `list_stages()` | production.py:30 |
+| PATCH | `/api/production/stages/{id}` | `update_stage()` | production.py:37 |
+| GET | `/api/production/metrics` | `list_metrics()` | production.py:57 |
+| GET | `/api/production/equipment` | `list_equipment()` | production.py:64 |
 
-| Method | Path | 용도 |
-|---|---|---|
-| GET | `/health` | 헬스체크 |
-| WS | `/ws/dashboard` | 실시간 브로드캐스트 (5초 tick) |
+### 2.5 Quality (`/api/quality`) — 4개
 
-## 4. 웹 라우트 (Next.js)
+| Method | Path | 함수 | 파일:라인 |
+|--------|------|------|----------|
+| GET | `/api/quality/inspections` | `list_inspections()` | quality.py:18 |
+| GET | `/api/quality/stats` | `quality_stats()` | quality.py:29 |
+| GET | `/api/quality/standards` | `list_standards()` | quality.py:70 |
+| GET | `/api/quality/sorter-logs` | `list_sorter_logs()` | quality.py:77 |
 
-| Path | 파일 | 인증 | 사용자 |
-|---|---|---|---|
-| `/` | `src/app/page.tsx` | 없음 | 관리자 |
-| `/orders` | `src/app/orders/page.tsx` | 없음 | 관리자 (주문 관리) |
-| `/quality` | `src/app/quality/page.tsx` | 없음 | 관리자 (품질 관리) |
-| `/production` | `src/app/production/page.tsx` | 없음 | 레거시 (Sidebar 미링크) |
-| `/customer` | `src/app/customer/page.tsx` | 없음 | 고객 (발주 포털) |
-| `/customer/orders` | `src/app/customer/orders/page.tsx` | 없음 | 고객 (주문 조회) |
+### 2.6 Logistics (`/api/logistics`) — 6개
 
-## 5. 빌드/개발 명령
+| Method | Path | 함수 | 파일:라인 |
+|--------|------|------|----------|
+| GET | `/api/logistics/tasks` | `list_tasks()` | logistics.py:23 |
+| POST | `/api/logistics/tasks` | `create_task()` | logistics.py:34 |
+| PATCH | `/api/logistics/tasks/{id}/status` | `update_task_status()` | logistics.py:49 |
+| GET | `/api/logistics/warehouse` | `list_warehouse()` | logistics.py:73 |
+| GET | `/api/logistics/outbound-orders` | `list_outbound()` | logistics.py:84 |
+| PATCH | `/api/logistics/outbound-orders/{id}/complete` | `complete_outbound()` | logistics.py:95 |
 
-### 프론트엔드
+### 2.7 Alerts & Dashboard (`/api`) — 3개
 
-```bash
-npm install
-npm run dev      # next dev -H 0.0.0.0 → 0.0.0.0:3000
-npm run build    # 프로덕션 빌드
-npm start        # 프로덕션 서버
-npm run lint     # ESLint 9
-```
+| Method | Path | 함수 | 파일:라인 |
+|--------|------|------|----------|
+| GET | `/api/alerts` | `list_alerts()` | alerts.py:17 |
+| PATCH | `/api/alerts/{id}/acknowledge` | `acknowledge_alert()` | alerts.py:24 |
+| GET | `/api/dashboard/stats` | `dashboard_stats()` | alerts.py:40 |
 
-### 백엔드
+### 2.8 Schedule (`/api/production/schedule`) — 5개
 
-```bash
-cd backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+| Method | Path | 함수 | 파일:라인 |
+|--------|------|------|----------|
+| POST | `/api/production/schedule/calculate` | `calculate_priority()` | schedule.py:217 |
+| POST | `/api/production/schedule/start` | `start_production()` | schedule.py:316 |
+| GET | `/api/production/schedule/jobs` | `list_jobs()` | schedule.py:384 |
+| POST | `/api/production/schedule/priority-log` | `create_log()` | schedule.py:391 |
+| GET | `/api/production/schedule/priority-log/{id}` | `get_log()` | schedule.py:411 |
 
-### 모니터링
+### 2.9 WebSocket — 1개
 
-```bash
-cd monitoring
-python main.py
-# 환경변수:
-#   CASTING_API_HOST=192.168.0.16:8000
-#   CASTING_DATA_MODE=normal|fallback|mock_only  (기본: fallback)
-#   CASTING_MQTT_ENABLED=1  (optional)
-```
+| Protocol | Path | 파일:라인 |
+|----------|------|----------|
+| WS | `/ws/dashboard` | websocket.py:178 |
 
-### 펌웨어
+## 3. npm Scripts
 
-```bash
-cd firmware/conveyor_controller
-arduino-cli compile --fqbn esp32:esp32:esp32 .
-arduino-cli upload --fqbn esp32:esp32:esp32 -p /dev/cu.usbserial-0001 .
-```
-
-## 6. DBeaver 접속
-
-```
-Type     : PostgreSQL
-Host     : 192.168.0.16   (LAN) 또는 127.0.0.1 (로컬)
-Port     : 5432
-Database : casting_factory_dev
-User     : casting_factory
-Password : backend/.env.local 에서 확인 (git ignored)
-```
+| Script | 명령 | 용도 |
+|--------|------|------|
+| `dev` | `next dev -H 0.0.0.0` | 개발 서버 (LAN 접속 허용) |
+| `build` | `next build` | 프로덕션 빌드 |
+| `start` | `next start` | 프로덕션 실행 |
+| `lint` | `eslint` | 린팅 |
