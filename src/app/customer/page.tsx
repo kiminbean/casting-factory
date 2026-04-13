@@ -198,10 +198,10 @@ const POST_PROCESSING_OPTIONS = [
 ];
 
 const STEPS = [
-  { id: 1, label: "제품 선택", icon: Package },
-  { id: 2, label: "사양 입력", icon: Settings },
-  { id: 3, label: "견적 확인", icon: FileText },
-  { id: 4, label: "주문자 정보", icon: User },
+  { id: 1, label: "주문자 정보", icon: User },
+  { id: 2, label: "제품 선택", icon: Package },
+  { id: 3, label: "사양 입력", icon: Settings },
+  { id: 4, label: "견적 확인", icon: FileText },
   { id: 5, label: "주문 완료", icon: CircleCheck },
 ];
 
@@ -767,7 +767,7 @@ function Step4CustomerInfo({
       <h2 className="text-xl font-bold text-gray-900 mb-2">주문자 정보 입력</h2>
       <p className="text-sm text-gray-500 mb-4">주문자 정보를 입력해 주세요.</p>
 
-      {/* 필수 입력 안내 배너 — 모든 필드가 입력되어야 "주문 제출" 버튼이 활성화됨 */}
+      {/* 필수 입력 안내 배너 — 모든 필드가 입력되어야 "다음" 버튼이 활성화됨 */}
       <div
         className={`mb-6 flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${
           allFilled
@@ -781,12 +781,12 @@ function Step4CustomerInfo({
           {allFilled ? (
             <>
               주문자 정보 <strong>5가지 항목</strong>이 모두 입력되었습니다. 하단의{" "}
-              <strong>&quot;주문 제출&quot;</strong> 버튼을 눌러 주문을 완료해 주세요.
+              <strong>&quot;다음&quot;</strong> 버튼을 눌러 다음 단계로 진행해 주세요.
             </>
           ) : (
             <>
               <strong>주문자 정보 5가지 항목(회사명·담당자명·연락처·이메일·배송지 주소)</strong>
-              을 모두 입력해야 <strong>&quot;주문 제출&quot;</strong> 버튼이 활성화됩니다.
+              을 모두 입력해야 <strong>&quot;다음&quot;</strong> 버튼이 활성화됩니다.
             </>
           )}
         </p>
@@ -1019,22 +1019,6 @@ export default function CustomerOrderPage() {
     const newErrors: Partial<Record<keyof FormData, string>> = {};
 
     if (currentStep === 1) {
-      if (!formData.selectedProduct) {
-        newErrors.selectedProduct = "제품을 선택해 주세요.";
-        return false;
-      }
-    }
-
-    if (currentStep === 2) {
-      if (!formData.diameter) newErrors.diameter = "규격을 선택해 주세요.";
-      if (!formData.thickness) newErrors.thickness = "두께를 선택해 주세요.";
-      if (!formData.loadClass) newErrors.loadClass = "하중 등급을 선택해 주세요.";
-      if (!formData.material) newErrors.material = "재질을 선택해 주세요.";
-      if (!formData.desiredDelivery) newErrors.desiredDelivery = "희망 납기일을 입력해 주세요.";
-      if (formData.quantity < 10) newErrors.quantity = "최소 주문 수량은 10개입니다.";
-    }
-
-    if (currentStep === 4) {
       if (!formData.companyName) newErrors.companyName = "회사명을 입력해 주세요.";
       if (!formData.contactPerson) newErrors.contactPerson = "담당자명을 입력해 주세요.";
       if (!formData.phone) newErrors.phone = "연락처를 입력해 주세요.";
@@ -1048,6 +1032,22 @@ export default function CustomerOrderPage() {
       if (!formData.address) newErrors.address = "배송지 주소를 입력해 주세요.";
     }
 
+    if (currentStep === 2) {
+      if (!formData.selectedProduct) {
+        newErrors.selectedProduct = "제품을 선택해 주세요.";
+        return false;
+      }
+    }
+
+    if (currentStep === 3) {
+      if (!formData.diameter) newErrors.diameter = "규격을 선택해 주세요.";
+      if (!formData.thickness) newErrors.thickness = "두께를 선택해 주세요.";
+      if (!formData.loadClass) newErrors.loadClass = "하중 등급을 선택해 주세요.";
+      if (!formData.material) newErrors.material = "재질을 선택해 주세요.";
+      if (!formData.desiredDelivery) newErrors.desiredDelivery = "희망 납기일을 입력해 주세요.";
+      if (formData.quantity < 10) newErrors.quantity = "최소 주문 수량은 10개입니다.";
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return false;
@@ -1058,7 +1058,7 @@ export default function CustomerOrderPage() {
   async function handleNext() {
     if (!validateStep(step)) return;
 
-    // ─── Step 4 → 5: 백엔드 DB에 주문 저장 ───
+    // ─── Step 4(견적 확인) → 5(주문 완료): 백엔드 DB에 주문 저장 ───
     if (step === 4) {
       if (!selectedProduct) return;
 
@@ -1172,9 +1172,9 @@ export default function CustomerOrderPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  // Step 4 (주문자 정보) 의 5개 필수 필드가 모두 채워지고
-  // 이메일 형식도 유효해야 "주문 제출" 버튼이 활성화된다.
-  const isStep4Valid =
+  // Step 1 (주문자 정보) 의 5개 필수 필드가 모두 채워지고
+  // 이메일 형식도 유효해야 "다음" 버튼이 활성화된다.
+  const isStep1Valid =
     formData.companyName.trim().length > 0 &&
     formData.contactPerson.trim().length > 0 &&
     formData.phone.trim().length > 0 &&
@@ -1182,7 +1182,7 @@ export default function CustomerOrderPage() {
     formData.address.trim().length > 0;
 
   // 현재 단계 기준으로 "다음" / "주문 제출" 버튼을 비활성화해야 하는가?
-  const nextDisabled = submitting || (step === 4 && !isStep4Valid);
+  const nextDisabled = submitting || (step === 1 && !isStep1Valid);
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
@@ -1194,6 +1194,13 @@ export default function CustomerOrderPage() {
       {/* Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
         {step === 1 && (
+          <Step4CustomerInfo
+            formData={formData}
+            onChange={(field, value) => handleChange(field, value)}
+            errors={errors}
+          />
+        )}
+        {step === 2 && (
           <Step1ProductSelection
             selectedProduct={formData.selectedProduct}
             onSelect={(id) => {
@@ -1207,7 +1214,7 @@ export default function CustomerOrderPage() {
             }}
           />
         )}
-        {step === 2 && selectedProduct && (
+        {step === 3 && selectedProduct && (
           <Step2SpecInput
             formData={formData}
             product={selectedProduct}
@@ -1215,15 +1222,8 @@ export default function CustomerOrderPage() {
             errors={errors}
           />
         )}
-        {step === 3 && selectedProduct && (
+        {step === 4 && selectedProduct && (
           <Step3QuoteReview formData={formData} product={selectedProduct} />
-        )}
-        {step === 4 && (
-          <Step4CustomerInfo
-            formData={formData}
-            onChange={(field, value) => handleChange(field, value)}
-            errors={errors}
-          />
         )}
         {step === 5 && selectedProduct && (
           <Step5OrderComplete
@@ -1267,7 +1267,7 @@ export default function CustomerOrderPage() {
                 onClick={handleNext}
                 disabled={nextDisabled}
                 title={
-                  step === 4 && !isStep4Valid
+                  step === 1 && !isStep1Valid
                     ? "주문자 정보 5가지 항목(회사명·담당자명·연락처·이메일·배송지 주소)을 모두 입력해 주세요."
                     : undefined
                 }
@@ -1284,7 +1284,7 @@ export default function CustomerOrderPage() {
                   </>
                 ) : (
                   <>
-                    {step === 4 ? "주문 제출" : "다음"}
+                    {step === 4 ? "주문 제출" : "다음"  /* step 4 = 견적 확인 → 주문 완료 */}
                     <ChevronRight className="w-4 h-4" />
                   </>
                 )}
