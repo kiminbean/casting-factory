@@ -2,7 +2,7 @@
 
 > **addinedute(addinedu_team_2)** space 주요 설계/기술 문서의 팩트 체크 정리본
 > 원본 페이지 변경 시 이 파일을 업데이트해야 함
-> **마지막 업데이트**: 2026-04-12 (cron sync: 1건)
+> **마지막 업데이트**: 2026-04-13 (cron sync: 1건)
 > **READ-ONLY**: 이 문서는 로컬 참조용이며 Confluence 원본은 수정하지 않음
 
 ## 사용 원칙
@@ -63,7 +63,7 @@ Root page: **3145739** (`01_Project_Design`)
 ### System Architecture (3375131)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/3375131
-**최종 수정**: v39 (2026-04-12 sync)
+**최종 수정**: v41 (2026-04-13 sync)
 
 # SA 설계 방법 
 System architecture (기능 명세서)에서 정의한 스펙 구현을 위해 HW/SW system level 설계해야한다. 
@@ -607,7 +607,7 @@ Admin PC, Cutomer PC: 웹페이지 (Next.js, React)
 **pyqt 관련**
 
 - 
-V3에서는 pyqt에서 monitoring service를 UI와 Server에서 분리하였는데,
+V4에서는 pyqt에서 monitoring service를 UI와 Server에서 분리하였는데,
 
 - 
 pyqt는 web과 다르게 하나의 프로그램으로 web의 frontend와 backend가 하나의 프로그램으로 실행됨.
@@ -665,7 +665,73 @@ Main Server의 Control Service와 네이밍 겹침
 
 ### SW
 
+1. 
+**HW Controller의 분리**
+
+- 
+V5에서는 Camera와 Conveyor가 HW Controller 하나로 통합되어 있었음
+
+- 
+카메라로부터 이미지를 전송하는 하드웨어와 컨베이어를 제어하는 하드웨어가 분리됨에 따라서
+
+  - 
+Image Publisher(Jetson), HW Controller(ESP32) 두 개의 컴포넌트로 분리
+
+1. 
+**MQTT 통신 추가**
+
+- 
+HW Controller의 분리에 따라, ESP32와 Jetson의 통신을 위한 MQTT 통신이 추가됨
+
+1. 
+**전반적인 네이밍 수정**
+
+- 
+Main Server
+
+  - 
+Control Service → Management Service
+
+- 
+Image Publisher
+
+  - 
+Image Publishing Service
+
+- 
+HW Controller
+
+  - 
+HW Control Service
+
+- 
+좌측 Arm Controller → Manufacturing Operator
+
+  - 
+Arm Control Service → Manufacturing Service
+
+- 
+우측 Arm Controller → Stacking Operator
+
+  - 
+Arm Control Service → Stacking Service
+
+- 
+AMR Controller → Transport Operator
+
+  - 
+AMR Control Service → Transport Service
+
 ### HW
+
+- 
+네이밍 수정은 SW쪽 참고
+
+- 
+HW Controller 부분 Conveyor와 Camera 분리
+
+- 
+*온도 측정에 Laser 사용 안 하는 것으로 알고 Laser 제외시킴*
 
 ### Detailed Design (6651919)
 
