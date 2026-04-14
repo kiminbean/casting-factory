@@ -28,8 +28,8 @@ import { SmartCastHeader } from "@/components/SmartCastHeader";
 // Types
 // ─────────────────────────────────────────────
 
-type ProductId = "D450" | "D600" | "D800" | "GRATING";
-type Category = "all" | "manhole" | "grating";
+type ProductId = string;
+type Category = "all" | "round" | "square" | "oval";
 
 interface Product {
   id: ProductId;
@@ -70,62 +70,416 @@ interface FormData {
 
 const CATEGORIES: { id: Category; label: string }[] = [
   { id: "all", label: "전체" },
-  { id: "manhole", label: "맨홀 뚜껑" },
-  { id: "grating", label: "그레이팅" },
+  { id: "round", label: "원형 맨홀뚜껑" },
+  { id: "square", label: "사각 맨홀뚜껑" },
+  { id: "oval", label: "타원형 맨홀뚜껑" },
 ];
 
+// @MX:NOTE: 카테고리별 제품 대표 이미지. "all"은 렌더링에 사용되지 않음.
+const CATEGORY_IMAGES: Record<Exclude<Category, "all">, string> = {
+  round: "/products/round.jpg",
+  square: "/products/square.jpg",
+  oval: "/products/oval.jpg",
+};
+
+// @MX:NOTE: 국내 주물 제조사(기남주물 외) 표준 KS 규격 맨홀뚜껑 제품군 30종.
+// 원형(round) / 사각(square) / 타원형(oval) 각 10종. 가격은 기준가(basePrice)로
+// 후처리 옵션 추가 시 합산됨.
 const PRODUCTS: Product[] = [
+  // ─── 원형 맨홀뚜껑 (10종) ───
   {
-    id: "D450",
-    name: "맨홀 뚜껑 KS D-450",
-    category: "manhole",
-    categoryLabel: "맨홀 뚜껑",
+    id: "R-D450",
+    name: "원형 맨홀뚜껑 KS D-450",
+    category: "round",
+    categoryLabel: "원형 맨홀뚜껑",
     spec: "직경 450mm, KS 규격",
-    priceRange: "50,000 - 70,000원",
-    basePrice: 55000,
-    diameterOptions: ["450mm", "460mm", "470mm"],
+    priceRange: "75,000원",
+    basePrice: 75000,
+    diameterOptions: ["450mm"],
     thicknessOptions: ["25mm", "30mm", "35mm", "40mm"],
     materials: ["FC200", "FC250", "GCD450"],
     loadClassRange: "B125 ~ D400",
   },
   {
-    id: "D600",
-    name: "맨홀 뚜껑 KS D-600",
-    category: "manhole",
-    categoryLabel: "맨홀 뚜껑",
+    id: "R-D500",
+    name: "원형 맨홀뚜껑 KS D-500",
+    category: "round",
+    categoryLabel: "원형 맨홀뚜껑",
+    spec: "직경 500mm, KS 규격",
+    priceRange: "82,000원",
+    basePrice: 82000,
+    diameterOptions: ["500mm"],
+    thicknessOptions: ["25mm", "30mm", "35mm", "40mm"],
+    materials: ["FC200", "FC250", "GCD450"],
+    loadClassRange: "B125 ~ D400",
+  },
+  {
+    id: "R-D550",
+    name: "원형 맨홀뚜껑 KS D-550",
+    category: "round",
+    categoryLabel: "원형 맨홀뚜껑",
+    spec: "직경 550mm, KS 규격",
+    priceRange: "90,000원",
+    basePrice: 90000,
+    diameterOptions: ["550mm"],
+    thicknessOptions: ["30mm", "35mm", "40mm"],
+    materials: ["FC200", "FC250", "GCD450"],
+    loadClassRange: "B125 ~ D400",
+  },
+  {
+    id: "R-D600",
+    name: "원형 맨홀뚜껑 KS D-600",
+    category: "round",
+    categoryLabel: "원형 맨홀뚜껑",
     spec: "직경 600mm, KS 규격",
-    priceRange: "75,000 - 100,000원",
-    basePrice: 85000,
-    diameterOptions: ["600mm", "610mm", "620mm"],
+    priceRange: "98,000원",
+    basePrice: 98000,
+    diameterOptions: ["600mm"],
     thicknessOptions: ["30mm", "35mm", "40mm", "45mm"],
     materials: ["FC200", "FC250", "GCD450", "GCD500"],
     loadClassRange: "B125 ~ F900",
   },
   {
-    id: "D800",
-    name: "맨홀 뚜껑 KS D-800",
-    category: "manhole",
-    categoryLabel: "맨홀 뚜껑",
-    spec: "직경 800mm, KS 규격",
-    priceRange: "110,000 - 140,000원",
-    basePrice: 120000,
-    diameterOptions: ["800mm", "810mm", "820mm"],
+    id: "R-D650",
+    name: "원형 맨홀뚜껑 KS D-650",
+    category: "round",
+    categoryLabel: "원형 맨홀뚜껑",
+    spec: "직경 650mm, KS 규격",
+    priceRange: "108,000원",
+    basePrice: 108000,
+    diameterOptions: ["650mm"],
+    thicknessOptions: ["30mm", "35mm", "40mm", "45mm"],
+    materials: ["FC250", "GCD450", "GCD500"],
+    loadClassRange: "C250 ~ F900",
+  },
+  {
+    id: "R-D700",
+    name: "원형 맨홀뚜껑 KS D-700",
+    category: "round",
+    categoryLabel: "원형 맨홀뚜껑",
+    spec: "직경 700mm, KS 규격",
+    priceRange: "118,000원",
+    basePrice: 118000,
+    diameterOptions: ["700mm"],
     thicknessOptions: ["35mm", "40mm", "45mm", "50mm"],
     materials: ["FC250", "GCD450", "GCD500"],
     loadClassRange: "C250 ~ F900",
   },
   {
-    id: "GRATING",
-    name: "배수구 그레이팅 500x300",
-    category: "grating",
-    categoryLabel: "그레이팅",
-    spec: "500x300mm, 격자형",
-    priceRange: "30,000 - 45,000원",
-    basePrice: 35000,
-    diameterOptions: ["500x300mm", "500x350mm", "600x300mm"],
-    thicknessOptions: ["20mm", "25mm", "30mm"],
+    id: "R-D750",
+    name: "원형 맨홀뚜껑 KS D-750",
+    category: "round",
+    categoryLabel: "원형 맨홀뚜껑",
+    spec: "직경 750mm, KS 규격",
+    priceRange: "128,000원",
+    basePrice: 128000,
+    diameterOptions: ["750mm"],
+    thicknessOptions: ["35mm", "40mm", "45mm", "50mm"],
+    materials: ["FC250", "GCD450", "GCD500"],
+    loadClassRange: "C250 ~ F900",
+  },
+  {
+    id: "R-D800",
+    name: "원형 맨홀뚜껑 KS D-800",
+    category: "round",
+    categoryLabel: "원형 맨홀뚜껑",
+    spec: "직경 800mm, KS 규격",
+    priceRange: "138,000원",
+    basePrice: 138000,
+    diameterOptions: ["800mm"],
+    thicknessOptions: ["35mm", "40mm", "45mm", "50mm"],
+    materials: ["FC250", "GCD450", "GCD500"],
+    loadClassRange: "C250 ~ F900",
+  },
+  {
+    id: "R-D850",
+    name: "원형 맨홀뚜껑 KS D-850",
+    category: "round",
+    categoryLabel: "원형 맨홀뚜껑",
+    spec: "직경 850mm, KS 규격",
+    priceRange: "152,000원",
+    basePrice: 152000,
+    diameterOptions: ["850mm"],
+    thicknessOptions: ["40mm", "45mm", "50mm"],
+    materials: ["GCD450", "GCD500"],
+    loadClassRange: "D400 ~ F900",
+  },
+  {
+    id: "R-D900",
+    name: "원형 맨홀뚜껑 KS D-900",
+    category: "round",
+    categoryLabel: "원형 맨홀뚜껑",
+    spec: "직경 900mm, KS 규격",
+    priceRange: "165,000원",
+    basePrice: 165000,
+    diameterOptions: ["900mm"],
+    thicknessOptions: ["40mm", "45mm", "50mm"],
+    materials: ["GCD450", "GCD500"],
+    loadClassRange: "D400 ~ F900",
+  },
+
+  // ─── 사각 맨홀뚜껑 (10종) ───
+  {
+    id: "S-400",
+    name: "사각 맨홀뚜껑 KS S-400",
+    category: "square",
+    categoryLabel: "사각 맨홀뚜껑",
+    spec: "400x400mm, KS 규격",
+    priceRange: "68,000원",
+    basePrice: 68000,
+    diameterOptions: ["400x400mm"],
+    thicknessOptions: ["25mm", "30mm", "35mm"],
     materials: ["FC200", "FC250"],
-    loadClassRange: "B125 ~ C250",
+    loadClassRange: "A15 ~ C250",
+  },
+  {
+    id: "S-450",
+    name: "사각 맨홀뚜껑 KS S-450",
+    category: "square",
+    categoryLabel: "사각 맨홀뚜껑",
+    spec: "450x450mm, KS 규격",
+    priceRange: "78,000원",
+    basePrice: 78000,
+    diameterOptions: ["450x450mm"],
+    thicknessOptions: ["25mm", "30mm", "35mm", "40mm"],
+    materials: ["FC200", "FC250", "GCD450"],
+    loadClassRange: "B125 ~ D400",
+  },
+  {
+    id: "S-500",
+    name: "사각 맨홀뚜껑 KS S-500",
+    category: "square",
+    categoryLabel: "사각 맨홀뚜껑",
+    spec: "500x500mm, KS 규격",
+    priceRange: "88,000원",
+    basePrice: 88000,
+    diameterOptions: ["500x500mm"],
+    thicknessOptions: ["30mm", "35mm", "40mm"],
+    materials: ["FC200", "FC250", "GCD450"],
+    loadClassRange: "B125 ~ D400",
+  },
+  {
+    id: "S-550",
+    name: "사각 맨홀뚜껑 KS S-550",
+    category: "square",
+    categoryLabel: "사각 맨홀뚜껑",
+    spec: "550x550mm, KS 규격",
+    priceRange: "98,000원",
+    basePrice: 98000,
+    diameterOptions: ["550x550mm"],
+    thicknessOptions: ["30mm", "35mm", "40mm"],
+    materials: ["FC250", "GCD450"],
+    loadClassRange: "B125 ~ D400",
+  },
+  {
+    id: "S-600",
+    name: "사각 맨홀뚜껑 KS S-600",
+    category: "square",
+    categoryLabel: "사각 맨홀뚜껑",
+    spec: "600x600mm, KS 규격",
+    priceRange: "108,000원",
+    basePrice: 108000,
+    diameterOptions: ["600x600mm"],
+    thicknessOptions: ["30mm", "35mm", "40mm", "45mm"],
+    materials: ["FC250", "GCD450", "GCD500"],
+    loadClassRange: "C250 ~ F900",
+  },
+  {
+    id: "S-650",
+    name: "사각 맨홀뚜껑 KS S-650",
+    category: "square",
+    categoryLabel: "사각 맨홀뚜껑",
+    spec: "650x650mm, KS 규격",
+    priceRange: "118,000원",
+    basePrice: 118000,
+    diameterOptions: ["650x650mm"],
+    thicknessOptions: ["35mm", "40mm", "45mm"],
+    materials: ["FC250", "GCD450", "GCD500"],
+    loadClassRange: "C250 ~ F900",
+  },
+  {
+    id: "S-700",
+    name: "사각 맨홀뚜껑 KS S-700",
+    category: "square",
+    categoryLabel: "사각 맨홀뚜껑",
+    spec: "700x700mm, KS 규격",
+    priceRange: "128,000원",
+    basePrice: 128000,
+    diameterOptions: ["700x700mm"],
+    thicknessOptions: ["35mm", "40mm", "45mm", "50mm"],
+    materials: ["GCD450", "GCD500"],
+    loadClassRange: "C250 ~ F900",
+  },
+  {
+    id: "S-750",
+    name: "사각 맨홀뚜껑 KS S-750",
+    category: "square",
+    categoryLabel: "사각 맨홀뚜껑",
+    spec: "750x750mm, KS 규격",
+    priceRange: "138,000원",
+    basePrice: 138000,
+    diameterOptions: ["750x750mm"],
+    thicknessOptions: ["40mm", "45mm", "50mm"],
+    materials: ["GCD450", "GCD500"],
+    loadClassRange: "D400 ~ F900",
+  },
+  {
+    id: "S-800",
+    name: "사각 맨홀뚜껑 KS S-800",
+    category: "square",
+    categoryLabel: "사각 맨홀뚜껑",
+    spec: "800x800mm, KS 규격",
+    priceRange: "148,000원",
+    basePrice: 148000,
+    diameterOptions: ["800x800mm"],
+    thicknessOptions: ["40mm", "45mm", "50mm"],
+    materials: ["GCD450", "GCD500"],
+    loadClassRange: "D400 ~ F900",
+  },
+  {
+    id: "S-900",
+    name: "사각 맨홀뚜껑 KS S-900",
+    category: "square",
+    categoryLabel: "사각 맨홀뚜껑",
+    spec: "900x900mm, KS 규격",
+    priceRange: "168,000원",
+    basePrice: 168000,
+    diameterOptions: ["900x900mm"],
+    thicknessOptions: ["45mm", "50mm", "55mm"],
+    materials: ["GCD450", "GCD500"],
+    loadClassRange: "D400 ~ F900",
+  },
+
+  // ─── 타원형 맨홀뚜껑 (10종) ───
+  {
+    id: "O-450",
+    name: "타원형 맨홀뚜껑 KS O-450",
+    category: "oval",
+    categoryLabel: "타원형 맨홀뚜껑",
+    spec: "450x300mm, KS 규격",
+    priceRange: "72,000원",
+    basePrice: 72000,
+    diameterOptions: ["450x300mm"],
+    thicknessOptions: ["25mm", "30mm", "35mm"],
+    materials: ["FC200", "FC250"],
+    loadClassRange: "A15 ~ C250",
+  },
+  {
+    id: "O-500",
+    name: "타원형 맨홀뚜껑 KS O-500",
+    category: "oval",
+    categoryLabel: "타원형 맨홀뚜껑",
+    spec: "500x350mm, KS 규격",
+    priceRange: "80,000원",
+    basePrice: 80000,
+    diameterOptions: ["500x350mm"],
+    thicknessOptions: ["25mm", "30mm", "35mm"],
+    materials: ["FC200", "FC250"],
+    loadClassRange: "A15 ~ C250",
+  },
+  {
+    id: "O-550",
+    name: "타원형 맨홀뚜껑 KS O-550",
+    category: "oval",
+    categoryLabel: "타원형 맨홀뚜껑",
+    spec: "550x400mm, KS 규격",
+    priceRange: "88,000원",
+    basePrice: 88000,
+    diameterOptions: ["550x400mm"],
+    thicknessOptions: ["30mm", "35mm", "40mm"],
+    materials: ["FC200", "FC250", "GCD450"],
+    loadClassRange: "B125 ~ D400",
+  },
+  {
+    id: "O-600",
+    name: "타원형 맨홀뚜껑 KS O-600",
+    category: "oval",
+    categoryLabel: "타원형 맨홀뚜껑",
+    spec: "600x450mm, KS 규격",
+    priceRange: "98,000원",
+    basePrice: 98000,
+    diameterOptions: ["600x450mm"],
+    thicknessOptions: ["30mm", "35mm", "40mm"],
+    materials: ["FC200", "FC250", "GCD450"],
+    loadClassRange: "B125 ~ D400",
+  },
+  {
+    id: "O-650",
+    name: "타원형 맨홀뚜껑 KS O-650",
+    category: "oval",
+    categoryLabel: "타원형 맨홀뚜껑",
+    spec: "650x500mm, KS 규격",
+    priceRange: "108,000원",
+    basePrice: 108000,
+    diameterOptions: ["650x500mm"],
+    thicknessOptions: ["35mm", "40mm", "45mm"],
+    materials: ["FC250", "GCD450"],
+    loadClassRange: "C250 ~ D400",
+  },
+  {
+    id: "O-700",
+    name: "타원형 맨홀뚜껑 KS O-700",
+    category: "oval",
+    categoryLabel: "타원형 맨홀뚜껑",
+    spec: "700x550mm, KS 규격",
+    priceRange: "118,000원",
+    basePrice: 118000,
+    diameterOptions: ["700x550mm"],
+    thicknessOptions: ["35mm", "40mm", "45mm"],
+    materials: ["FC250", "GCD450", "GCD500"],
+    loadClassRange: "C250 ~ D400",
+  },
+  {
+    id: "O-750",
+    name: "타원형 맨홀뚜껑 KS O-750",
+    category: "oval",
+    categoryLabel: "타원형 맨홀뚜껑",
+    spec: "750x600mm, KS 규격",
+    priceRange: "128,000원",
+    basePrice: 128000,
+    diameterOptions: ["750x600mm"],
+    thicknessOptions: ["40mm", "45mm", "50mm"],
+    materials: ["GCD450", "GCD500"],
+    loadClassRange: "D400 ~ F900",
+  },
+  {
+    id: "O-800",
+    name: "타원형 맨홀뚜껑 KS O-800",
+    category: "oval",
+    categoryLabel: "타원형 맨홀뚜껑",
+    spec: "800x650mm, KS 규격",
+    priceRange: "140,000원",
+    basePrice: 140000,
+    diameterOptions: ["800x650mm"],
+    thicknessOptions: ["40mm", "45mm", "50mm"],
+    materials: ["GCD450", "GCD500"],
+    loadClassRange: "D400 ~ F900",
+  },
+  {
+    id: "O-850",
+    name: "타원형 맨홀뚜껑 KS O-850",
+    category: "oval",
+    categoryLabel: "타원형 맨홀뚜껑",
+    spec: "850x700mm, KS 규격",
+    priceRange: "152,000원",
+    basePrice: 152000,
+    diameterOptions: ["850x700mm"],
+    thicknessOptions: ["45mm", "50mm"],
+    materials: ["GCD450", "GCD500"],
+    loadClassRange: "D400 ~ F900",
+  },
+  {
+    id: "O-900",
+    name: "타원형 맨홀뚜껑 KS O-900",
+    category: "oval",
+    categoryLabel: "타원형 맨홀뚜껑",
+    spec: "900x750mm, KS 규격",
+    priceRange: "168,000원",
+    basePrice: 168000,
+    diameterOptions: ["900x750mm"],
+    thicknessOptions: ["45mm", "50mm", "55mm"],
+    materials: ["GCD450", "GCD500"],
+    loadClassRange: "E600 ~ F900",
   },
 ];
 
@@ -325,14 +679,25 @@ function Step1ProductSelection({
                   : "border-gray-200 bg-white hover:border-blue-300"
               }`}
             >
-              {/* 제품 이미지 placeholder */}
-              <div className="w-full h-36 bg-gray-100 rounded-lg flex flex-col items-center justify-center mb-4 relative">
-                <Factory
-                  className={`w-10 h-10 mb-1 ${isSelected ? "text-blue-500" : "text-gray-400"}`}
-                />
-                <span className="text-xs text-gray-400">제품 이미지</span>
+              {/* 제품 이미지 (카테고리별 대표 이미지) */}
+              <div className="w-full h-36 bg-white rounded-lg mb-4 relative overflow-hidden">
+                {product.category !== "all" && CATEGORY_IMAGES[product.category] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={CATEGORY_IMAGES[product.category]}
+                    alt={product.name}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center">
+                    <Factory
+                      className={`w-10 h-10 mb-1 ${isSelected ? "text-blue-500" : "text-gray-400"}`}
+                    />
+                    <span className="text-xs text-gray-400">제품 이미지</span>
+                  </div>
+                )}
                 {/* 카테고리 뱃지 */}
-                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/80 text-gray-600 border border-gray-200">
+                <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/80 text-gray-700 border border-gray-200 backdrop-blur">
                   {product.categoryLabel}
                 </span>
               </div>
@@ -609,9 +974,18 @@ function Step3QuoteReview({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* 디자인 시안 이미지 */}
             <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 flex flex-col items-center justify-center min-h-[200px]">
-              <div className="w-28 h-28 bg-gray-200 rounded-full flex items-center justify-center mb-3">
-                <Factory className="w-14 h-14 text-gray-400" />
-              </div>
+              {product.category !== "all" && CATEGORY_IMAGES[product.category] ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={CATEGORY_IMAGES[product.category]}
+                  alt={product.name}
+                  className="w-32 h-32 object-contain mb-3"
+                />
+              ) : (
+                <div className="w-28 h-28 bg-gray-200 rounded-full flex items-center justify-center mb-3">
+                  <Factory className="w-14 h-14 text-gray-400" />
+                </div>
+              )}
               <p className="text-sm font-medium text-gray-700">{product.name}</p>
               <p className="text-xs text-gray-400 mt-1">기본 디자인 시안</p>
               <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-400">
