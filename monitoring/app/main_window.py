@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMessageBox,
     QStackedWidget,
     QStatusBar,
     QToolButton,
@@ -256,7 +257,9 @@ class MainWindow(QMainWindow):
             from app.workers.alert_stream_worker import AlertStreamWorker, AlertStreamThread
         except ImportError:
             return
-        self._alert_worker = AlertStreamWorker(severity_filter="warning")
+        # severity_filter=None → 모든 severity 수신 (critical/warning/info).
+        # critical 은 main_window 에서 모달, 그 외는 토스트.
+        self._alert_worker = AlertStreamWorker(severity_filter=None)
         self._alert_worker.alert_event.connect(self._on_alert_event)
         self._alert_worker.connection_state.connect(self._on_alert_conn_state)
         self._alert_thread = AlertStreamThread(self._alert_worker)
@@ -264,21 +267,51 @@ class MainWindow(QMainWindow):
 
     def _on_alert_event(self, alert_id: str, severity: str, error_code: str,
                         message: str, equipment_id: str, zone: str, at_iso: str) -> None:
-        """gRPC alert → 우상단 토스트 알림.
+        """gRPC alert → severity 별 차별 표시.
+
+        - critical: QMessageBox.critical (모달, 사용자 ack 필요)
+        - warning/info/etc: 우상단 토스트 (5초 자동 사라짐)
+
+        critical 모달 폭주 방지: 같은 alert_id 는 1회만 표시 (set 캐시).
 
         @MX:NOTE: AlertStreamWorker.pyqtSignal 의 슬롯. WebSocket 단종 대체 채널 (V6 Phase 8).
-        @MX:WARN: severity 별 차별 대응 없음. 향후 critical 은 모달 다이얼로그로 강조 필요.
+        @MX:REASON: critical 은 사용자 ack 보장 필요 (자동 사라짐 토스트로는 누락 가능).
         """
         import logging as _lg
         _lg.getLogger(__name__).info(
             "gRPC alert 수신: id=%s sev=%s code=%s msg=%s",
             alert_id[:24], severity, error_code, message[:50],
         )
+
         title_prefix = {"critical": "🚨 CRITICAL", "warning": "⚠ WARNING", "info": "ℹ INFO"}
         title = f"{title_prefix.get(severity, severity.upper())} {error_code or zone or ''}".strip()
         body = message or alert_id
         if equipment_id:
             body = f"{body}\n설비: {equipment_id}"
+
+        if (severity or "").lower() == "critical":
+            # 폭주 방지 — 같은 alert_id 는 모달 1회만
+            if not hasattr(self, "_shown_critical_alerts"):
+                self._shown_critical_alerts = set()
+            if alert_id in self._shown_critical_alerts:
+                return
+            self._shown_critical_alerts.add(alert_id)
+            # 캐시 크기 cap (오래된 것 정리)
+            if len(self._shown_critical_alerts) > 200:
+                self._shown_critical_alerts = set(list(self._shown_critical_alerts)[-100:])
+
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Critical)
+            box.setWindowTitle(title)
+            box.setText(body)
+            if at_iso:
+                box.setInformativeText(f"발생 시각: {at_iso[:19].replace('T', ' ')}\nID: {alert_id}")
+            box.setStandardButtons(QMessageBox.Ok)
+            # 중요: 메인 GUI 스레드에서 호출되므로 exec_() 로 모달 처리
+            box.exec_()
+            return
+
+        # critical 외: 기존 토스트
         self.show_toast(severity, title, body)
 
     def _on_alert_conn_state(self, connected: bool) -> None:
