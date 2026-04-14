@@ -1,6 +1,6 @@
 # 엔트리 포인트
 
-> **Last updated**: 2026-04-13
+> **Last updated**: 2026-04-14 (V6 Management Service gRPC :50051 추가)
 
 ## 1. 애플리케이션 진입점
 
@@ -19,12 +19,22 @@
 | 주문 조회 | `src/app/customer/lookup/page.tsx` | `/customer/lookup` |
 | 내 주문 목록 | `src/app/customer/orders/page.tsx` | `/customer/orders` |
 
-### 1.2 FastAPI Backend
+### 1.2 FastAPI Backend (Interface Service :8000)
 
 | 진입점 | 파일 | 실행 방법 |
 |--------|------|----------|
 | FastAPI app | `backend/app/main.py:33` | `uvicorn app.main:app --port 8000 --reload` |
 | Health check | `backend/app/main.py:63` | `GET /health` |
+
+### 1.2b ★ Management Service (gRPC :50051) — V6 신규
+
+별도 프로세스. PyQt 가 직결하는 V6 표준 채널.
+
+| 진입점 | 파일 | 실행 방법 |
+|--------|------|----------|
+| gRPC server | `backend/management/server.py` | `cd backend/management && source venv/bin/activate && python server.py` |
+| Health RPC | `ManagementService.Health` | `grpcurl -plaintext localhost:50051 .../Health` |
+| proto 컴파일 | `backend/management/Makefile` | `make proto` |
 
 ### 1.3 PyQt5 Monitoring App
 
@@ -116,6 +126,29 @@
 | Protocol | Path | 파일:라인 |
 |----------|------|----------|
 | WS | `/ws/dashboard` | websocket.py:178 |
+
+## 2.10 Management Service gRPC RPC (V6, :50051) — 9개
+
+`backend/management/proto/management.proto` 정의. `casting.management.v1` 패키지.
+
+### ManagementService (8 RPC)
+
+| Method | Type | 용도 | 구현 파일 |
+|---|---|---|---|
+| `Health` | unary | 헬스체크 | server.py |
+| `StartProduction` | unary | 주문 → work_order + items | services/task_manager.py |
+| `ListItems` | unary | item 목록 조회 | services/task_manager.py |
+| `AllocateItem` | unary | 로봇 배정 스코어링 | services/task_allocator.py |
+| `PlanRoute` | unary | AMR 경로 계획 | services/traffic_manager.py |
+| `ExecuteCommand` | unary | ROS2/MQTT 지령 송출 | services/robot_executor.py |
+| `WatchItems` | server stream | item stage 변경 push | services/execution_monitor.py |
+| `WatchAlerts` | server stream | 신규 alerts push | services/execution_monitor.py |
+
+### ImagePublisherService (1 RPC)
+
+| Method | Type | 용도 |
+|---|---|---|
+| `PublishFrames` | client stream | Image Publisher → Server JPEG 스트림 |
 
 ## 3. npm Scripts
 

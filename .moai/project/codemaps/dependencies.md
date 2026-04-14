@@ -33,15 +33,33 @@
 | redis | 5.1.1 | 캐시/pub-sub |
 | websockets | 13.0 | WebSocket 서버 |
 
-### 1.3 Monitoring (requirements.txt)
+### 1.3 Monitoring (requirements.txt) — Python 3.12
 
 | 패키지 | 버전 | 용도 |
 |--------|------|------|
 | PyQt5 | 5.15.11 | GUI 프레임워크 |
 | PyQtChart | 5.15.7 | 차트 위젯 |
 | requests | 2.32.3 | HTTP 클라이언트 |
-| websocket-client | 1.8.0 | WebSocket 클라이언트 |
-| paho-mqtt | 2.1.0 | MQTT 클라이언트 |
+| websocket-client | 1.8.0 | WebSocket (V6: 비활성 기본) |
+| paho-mqtt | 2.1.0 | MQTT 클라이언트 (옵션) |
+| **grpcio** | **1.80** | **★ V6: Management Service 통신** |
+| **grpcio-tools** | **1.80** | **★ V6: protoc + gen_proto.sh** |
+| **protobuf** | **6.33** | **★ V6: 메시지 직렬화** |
+
+### 1.4 Management Service (backend/management/requirements.txt) — Python 3.12
+
+별도 venv (`backend/management/venv/`).
+
+| 패키지 | 버전 | 용도 |
+|--------|------|------|
+| grpcio | ≥1.80 | gRPC 서버 |
+| grpcio-tools | ≥1.80 | proto 컴파일 |
+| protobuf | ≥6.30 | 메시지 직렬화 |
+| sqlalchemy | ≥2.0.35 | ORM (Interface 와 동일 PG 공유) |
+| psycopg[binary] | ≥3.2 | PostgreSQL 드라이버 |
+| paho-mqtt | ≥2.1 | ESP32 MQTT publisher |
+
+ROS2 (`rclpy`)는 시스템 패키지 (`apt install ros-jazzy-rclpy`), pip 미지원.
 
 ## 2. 내부 모듈 의존성 그래프
 

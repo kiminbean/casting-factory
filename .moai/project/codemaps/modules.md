@@ -57,6 +57,26 @@
 
 ## 2. FastAPI 백엔드 (`backend/`)
 
+### 2.0 V6 Management Service (`backend/management/`) — 2026-04-14 신규
+
+별도 프로세스 (gRPC :50051). FastAPI(:8000) 와 독립 실행. 같은 PG 공유.
+
+| 파일 | 역할 |
+|---|---|
+| `server.py` | gRPC 서버 진입점 (ManagementServicer + ImagePublisherServicer 등록) |
+| `db_session.py` | Mgmt 전용 PG 세션 (Interface 와 동일 .env.local 로딩) |
+| `proto/management.proto` | API 계약 — 8 RPC + Item/WorkOrder/AlertEvent/ImageFrame 메시지 |
+| `management_pb2.py` / `_grpc.py` | protoc 산출물 (Makefile: `make proto`) |
+| `services/task_manager.py` | StartProduction / ListItems (orders → work_order + items 분해) |
+| `services/task_allocator.py` | AllocateItem 스코어링 (스켈레톤) |
+| `services/traffic_manager.py` | PlanRoute (Waypoint 8노드 + Dijkstra + Backtrack Yield) |
+| `services/robot_executor.py` | ExecuteCommand 라우터 (prefix 기반 어댑터 선택) |
+| `services/execution_monitor.py` | WatchItems / WatchAlerts streaming + SLA 백그라운드 polling |
+| `services/image_sink.py` | 카메라별 최신 1프레임 메모리 보관 (AI Service 소비) |
+| `services/adapters/__init__.py` | `select_adapter(robot_id)` prefix 라우터 |
+| `services/adapters/ros2_adapter.py` | AMR-* / ARM-* 용 ROS2 lazy 어댑터 (`MGMT_ROS2_ENABLED=1`) |
+| `services/adapters/mqtt_adapter.py` | CONV-* / ESP-* 용 MQTT publisher (`casting/esp/{id}/cmd`) |
+
 ### 2.1 Core (`backend/app/`)
 
 | 파일 | 역할 |
@@ -104,7 +124,7 @@ Pydantic v2 모델. `Create` (입력), `Response` (출력), `Update` (부분 수
 
 ---
 
-## 3. PyQt5 모니터링 (`monitoring/`)
+## 3. PyQt5 모니터링 (`monitoring/`) — Python 3.12
 
 ### 3.1 Core
 
@@ -112,11 +132,16 @@ Pydantic v2 모델. `Create` (입력), `Response` (출력), `Update` (부분 수
 |------|------|
 | `main.py` | 앱 진입점, QApplication 생성 |
 | `config.py` | API/WS/MQTT URL 설정 |
-| `app/main_window.py` | QMainWindow — 페이지 스택 관리 |
-| `app/api_client.py` | REST API 동기 클라이언트 |
-| `app/ws_worker.py` | WebSocket QThread 워커 |
+| `scripts/gen_proto.sh` | ★ V6: backend/management/proto → app/generated 컴파일 |
+| `app/main_window.py` | QMainWindow — 페이지 스택 + Item/Alert stream 워커 브리지 |
+| `app/api_client.py` | REST API 동기 클라이언트 (잔여 조회용) |
+| `app/management_client.py` | ★ V6: gRPC :50051 클라이언트 (Health/StartProduction/ListItems/Watch*/ExecuteCommand/PlanRoute) |
+| `app/ws_worker.py` | WebSocket QThread (CASTING_WS_ENABLED=0 기본 비활성) |
 | `app/mqtt_worker.py` | MQTT QThread 워커 |
 | `app/mock_data.py` | 오프라인 목업 데이터 |
+| `app/generated/management_pb2*.py` | ★ V6: protoc 산출물 (gRPC stubs) |
+| `app/workers/item_stream_worker.py` | ★ V6: WatchItems gRPC stream 소비 + 셀 즉시 갱신 |
+| `app/workers/alert_stream_worker.py` | ★ V6: WatchAlerts gRPC stream 소비 + 토스트 |
 
 ### 3.2 Pages (`monitoring/app/pages/`)
 

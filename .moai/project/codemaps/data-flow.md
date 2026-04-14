@@ -1,6 +1,57 @@
 # 데이터 흐름
 
-> **Last updated**: 2026-04-13 (주문 스텝 재배치, PG 전환 상태 반영)
+> **Last updated**: 2026-04-14 (V6 Management Service gRPC 흐름 추가)
+
+## 0. V6 핵심 흐름: Factory PC PyQt → Management Service gRPC
+
+```mermaid
+sequenceDiagram
+    actor U as Factory Operator
+    participant Q as PyQt5 (Python 3.12)
+    participant MC as ManagementClient
+    participant MS as Management Service<br>(gRPC :50051)
+    participant TM as TaskManager
+    participant DB as PostgreSQL<br>100.107.120.14:5432
+    participant EM as ExecutionMonitor<br>(BG thread)
+
+    Note over U,Q: 생산 계획 페이지 [▶ 생산 시작] 클릭
+    Q->>MC: start_production([order_ids])
+    MC->>MS: gRPC StartProduction(order_ids)
+    MS->>TM: start_production()
+    TM->>DB: SELECT orders WHERE status='approved'
+    TM->>DB: INSERT work_orders, items×qty
+    TM->>DB: UPDATE orders.status='in_production'
+    DB-->>TM: OK
+    TM-->>MS: List[WorkOrder]
+    MS-->>MC: StartProductionResponse
+    MC-->>Q: List[WorkOrderInfo]
+    Q->>U: 메시지박스 "N건 WorkOrder 생성, M items"
+
+    Note over EM,DB: 별도 thread 1초 polling
+    EM->>DB: SELECT items (snapshot diff)
+    EM->>DB: INSERT alerts (SLA 위반 시)
+
+    Note over Q,MS: 동시: WatchItems / WatchAlerts streaming
+    Q->>MS: WatchItems(order_id) + WatchAlerts(severity)
+    MS-->>Q: stream ItemEvent (1초 내)
+    MS-->>Q: stream AlertEvent (1초 내)
+    Q->>U: 셀 마커 이동 + 토스트 알림
+```
+
+## 0.1 V6 HW 통신 채널 (Adapter 라우팅)
+
+```mermaid
+flowchart LR
+    EX[ExecuteCommand RPC] --> RT{robot_id prefix}
+    RT -->|AMR-* / ARM-*| ROS[ros2_adapter<br>MGMT_ROS2_ENABLED=1<br>RPi 배포 시]
+    RT -->|CONV-* / ESP-*| MQTT[mqtt_adapter<br>casting/esp/&#123;id&#125;/cmd]
+    RT -->|UNKNOWN| ERR[unknown_robot_prefix<br>거부]
+
+    ROS -->|nav2 Action| AMR[AMR/Cobot RPi]
+    MQTT -->|paho-mqtt :1883| ESP[ESP32 펌웨어]
+
+    IMG[Image Publisher<br>Jetson] -->|PublishFrames<br>gRPC client stream| SINK[image_sink<br>최신 1프레임 메모리]
+```
 
 ## 1. 핵심 요청 흐름: 고객 온라인 발주
 
