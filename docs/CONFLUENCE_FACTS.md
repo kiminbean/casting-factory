@@ -2,7 +2,7 @@
 
 > **addinedute(addinedu_team_2)** space 주요 설계/기술 문서의 팩트 체크 정리본
 > 원본 페이지 변경 시 이 파일을 업데이트해야 함
-> **마지막 업데이트**: 2026-04-13 (cron sync: 3건)
+> **마지막 업데이트**: 2026-04-14 (cron sync: 1건)
 > **READ-ONLY**: 이 문서는 로컬 참조용이며 Confluence 원본은 수정하지 않음
 
 ## 사용 원칙
@@ -1205,7 +1205,7 @@ Root page: **3703084** (`04_Implementation`)
 ### DB (5898574)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/5898574
-**최종 수정**: v29 (2026-04-13 sync)
+**최종 수정**: v31 (2026-04-14 sync)
 
 # INFO: DB Schema 작성 요령 
 [https://dayelee313.atlassian.net/wiki/spaces/753667/pages/7471353/?draftShareId=06a0aaa7-f832-4ddc-a47e-e03a51e82bb9](https://dayelee313.atlassian.net/wiki/spaces/753667/pages/7471353/?draftShareId=06a0aaa7-f832-4ddc-a47e-e03a51e82bb9)
@@ -1361,7 +1361,7 @@ UI에서 비고란 제거
 `CHECK` 제약 조건 
 trans_res_stat (transport_resource_status)
 idle  유휴 | working   이송중 | charging    충전중 | error   사용불가
-IDLE       | WORK                 | CHARG                   | ERROR
+IDLE       | WORK                 | CHRG                   | ERR
 
 ****
 ****
@@ -1371,48 +1371,22 @@ IDLE       | WORK                 | CHARG                   | ERROR
 |---|---|---|---|
 | trans_res_id | VARCHAR | 이송 자원 id | Primary Key(amr1,2,3) |
 ````````
-| trans_res_stat | VARCHAR | 현재 상태 | CHECK ('IDLE', 'WORK','CHARG', 'ERROR') |
-| batt | INT | 배터리 잔량(%) |   |
-| current_zone_id | INT | 현재 구역 id |   |
+| trans_res_stat | VARCHAR | 현재 상태 | CHECK ('IDLE', 'WORK','CHRG', 'ERR') |
+| battery | INT | 배터리 잔량(%) |   |
 | updated_at | TIMESTAMP | 상태 갱신 시각 | Default now() |
 
 # 공정 간 이송 관리
-````````````````
-| updated_at | TIMESTAMP | 상태 갱신 시각 | Default now() | Default now() | VARCHAR | 현재 이송 상태 | pending \| assigned \| moving_to_source \| loading \| moving_to_destination \| unloading \| completed \| failed |
-| requested_at | TIMESTAMP | 요청 시각 | Default now() |
-
-## transport_task
-이송 수행 관리 테이블. transport_request 테이블에서 받은 요청을 특정 이송 자원에 배정한 실행 단위 
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-| transport_task_id | SERIAL | 이송 수행 id | Primary Key |
-| transport_request_id | INT | 이송 요청 id | REF transport_request(transport_request_id) |
-| resource_id | INT | 배정 이송 자원 id | REF transport_resource(resource_id) |
-````````
-| task_status | VARCHAR | 수행 상태 | assigned \| in_progress \| completed \| failed |
-| started_at | TIMESTAMP | 시작 시각 |   |
-| ended_at | TIMESTAMP | 종료 시각 |   |
-| failure_reason | VARCHAR | 실패 사유 |   |
 
 # 품질 검사 / 분류 관리
-| failure_reason | VARCHAR | 실패 사유 |   |   | INT | 양품 수량 |   |
-| failed_quantity | INT | 불량 수량 |   |
-| inspected_at | TIMESTAMP | 검사 시각 | Default now() |
 
 # 적재 / 창고 관리
-| inspected_at | TIMESTAMP | 검사 시각 | Default now() | Default now() | Primary Key |
+| updated_at | TIMESTAMP | 상태 갱신 시각 | Default now() | Default now() | Primary Key |
 | zone_name | VARCHAR | 구역 이름(ex: A구역, B구역) |   |
 | product_type | VARCHAR | 적재 가능한 품목 유형 |   |
 | capacity | INT | 최대 수용량 |   |
 
 ## storage_location
 적재 위치 관리 스키마
-물품 위치는 
 
 ****
 ****
