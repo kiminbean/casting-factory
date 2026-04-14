@@ -187,3 +187,29 @@ service ManagementService {
   // Health
   rpc Health(Empty) returns (Empty);
 }
+
+// -----------------------------------------------------------------------------
+// Image Publishing Service (V6 결정 2026-04-14)
+// HW Image Publisher (Jetson) → Server. ROS2 image transport 부담 회피 위해 gRPC streaming + JPEG.
+// -----------------------------------------------------------------------------
+
+message ImageFrame {
+  string    camera_id    = 1;   // "CAM-INSP-01" 등
+  Timestamp captured_at  = 2;
+  string    encoding     = 3;   // "jpeg" | "png" | "raw_rgb"
+  uint32    width        = 4;
+  uint32    height       = 5;
+  bytes     data         = 6;   // 압축 이미지 바이트 (JPEG 권장)
+  uint64    sequence     = 7;   // 카메라별 순번 (drop 감지)
+}
+
+message ImageAck {
+  uint64 sequence = 1;          // 처리한 마지막 sequence
+  bool   accepted = 2;
+  string message  = 3;
+}
+
+service ImagePublisherService {
+  // Image Publisher → Server: client streaming (서버는 ack 단건 응답)
+  rpc PublishFrames(stream ImageFrame) returns (ImageAck);
+}

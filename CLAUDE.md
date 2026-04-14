@@ -16,6 +16,11 @@
 운영/개발 모두 동일 PG (`100.107.120.14:5432 / smartcast_robotics`, role `team2`).
 DATABASE_URL 미설정 시 backend 가 fail-fast.
 
+**HW 통신 채널 (V6 어댑터 라우팅)**:
+- AMR-* / ARM-* → ROS2 DDS (RPi5/RPi4 노드, `MGMT_ROS2_ENABLED=1` 시 활성)
+- CONV-* / ESP-* → MQTT `casting/esp/{id}/cmd` (ESP32 HW Control Service)
+- Image Publisher → gRPC streaming `ImagePublisherService/PublishFrames` (Jetson)
+
 **설계 문서**: `docs/management_service_design.md`
 **API 정의**: `backend/management/proto/management.proto`
 

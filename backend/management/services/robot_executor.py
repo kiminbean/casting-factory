@@ -1,32 +1,31 @@
-"""Robot Executor — Management Service ↔ HW 계층 지령 송출.
+"""Robot Executor — robot_id prefix 기반 어댑터 라우터.
 
-이미지 V6 기준:
-- Manufacturing / Stacking / Transport Service: 🟢 ROS2 DDS (nav2, MoveIt)
-- HW Control Service (ESP32 컨베이어): 🔵 MQTT
+V6 통신 행렬 (2026-04-14):
+- AMR-* / ARM-*  → ros2_adapter (Manufacturing/Stacking/Transport ROS2 노드)
+- CONV-* / ESP-* → mqtt_adapter (HW Control Service ESP32)
+- 그 외          → unknown (NotImplemented 반환)
 
-따라서 이 모듈은 두 가지 백엔드를 동시에 지원한다.
+본 모듈은 비즈니스 로직 없이 어댑터 dispatch 만 수행. 실제 wire 는 adapters/ 참고.
+
+@MX:ANCHOR: ExecuteCommand RPC 의 단일 진입점. 어댑터 추가 시 본 파일만 수정.
 """
 from __future__ import annotations
 
 import logging
-from typing import Any
+
+from .adapters import select_adapter
+from .adapters.mqtt_adapter import MqttAdapter
+from .adapters.ros2_adapter import Ros2Adapter
 
 logger = logging.getLogger(__name__)
 
 
 class RobotExecutor:
-    """명령을 적절한 채널(ROS2 action / MQTT publish)로 송출.
+    """robot_id 별 어댑터 라우팅. 어댑터는 1회 초기화 후 재사용."""
 
-    TODO:
-    - ROS2 Python Client 초기화 (rclpy)
-    - MQTT 클라이언트 (paho-mqtt) — conveyor/+/cmd 토픽
-    - command 라우팅:
-        navigate(pose)  → ROS2 NavigateToPose Action → AMR
-        pick(item)      → ROS2 MoveIt Action         → Cobot
-        place(slot)     → ROS2 MoveIt Action         → Cobot
-        belt_speed(v)   → MQTT publish               → ESP32
-    - ack/nack 처리, 실패 시 Execution Monitor 에 통지
-    """
+    def __init__(self) -> None:
+        self._ros2 = Ros2Adapter()
+        self._mqtt = MqttAdapter()
 
     def dispatch(
         self,
@@ -35,9 +34,19 @@ class RobotExecutor:
         command: str,
         payload: bytes,
     ) -> tuple[bool, str]:
-        logger.info(
-            "Dispatch %s to %s: item=%s (%d bytes)",
-            command, robot_id, item_id, len(payload),
+        adapter_name = select_adapter(robot_id)
+        if adapter_name == "ros2":
+            return self._ros2.dispatch(item_id, robot_id, command, payload)
+        if adapter_name == "mqtt":
+            return self._mqtt.dispatch(item_id, robot_id, command, payload)
+        return (
+            False,
+            f"unknown_robot_prefix: '{robot_id}' — V6 채널 매핑 없음. "
+            "AMR-/ARM- (ROS2) 또는 CONV-/ESP- (MQTT) 사용.",
         )
-        # TODO: 실제 ROS2 / MQTT 송출
-        return (False, "not_implemented")
+
+    def close(self) -> None:
+        try:
+            self._ros2.close()
+        finally:
+            self._mqtt.close()

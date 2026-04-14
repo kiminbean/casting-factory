@@ -35,9 +35,59 @@ make run          # server.py 실행 (:50051)
 
 | 변수 | 기본값 | 용도 |
 |---|---|---|
-| `MANAGEMENT_GRPC_HOST` | `0.0.0.0` | 바인딩 주소 |
-| `MANAGEMENT_GRPC_PORT` | `50051` | 포트 |
-| `MANAGEMENT_DB_URL` | (미설정) | SQLAlchemy URL, Interface Service 와 동일 |
+| `MANAGEMENT_GRPC_HOST` | `0.0.0.0` | gRPC 바인딩 주소 |
+| `MANAGEMENT_GRPC_PORT` | `50051` | gRPC 포트 |
+| `MGMT_MQTT_HOST` | `localhost` | MQTT 브로커 (Robot Executor publish 용) |
+| `MGMT_MQTT_PORT` | `1883` | MQTT 포트 |
+| `MGMT_MQTT_QOS` | `1` | publish QoS |
+| `MGMT_MQTT_CLIENT_ID` | `casting-mgmt-executor` | MQTT client id |
+
+DATABASE_URL 은 `backend/.env.local` 에서 자동 로딩 (Interface Service 와 공유).
+
+## V6 통신 채널 (어댑터 라우팅)
+
+`robot_id` prefix 가 단일 진실. `services/adapters/` 하위에서 분기:
+
+| robot_id prefix | 어댑터 | 채널 | 대상 |
+|---|---|---|---|
+| `AMR-*` | `ros2_adapter` | 🟢 ROS2 DDS | Transport (RPi4) |
+| `ARM-*` | `ros2_adapter` | 🟢 ROS2 DDS | Manufacturing/Stacking (RPi5) |
+| `CONV-*` | `mqtt_adapter` | 🔵 MQTT | HW Control Service (ESP32 컨베이어) |
+| `ESP-*` | `mqtt_adapter` | 🔵 MQTT | HW Control Service (기타 ESP32) |
+| 그 외 | `unknown` | (거부) | `unknown_robot_prefix` 에러 |
+
+### MQTT (ESP32) 토픽 표준
+
+| 방향 | Topic | 비고 |
+|---|---|---|
+| Server → ESP32 | `casting/esp/{robot_id}/cmd` | V6 표준 |
+| ESP32 → Server | `casting/esp/{robot_id}/status` | (구독자 별도 구현 예정) |
+| ESP32 → Server | `casting/esp/{robot_id}/event` | 이벤트 단발 |
+| 레거시 호환 (옵션) | `conveyor/{robot_id}/cmd` | `MGMT_MQTT_LEGACY_CONVEYOR=1` 시 동시 publish |
+
+Payload (JSON):
+```json
+{ "command": "start", "item_id": 200, "robot_id": "ESP-001",
+  "issued_at": "2026-04-14T...", "payload": {"rate_hz": 5} }
+```
+
+### ROS2 토픽 / 액션 표준 (배포 시점에 활성)
+
+| 대상 | Endpoint | 메시지 |
+|---|---|---|
+| AMR navigate | Action `/{robot_id}/navigate_to_pose` | `nav2_msgs/NavigateToPose` |
+| ARM move | Action `/{robot_id}/move_to` (custom) | `casting_msgs/MoveTo` (TBD) |
+| 일반 명령 | Topic `/{robot_id}/cmd` | `std_msgs/String` (JSON payload) |
+
+활성화: `MGMT_ROS2_ENABLED=1` + Ubuntu 24.04 + ROS2 Jazzy + `rclpy` 설치.
+
+### Image Publishing (Jetson → Server)
+
+| Endpoint | 프로토콜 | 메시지 |
+|---|---|---|
+| `ImagePublisherService/PublishFrames` | gRPC client streaming :50051 | `ImageFrame` (camera_id, encoding, width, height, data, sequence) |
+
+이미지 수신은 `services/image_sink.py` 의 글로벌 `sink` 가 카메라별 최신 1프레임 보관.
 
 ## 클라이언트 예시
 

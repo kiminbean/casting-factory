@@ -40,6 +40,7 @@ from services.task_allocator import TaskAllocator  # noqa: E402
 from services.traffic_manager import TrafficManager  # noqa: E402
 from services.robot_executor import RobotExecutor  # noqa: E402
 from services.execution_monitor import ExecutionMonitor  # noqa: E402
+from services.image_sink import sink as image_sink  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -171,10 +172,44 @@ def _work_order_to_proto(wo):
     )
 
 
+class ImagePublisherServicer(management_pb2_grpc.ImagePublisherServiceServicer):
+    """HW Image Publishing Service (Jetson) → Server.
+
+    gRPC client streaming. 클라이언트가 ImageFrame 을 연속 보내고, 서버는 마지막 ack 1번 응답.
+    """
+
+    def PublishFrames(self, request_iterator, context):
+        last_seq = 0
+        count = 0
+        for frame in request_iterator:
+            try:
+                image_sink.push(
+                    camera_id=frame.camera_id,
+                    encoding=frame.encoding,
+                    width=frame.width,
+                    height=frame.height,
+                    data=frame.data,
+                    sequence=frame.sequence,
+                    captured_at_iso=frame.captured_at.iso8601 if frame.HasField("captured_at") else "",
+                )
+                last_seq = frame.sequence
+                count += 1
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("ImagePublisher push 실패: %s", exc)
+        logger.info("ImagePublisher 스트림 종료: %d frames, last_seq=%d", count, last_seq)
+        return management_pb2.ImageAck(
+            sequence=last_seq, accepted=True,
+            message=f"received {count} frames",
+        )
+
+
 def serve() -> None:
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     management_pb2_grpc.add_ManagementServiceServicer_to_server(
         ManagementServicer(), server
+    )
+    management_pb2_grpc.add_ImagePublisherServiceServicer_to_server(
+        ImagePublisherServicer(), server
     )
     bind_addr = f"{HOST}:{PORT}"
     server.add_insecure_port(bind_addr)
