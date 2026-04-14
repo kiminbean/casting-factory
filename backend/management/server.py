@@ -13,6 +13,10 @@ Factory Operator PC(PyQt)가 직접 gRPC 로 호출하며, Interface Service 장
     MANAGEMENT_GRPC_HOST  기본 0.0.0.0
     MANAGEMENT_GRPC_PORT  기본 50051
     MANAGEMENT_DB_URL     SQLAlchemy URL (Interface Service 와 동일 DB 공유)
+
+@MX:ANCHOR: V6 Phase 1~8 의 단일 진입점. ManagementServicer + ImagePublisherServicer 등록.
+        모든 PyQt gRPC 호출이 본 서버를 통과 — 변경 시 호환성 영향 큼.
+@MX:REASON: 5개 service 모듈 + 2개 servicer 의 wiring 책임. RPC 추가 시 servicer 메서드 + proto 동시 갱신 필요.
 """
 from __future__ import annotations
 

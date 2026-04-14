@@ -264,7 +264,11 @@ class MainWindow(QMainWindow):
 
     def _on_alert_event(self, alert_id: str, severity: str, error_code: str,
                         message: str, equipment_id: str, zone: str, at_iso: str) -> None:
-        """gRPC alert → 우상단 토스트 알림."""
+        """gRPC alert → 우상단 토스트 알림.
+
+        @MX:NOTE: AlertStreamWorker.pyqtSignal 의 슬롯. WebSocket 단종 대체 채널 (V6 Phase 8).
+        @MX:WARN: severity 별 차별 대응 없음. 향후 critical 은 모달 다이얼로그로 강조 필요.
+        """
         import logging as _lg
         _lg.getLogger(__name__).info(
             "gRPC alert 수신: id=%s sev=%s code=%s msg=%s",

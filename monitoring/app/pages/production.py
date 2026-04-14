@@ -66,7 +66,11 @@ class ProductionPage(QWidget):
         self._stream_thread.start()
 
     def _on_item_event(self, item_id: int, stage_code: str, robot_id: str, at_iso: str) -> None:
-        """gRPC 스트림 콜백 (메인 스레드 실행). 캐시 + 행 1개만 즉시 갱신."""
+        """gRPC 스트림 콜백 (메인 스레드 실행). 캐시 + 행 1개만 즉시 갱신.
+
+        @MX:NOTE: ItemStreamWorker.pyqtSignal 의 슬롯. 메인 스레드에서 호출되므로 GUI 직접 조작 안전.
+                    행 단위 부분 갱신만 수행 — 전체 refresh 비용 회피.
+        """
         prev = self._item_stage_cache.get(item_id)
         self._item_stage_cache[item_id] = stage_code
         if prev != stage_code:

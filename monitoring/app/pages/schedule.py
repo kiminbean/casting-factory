@@ -653,6 +653,10 @@ class SchedulePage(QWidget):
 
         기존 HTTP /api/production/schedule/start 대신 gRPC 직결 호출.
         Interface Service 장애/이관 시에도 공장 가동 유지가 목적.
+
+        @MX:ANCHOR: PyQt → V6 Mgmt Service 의 첫 RPC 진입점. Phase 4 산출물.
+        @MX:REASON: 본 메서드 한 줄로 "PyQt 가 Interface 우회" 정책이 표현됨. 향후 다른 페이지의
+                    유사 RPC 호출 시 본 메서드를 패턴 참조.
         """
         # gRPC 의존 import 는 메서드 내부로 (앱 초기 로드 부담 최소화)
         try:
