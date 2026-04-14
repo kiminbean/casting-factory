@@ -1,40 +1,71 @@
-"""Execution Monitor — Item 상태 변경을 감지해 gRPC 스트림으로 송출.
-
-V6 아키텍처 Phase 3 산출물.
+"""Execution Monitor — Item 상태 변경 감지 + SLA 타임아웃 + alerts 통합 (V6 Phase 7).
 
 전략:
-- 1초 간격 DB 스냅샷 대조 (in-memory cache vs 현재 cur_stage)
-- 변경된 item 만 ItemEvent 로 yield
-- 신규 추가된 item (cache 에 없던 id) 도 이벤트로 emit (stage=현재값)
-- 현재 사용 가능한 인덱스만 사용 (items.id, items.order_id) — order_id 컬럼 인덱스 존재
+- 1초 polling DB 스냅샷 대조 (in-memory cache)
+- 변경 감지: cur_stage 가 바뀐 item → ItemEvent emit
+- SLA 감시: 같은 stage 머무른 시간이 임계 초과 → alerts INSERT + 경고 ItemEvent emit
+- 동일 item-stage 조합 중복 알람 방지 (alert_id 캐시)
 
-추후 LISTEN/NOTIFY 또는 Debezium 등으로 교체 가능.
+stage 별 SLA (초):
+- QUE: 무한 (대기는 정상)
+- MM:  300 (주형 제작 5분)
+- DM:   60 (탈형 1분)
+- TR_PP, TR_LD: 60 (이송 1분)
+- PP:  600 (후처리 10분)
+- IP:   30 (검사 30초)
+- SH:  무한 (출고는 외부 트리거)
 
-@MX:NOTE: 다중 클라이언트 동시 구독 시 현재는 각 연결마다 독립 polling.
-        클라이언트 100+ 명 단계가 오면 server-side 단일 polling + pub/sub 으로 리팩토링.
+@MX:NOTE: SLA 초과 시 alerts.severity='warning', type='stage_timeout' 으로 기록.
+@MX:WARN: 다중 클라이언트 동시 구독 시 각자 polling — alerts 는 1 source 가 처리하도록 보호 필요.
+        본 구현은 클라이언트별 독립 alerts INSERT 가 발생하지 않도록 동일 item-stage 캐시로 해결.
 """
 from __future__ import annotations
 
 import logging
+import os
 import time
+import uuid
 from collections.abc import Iterator
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.models.models import Item
+from app.models.models import Alert, Item
 from db_session import SessionLocal
 
-import management_pb2  # type: ignore  # backend/management/ 가 sys.path 에 들어있음
+import management_pb2  # type: ignore
 
 logger = logging.getLogger(__name__)
 
-
-# proto enum 매핑 (string → int)
+# stage 코드 → proto enum int
 _STAGE_TO_ENUM = {
     "QUE": 1, "MM": 2, "DM": 3, "TR_PP": 4,
     "PP": 5, "IP": 6, "TR_LD": 7, "SH": 8,
 }
+
+# stage 별 SLA (초). 0 또는 음수면 무한 (감시 안 함)
+DEFAULT_SLA_SEC: dict[str, float] = {
+    "QUE": 0,       # 대기는 무제한
+    "MM": 300,
+    "DM": 60,
+    "TR_PP": 60,
+    "PP": 600,
+    "IP": 30,
+    "TR_LD": 60,
+    "SH": 0,        # 출고는 외부 시스템 트리거
+}
+
+# 환경 변수로 stage 별 SLA override 가능. 예: MGMT_SLA_IP=3 MGMT_SLA_DM=10
+for _stage in list(DEFAULT_SLA_SEC):
+    _v = os.environ.get(f"MGMT_SLA_{_stage}")
+    if _v:
+        try:
+            DEFAULT_SLA_SEC[_stage] = float(_v)
+        except ValueError:
+            pass
+
+# alert 중복 발행 방지 캐시 TTL (초). 같은 item-stage 가 N초 안에 또 SLA 위반이어도 한 번만 alert.
+ALERT_DEDUP_TTL_SEC = float(os.environ.get("MGMT_ALERT_DEDUP_TTL_SEC", "300"))
 
 
 def _stage_enum(stage: str | None) -> int:
@@ -45,69 +76,158 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-class ExecutionMonitor:
-    """진행 중 Item 상태를 감시하고 gRPC 클라이언트에 ItemEvent 를 푸시.
+def _now_mono() -> float:
+    return time.monotonic()
 
-    poll_interval_sec 마다 DB 를 읽고, 직전 스냅샷과 다른 item 만 이벤트 송출.
-    클라이언트 연결 종료 시 generator 를 그냥 끝내면 server.py 가 정리한다.
+
+class ExecutionMonitor:
+    """진행 중 Item 감시 + ItemEvent stream + alerts 자동 기록.
+
+    각 클라이언트 연결마다 stream() generator 가 독립 실행되지만, alerts 기록 dedup 캐시는
+    인스턴스 공유로 동일 item-stage 중복 INSERT 를 방지한다.
     """
 
-    def __init__(self, poll_interval_sec: float = 1.0) -> None:
+    def __init__(self, poll_interval_sec: float = 1.0,
+                 sla_overrides: dict[str, float] | None = None) -> None:
         self._interval = poll_interval_sec
+        self._sla = dict(DEFAULT_SLA_SEC)
+        if sla_overrides:
+            self._sla.update(sla_overrides)
+        # 인스턴스 공유 캐시 (alerts dedup)
+        self._last_alert: dict[tuple[int, str], float] = {}
+        self._stage_started_mono: dict[int, tuple[str, float]] = {}
+        # 백그라운드 자동 polling — 클라이언트 stream 없어도 SLA 감시 + alerts 발행
+        self._bg_snapshot: dict[int, str] = {}
+        self._bg_first_pass = True
+        self._bg_stop = False
+        import threading as _t
+        self._bg_thread = _t.Thread(target=self._background_loop, daemon=True,
+                                    name="ExecMonitor-bg")
+        self._bg_thread.start()
+        logger.info("ExecutionMonitor background SLA polling 시작 (interval=%.1fs)",
+                    self._interval)
 
-    def stream(self, order_filter: str | None) -> Iterator:
-        """gRPC server streaming 본체. proto ItemEvent 를 무한히 yield.
-
-        클라이언트가 연결을 끊으면 다음 yield 시점에 BrokenPipe 발생 →
-        server.py 의 context.is_active() 체크에서 break 처리됨.
-        """
-        snapshot: dict[int, str] = {}  # item_id → cur_stage 직전 스냅샷
-        first_pass = True
-
-        while True:
+    def _background_loop(self) -> None:
+        """클라이언트 연결 여부와 무관하게 SLA 감시. 이벤트는 버리고 alerts 만 INSERT."""
+        while not self._bg_stop:
             try:
-                changes, snapshot = self._diff_snapshot(snapshot, order_filter, first_pass)
-                first_pass = False
-                for item_id, stage, robot in changes:
-                    yield management_pb2.ItemEvent(
-                        item_id=item_id,
-                        stage=_stage_enum(stage),
-                        robot_id=robot or "",
-                        message="",
-                        at=management_pb2.Timestamp(iso8601=_now_iso()),
-                    )
+                _events, self._bg_snapshot = self._tick(
+                    self._bg_snapshot, order_filter=None, first_pass=self._bg_first_pass
+                )
+                self._bg_first_pass = False
             except Exception as exc:  # noqa: BLE001
-                logger.exception("ExecutionMonitor.stream poll error: %s", exc)
-                # 일시 오류 시 재시도. 영구 문제(예: DB 다운)는 다음 polling 시 또 잡힘.
-
+                logger.exception("ExecMonitor background tick error: %s", exc)
             time.sleep(self._interval)
 
-    def _diff_snapshot(
-        self,
-        prev: dict[int, str],
-        order_filter: str | None,
-        first_pass: bool,
-    ) -> tuple[list[tuple[int, str, str | None]], dict[int, str]]:
-        """현재 DB 상태를 가져와 prev 와 대조, 변경분 + 새 스냅샷을 돌려준다.
+    # ------------------------------------------------------------------
+    # gRPC server streaming entrypoint
+    # ------------------------------------------------------------------
 
-        first_pass=True 인 경우 모든 현재 item 을 이벤트로 emit (구독 직후 초기 상태 sync).
-        그 이후는 stage 가 바뀐 item 만 emit.
-        """
-        changes: list[tuple[int, str, str | None]] = []
+    def stream(self, order_filter: str | None) -> Iterator:
+        snapshot: dict[int, str] = {}
+        first_pass = True
+        while True:
+            try:
+                events, snapshot = self._tick(snapshot, order_filter, first_pass)
+                first_pass = False
+                for ev in events:
+                    yield ev
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("ExecutionMonitor.stream tick error: %s", exc)
+            time.sleep(self._interval)
+
+    # ------------------------------------------------------------------
+    # 내부
+    # ------------------------------------------------------------------
+
+    def _tick(self, prev: dict[int, str], order_filter: str | None,
+              first_pass: bool) -> tuple[list, dict[int, str]]:
+        """1 polling 사이클: DB 읽기 → 변경/타임아웃 이벤트 생성 + alerts 기록."""
+        events: list = []
         new_snapshot: dict[int, str] = {}
+        now_mono = _now_mono()
 
         with SessionLocal() as db:
-            stmt = select(Item.id, Item.cur_stage, Item.curr_res)
+            stmt = select(Item.id, Item.cur_stage, Item.curr_res, Item.order_id)
             if order_filter:
                 stmt = stmt.where(Item.order_id == order_filter)
-            for row in db.execute(stmt).all():
-                item_id, stage, robot = int(row[0]), str(row[1] or "QUE"), row[2]
-                new_snapshot[item_id] = stage
-                if first_pass:
-                    changes.append((item_id, stage, robot))
-                    continue
-                old = prev.get(item_id)
-                if old != stage:
-                    changes.append((item_id, stage, robot))
+            rows = db.execute(stmt).all()
 
-        return changes, new_snapshot
+            for row in rows:
+                item_id = int(row[0])
+                stage = str(row[1] or "QUE")
+                robot = row[2] or ""
+                new_snapshot[item_id] = stage
+
+                # 1) 변경 감지
+                old = prev.get(item_id)
+                stage_changed = old is not None and old != stage
+                first_seen = old is None and not first_pass
+
+                if first_pass or stage_changed or first_seen:
+                    self._stage_started_mono[item_id] = (stage, now_mono)
+                    events.append(self._make_event(
+                        item_id, stage, robot, message="" if first_pass else "stage_changed"
+                    ))
+
+                # 2) SLA 타임아웃 검사 (변경 없을 때만)
+                if not first_pass and not stage_changed:
+                    timeout_event = self._check_sla(db, item_id, stage, robot, now_mono)
+                    if timeout_event is not None:
+                        events.append(timeout_event)
+
+            db.commit()  # alerts INSERT 반영
+
+        return events, new_snapshot
+
+    def _make_event(self, item_id: int, stage: str, robot_id: str, message: str):
+        return management_pb2.ItemEvent(
+            item_id=item_id,
+            stage=_stage_enum(stage),
+            robot_id=robot_id or "",
+            message=message,
+            at=management_pb2.Timestamp(iso8601=_now_iso()),
+        )
+
+    def _check_sla(self, db, item_id: int, stage: str, robot_id: str,
+                    now_mono: float):
+        """SLA 초과 여부 판정. 위반 시 alerts INSERT + 경고 ItemEvent 반환."""
+        sla = self._sla.get(stage, 0)
+        if sla <= 0:
+            return None
+        started = self._stage_started_mono.get(item_id)
+        if started is None or started[0] != stage:
+            self._stage_started_mono[item_id] = (stage, now_mono)
+            return None
+        elapsed = now_mono - started[1]
+        if elapsed < sla:
+            return None
+
+        # dedup
+        key = (item_id, stage)
+        last = self._last_alert.get(key)
+        if last is not None and (now_mono - last) < ALERT_DEDUP_TTL_SEC:
+            return None
+        self._last_alert[key] = now_mono
+
+        # alerts INSERT
+        alert_id = f"ALT-{uuid.uuid4().hex[:12]}"
+        msg = f"Item {item_id} stage={stage} elapsed={elapsed:.0f}s > SLA {sla:.0f}s"
+        try:
+            db.add(Alert(
+                id=alert_id,
+                equipment_id=robot_id or "",
+                type="stage_timeout",
+                severity="warning",
+                error_code=f"SLA_{stage}",
+                message=msg,
+                abnormal_value=f"{elapsed:.0f}s",
+                zone=stage,
+                timestamp=_now_iso(),
+                acknowledged=False,
+            ))
+            logger.warning("SLA 위반: %s (alert=%s)", msg, alert_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("alerts INSERT 실패: %s", exc)
+
+        return self._make_event(item_id, stage, robot_id, message=f"sla_timeout:{sla:.0f}s")
