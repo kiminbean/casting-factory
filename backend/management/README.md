@@ -19,6 +19,23 @@ make proto        # protoc 실행
 make run          # server.py 실행 (:50051)
 ```
 
+## 테스트
+
+```bash
+source venv/bin/activate
+pytest tests/ --cov=services --cov-report=term-missing
+```
+
+현재 커버리지 (2026-04-14 베이스라인):
+- traffic_manager.py: 97% (Phase 6 완전 검증)
+- adapters/__init__.py: 93% (V6 라우터 매트릭스)
+- 전체 services/: 32%
+
+미테스트 모듈 (향후 보강):
+- task_manager (DB fixture 필요), execution_monitor (mock+thread)
+- mqtt_adapter (broker mock), ros2_adapter (rclpy stub)
+- image_sink, task_allocator, robot_executor
+
 ## 포함 모듈
 
 | 파일 | 역할 | 상태 |
