@@ -1,0 +1,10 @@
+workflow:
+    team:
+        enabled: true
+        max_teammates: 5
+        shutdown_timeout_seconds: 30
+    cg_mode:
+        enabled: true
+        leader: claude
+        teammate_model: glm
+        tmux_pane_creation: auto
