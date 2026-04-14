@@ -116,6 +116,11 @@ class ManagementClient:
         req = management_pb2.WatchItemsRequest(order_id=order_id or "")
         return self._stub.WatchItems(req)
 
+    def watch_alerts(self, severity_filter: str | None = None) -> Iterator:
+        """alerts 테이블 신규 row 스트림. 별도 QThread 에서 소비."""
+        req = management_pb2.WatchAlertsRequest(severity_filter=severity_filter or "")
+        return self._stub.WatchAlerts(req)
+
     @staticmethod
     def stage_code_to_label(code: int) -> str:
         """proto enum 정수 → 코드 문자열 (UI 매핑용)."""

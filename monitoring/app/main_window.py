@@ -232,8 +232,15 @@ class MainWindow(QMainWindow):
         finally:
             self._refreshing = False
 
-    # ---------- WebSocket ----------
+    # ---------- WebSocket (V6 Phase 8: 환경변수로 비활성화 가능) ----------
     def _start_websocket(self) -> None:
+        # CASTING_WS_ENABLED=0 (기본 0) 이면 ws_worker 미기동.
+        # alerts/items 실시간은 gRPC stream(WatchAlerts/WatchItems) 로 대체.
+        import os as _os
+        if _os.environ.get("CASTING_WS_ENABLED", "0") not in ("1", "true", "yes"):
+            self._ws_status_label.setText("WS: V6 disabled (gRPC streaming 사용)")
+            self._start_alert_stream()
+            return
         self._ws_thread = QThread()
         self._ws_worker = WebSocketWorker()
         self._ws_worker.moveToThread(self._ws_thread)
@@ -241,6 +248,38 @@ class MainWindow(QMainWindow):
         self._ws_worker.connection_state.connect(self._on_ws_state)
         self._ws_worker.message_received.connect(self._on_ws_message)
         self._ws_thread.start()
+        self._start_alert_stream()
+
+    # ---------- gRPC AlertStreamWorker (V6 Phase 8) ----------
+    def _start_alert_stream(self) -> None:
+        try:
+            from app.workers.alert_stream_worker import AlertStreamWorker, AlertStreamThread
+        except ImportError:
+            return
+        self._alert_worker = AlertStreamWorker(severity_filter="warning")
+        self._alert_worker.alert_event.connect(self._on_alert_event)
+        self._alert_worker.connection_state.connect(self._on_alert_conn_state)
+        self._alert_thread = AlertStreamThread(self._alert_worker)
+        self._alert_thread.start()
+
+    def _on_alert_event(self, alert_id: str, severity: str, error_code: str,
+                        message: str, equipment_id: str, zone: str, at_iso: str) -> None:
+        """gRPC alert → 우상단 토스트 알림."""
+        import logging as _lg
+        _lg.getLogger(__name__).info(
+            "gRPC alert 수신: id=%s sev=%s code=%s msg=%s",
+            alert_id[:24], severity, error_code, message[:50],
+        )
+        title_prefix = {"critical": "🚨 CRITICAL", "warning": "⚠ WARNING", "info": "ℹ INFO"}
+        title = f"{title_prefix.get(severity, severity.upper())} {error_code or zone or ''}".strip()
+        body = message or alert_id
+        if equipment_id:
+            body = f"{body}\n설비: {equipment_id}"
+        self.show_toast(severity, title, body)
+
+    def _on_alert_conn_state(self, connected: bool) -> None:
+        # AlertStream 연결 상태는 ws_status_label 우측에 작은 표시 (옵션)
+        pass
 
     def _update_clock(self) -> None:
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

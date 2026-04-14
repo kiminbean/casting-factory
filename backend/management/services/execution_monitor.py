@@ -136,6 +136,60 @@ class ExecutionMonitor:
                 logger.exception("ExecutionMonitor.stream tick error: %s", exc)
             time.sleep(self._interval)
 
+    def stream_alerts(self, severity_filter: str | None) -> Iterator:
+        """alerts 테이블 신규 row 를 polling 해서 AlertEvent 로 emit.
+
+        seen_ids 셋 기반으로 신규 INSERT 만 정확히 감지 (timestamp 문자열 정렬에 의존하지 않음).
+        - first_pass: 최근 200건 기록 + 최신 1건만 emit (요약 sync)
+        - 이후: seen_ids 에 없는 row 가 신규 → 모두 emit, seen_ids 갱신
+        - seen_ids 는 최근 1000건 cap (메모리 보호)
+        """
+        from app.models.models import Alert  # lazy import
+
+        seen_ids: set[str] = set()
+        first_pass = True
+        sev = (severity_filter or "").strip().lower()
+        SEEN_CAP = 1000
+
+        while True:
+            try:
+                with SessionLocal() as db:
+                    q = db.query(Alert).order_by(Alert.timestamp.desc()).limit(200)
+                    rows = q.all()
+
+                emit: list = []
+                if first_pass:
+                    seen_ids.update(r.id for r in rows)
+                    if rows:
+                        emit = [rows[0]]  # 최신 1건만 표시 (UI sync)
+                    first_pass = False
+                else:
+                    new_rows = [r for r in rows if r.id not in seen_ids]
+                    # 과거→최근 시간 순으로 emit
+                    new_rows.reverse()
+                    emit = new_rows
+                    seen_ids.update(r.id for r in new_rows)
+                    # cap 초과 시 오래된 절반 정리 (간단)
+                    if len(seen_ids) > SEEN_CAP:
+                        seen_ids = set(list(seen_ids)[-SEEN_CAP // 2:])
+
+                for r in emit:
+                    if sev and (r.severity or "").lower() != sev:
+                        continue
+                    yield management_pb2.AlertEvent(
+                        id=r.id,
+                        type=r.type or "",
+                        severity=r.severity or "info",
+                        error_code=r.error_code or "",
+                        message=r.message or "",
+                        equipment_id=r.equipment_id or "",
+                        zone=r.zone or "",
+                        at=management_pb2.Timestamp(iso8601=r.timestamp or _now_iso()),
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("ExecutionMonitor.stream_alerts error: %s", exc)
+            time.sleep(self._interval)
+
     # ------------------------------------------------------------------
     # 내부
     # ------------------------------------------------------------------

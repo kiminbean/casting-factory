@@ -163,6 +163,22 @@ message WatchItemsRequest {
   string order_id = 1;  // optional filter
 }
 
+// alerts 테이블 신규 row → stream
+message AlertEvent {
+  string    id              = 1;
+  string    type            = 2;   // "stage_timeout" | "equipment_error" | ...
+  string    severity        = 3;   // "info" | "warning" | "critical"
+  string    error_code      = 4;
+  string    message         = 5;
+  string    equipment_id    = 6;
+  string    zone            = 7;
+  Timestamp at              = 8;
+}
+
+message WatchAlertsRequest {
+  string severity_filter = 1;  // "" (모두) | "warning" | "critical"
+}
+
 // -----------------------------------------------------------------------------
 // Service Definition
 // -----------------------------------------------------------------------------
@@ -183,6 +199,7 @@ service ManagementService {
 
   // Execution Monitor — server streaming
   rpc WatchItems(WatchItemsRequest) returns (stream ItemEvent);
+  rpc WatchAlerts(WatchAlertsRequest) returns (stream AlertEvent);
 
   // Health
   rpc Health(Empty) returns (Empty);

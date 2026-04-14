@@ -251,7 +251,7 @@ Interface Service 자체 로직은 **인증 / rate-limit / 외부 API 게이트�
 | **Phase 5 — Robot Executor + HW 연동** | ✅ 어댑터 분리 완료 (2026-04-14) | ros2_adapter (인터페이스) + mqtt_adapter (ESP32) + ImagePublisherService (gRPC streaming) | V6 통신 행렬 부합, RPi 배포 시 ROS2 활성화만 남음 |
 | **Phase 6 — Traffic Manager 구현** | ✅ 완료 (2026-04-14) | 8 노드 / 8 edge Waypoint + Dijkstra + Edge time-window 예약 + Backtrack Yield (3단계 우회→대기) | 단위 테스트 5종 + gRPC PlanRoute E2E 통과 |
 | **Phase 7 — Execution Monitor 고도화** | 1일 | 타임아웃·재시도·alerts 통합 | 장애 테스트 통과 |
-| **Phase 8 — WebSocket 단종** | 0.5일 | PyQt 에서 ws_worker 제거 | gRPC streaming 만으로 UI 동작 |
+| **Phase 8 — WebSocket 단종** | ✅ 완료 (2026-04-14) | WatchAlerts gRPC streaming 추가 + PyQt AlertStreamWorker + ws_worker 환경변수 비활성화 | DB INSERT → PyQt 토스트 1초 내 푸시 검증 |
 
 총 예상 작업량: **약 9일 (1인 기준)**
 

@@ -68,6 +68,11 @@ class ManagementServiceStub(object):
                 request_serializer=management__pb2.WatchItemsRequest.SerializeToString,
                 response_deserializer=management__pb2.ItemEvent.FromString,
                 _registered_method=True)
+        self.WatchAlerts = channel.unary_stream(
+                '/casting.management.v1.ManagementService/WatchAlerts',
+                request_serializer=management__pb2.WatchAlertsRequest.SerializeToString,
+                response_deserializer=management__pb2.AlertEvent.FromString,
+                _registered_method=True)
         self.Health = channel.unary_unary(
                 '/casting.management.v1.ManagementService/Health',
                 request_serializer=management__pb2.Empty.SerializeToString,
@@ -123,6 +128,12 @@ class ManagementServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def WatchAlerts(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Health(self, request, context):
         """Health
         """
@@ -162,6 +173,11 @@ def add_ManagementServiceServicer_to_server(servicer, server):
                     servicer.WatchItems,
                     request_deserializer=management__pb2.WatchItemsRequest.FromString,
                     response_serializer=management__pb2.ItemEvent.SerializeToString,
+            ),
+            'WatchAlerts': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchAlerts,
+                    request_deserializer=management__pb2.WatchAlertsRequest.FromString,
+                    response_serializer=management__pb2.AlertEvent.SerializeToString,
             ),
             'Health': grpc.unary_unary_rpc_method_handler(
                     servicer.Health,
@@ -346,6 +362,33 @@ class ManagementService(object):
             _registered_method=True)
 
     @staticmethod
+    def WatchAlerts(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/casting.management.v1.ManagementService/WatchAlerts',
+            management__pb2.WatchAlertsRequest.SerializeToString,
+            management__pb2.AlertEvent.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def Health(request,
             target,
             options=(),
@@ -362,6 +405,79 @@ class ManagementService(object):
             '/casting.management.v1.ManagementService/Health',
             management__pb2.Empty.SerializeToString,
             management__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class ImagePublisherServiceStub(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.PublishFrames = channel.stream_unary(
+                '/casting.management.v1.ImagePublisherService/PublishFrames',
+                request_serializer=management__pb2.ImageFrame.SerializeToString,
+                response_deserializer=management__pb2.ImageAck.FromString,
+                _registered_method=True)
+
+
+class ImagePublisherServiceServicer(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def PublishFrames(self, request_iterator, context):
+        """Image Publisher → Server: client streaming (서버는 ack 단건 응답)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_ImagePublisherServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'PublishFrames': grpc.stream_unary_rpc_method_handler(
+                    servicer.PublishFrames,
+                    request_deserializer=management__pb2.ImageFrame.FromString,
+                    response_serializer=management__pb2.ImageAck.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'casting.management.v1.ImagePublisherService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('casting.management.v1.ImagePublisherService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class ImagePublisherService(object):
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def PublishFrames(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_unary(
+            request_iterator,
+            target,
+            '/casting.management.v1.ImagePublisherService/PublishFrames',
+            management__pb2.ImageFrame.SerializeToString,
+            management__pb2.ImageAck.FromString,
             options,
             channel_credentials,
             insecure,
