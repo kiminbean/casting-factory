@@ -27,7 +27,7 @@ make run          # server.py 실행 (:50051)
 | `proto/management.proto` | API 계약 | 초안 확정 |
 | `services/task_manager.py` | 주문 → Task DAG 분해 | 스켈레톤 |
 | `services/task_allocator.py` | 로봇 배정 스코어링 | 스켈레톤 |
-| `services/traffic_manager.py` | AMR 경로 계획 | 스켈레톤 |
+| `services/traffic_manager.py` | AMR 경로 계획 (Waypoint+Dijkstra+Backtrack Yield) | ✅ Phase 6 완료 |
 | `services/robot_executor.py` | ROS2/MQTT 지령 | 스켈레톤 |
 | `services/execution_monitor.py` | 감시·이벤트 스트림 | 스켈레톤 |
 
