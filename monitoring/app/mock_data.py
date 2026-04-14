@@ -550,6 +550,22 @@ LIVE_PARAMETERS: dict[str, Any] = {
 }
 
 
+ORDER_ITEM_PROGRESS: list[dict[str, Any]] = [
+    {"order_id": "ORD-2026-045", "product": "맨홀뚜껑 A형", "item": "A-1", "stage": "적재"},
+    {"order_id": "ORD-2026-045", "product": "맨홀뚜껑 A형", "item": "A-2", "stage": "검사"},
+    {"order_id": "ORD-2026-045", "product": "맨홀뚜껑 A형", "item": "A-3", "stage": "후처리"},
+    {"order_id": "ORD-2026-045", "product": "맨홀뚜껑 A형", "item": "A-4", "stage": "후처리"},
+    {"order_id": "ORD-2026-045", "product": "맨홀뚜껑 A형", "item": "A-5", "stage": "탈형"},
+    {"order_id": "ORD-2026-045", "product": "맨홀뚜껑 A형", "item": "A-6", "stage": "주탕"},
+    {"order_id": "ORD-2026-045", "product": "맨홀뚜껑 A형", "item": "A-7", "stage": "대기"},
+    {"order_id": "ORD-2026-045", "product": "맨홀뚜껑 A형", "item": "A-8", "stage": "대기"},
+    {"order_id": "ORD-2026-043", "product": "원형 그레이팅", "item": "B-1", "stage": "검사"},
+    {"order_id": "ORD-2026-043", "product": "원형 그레이팅", "item": "B-2", "stage": "탈형"},
+    {"order_id": "ORD-2026-043", "product": "원형 그레이팅", "item": "B-3", "stage": "주탕"},
+    {"order_id": "ORD-2026-043", "product": "원형 그레이팅", "item": "B-4", "stage": "대기"},
+]
+
+
 RECENT_ORDERS: list[dict[str, Any]] = [
     {"id": "ORD-2026-045", "customer": "대성산업",     "amount": 24_500_000, "due_date": "2026-04-15", "status": "production"},
     {"id": "ORD-2026-044", "customer": "한진중공업",   "amount": 18_200_000, "due_date": "2026-04-12", "status": "approved"},

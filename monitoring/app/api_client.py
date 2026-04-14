@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any
 
 import requests
@@ -24,17 +25,22 @@ logger = logging.getLogger(__name__)
 
 DATA_MODE: str = os.environ.get("CASTING_DATA_MODE", "fallback").lower()
 
+# 일시적 실패(ConnectionError/Timeout)는 TTL 동안 재시도 차단 → 메인 스레드 블록 최소화
+_TRANSIENT_FAILURE_TTL_SEC: float = 60.0
+
 
 class ApiClient:
     """FastAPI REST 엔드포인트 호출 래퍼 (mock fallback 지원)."""
 
-    def __init__(self, base_url: str = API_BASE_URL, timeout: float = 3.0) -> None:
+    def __init__(self, base_url: str = API_BASE_URL, timeout: float = 1.0) -> None:
         self._base = base_url.rstrip("/")
         self._timeout = timeout
         self._session = requests.Session()
         self._mock_only = DATA_MODE == "mock_only"
         self._fallback = DATA_MODE in ("fallback", "mock_only")
-        self._dead_paths: set[str] = set()  # 404 엔드포인트 캐시
+        self._dead_paths: set[str] = set()  # 404 엔드포인트 (영구 캐시)
+        # 일시적 실패 경로 → 마지막 실패 시각 (TTL 경과 후 재시도 허용)
+        self._transient_failures: dict[str, float] = {}
 
     # ----- core -----
     def _get(self, path: str, *, mock_value: Any = None) -> Any:
@@ -44,6 +50,11 @@ class ApiClient:
 
         # 이전에 404 로 실패한 경로는 재시도하지 않음 (로그 스팸 방지)
         if path in self._dead_paths:
+            return mock_value if self._fallback else None
+
+        # 일시적 실패 TTL 동안은 재호출 차단 → 메인 스레드 블록 방지
+        last_fail = self._transient_failures.get(path)
+        if last_fail is not None and (time.monotonic() - last_fail) < _TRANSIENT_FAILURE_TTL_SEC:
             return mock_value if self._fallback else None
 
         url = f"{self._base}{path}"
@@ -56,8 +67,11 @@ class ApiClient:
                 return mock_value if self._fallback else None
             response.raise_for_status()
             data = response.json()
+            # 성공 시 일시적 실패 기록 삭제
+            self._transient_failures.pop(path, None)
         except requests.RequestException as exc:
-            logger.warning("GET %s failed: %s", url, exc)
+            logger.warning("GET %s failed: %s (skip %.0fs)", url, exc, _TRANSIENT_FAILURE_TTL_SEC)
+            self._transient_failures[path] = time.monotonic()
             return mock_value if self._fallback else None
 
         # 빈 응답이면 mock으로 대체 (fallback 모드)
@@ -213,6 +227,28 @@ class ApiClient:
                 })
             return normalized
         return data
+
+    def get_order_item_progress(self) -> list[dict[str, Any]]:
+        """주문 → 제품 개당(item) 단위 실시간 공정 위치.
+
+        반환 항목: order_id, product, item, stage
+        stage 는 ['대기','주탕','탈형','후처리','검사','적재'] 중 하나.
+        """
+        data = self._get(
+            "/api/production/order-item-progress",
+            mock_value=mock_data.ORDER_ITEM_PROGRESS,
+        )
+        if isinstance(data, list):
+            normalized = []
+            for it in data:
+                normalized.append({
+                    "order_id": it.get("order_id", it.get("order", "")),
+                    "product": it.get("product", it.get("product_name", "")),
+                    "item": it.get("item", it.get("item_id", "")),
+                    "stage": it.get("stage", it.get("current_stage", "대기")),
+                })
+            return normalized
+        return []
 
     # ===== Quality =====
     def get_quality_inspections(self) -> list[dict[str, Any]] | None:
@@ -439,6 +475,25 @@ class ApiClient:
             {"order_ids": order_ids},
         )
         return result if isinstance(result, dict) else {"results": []}
+
+    def start_production(self, order_ids: list[str]) -> list[dict[str, Any]]:
+        """선택 주문들의 생산을 개시. ProductionJob 생성 + orders.status 전환.
+
+        Args:
+            order_ids: 시작할 주문 ID 리스트. 승인(approved) 상태만 허용.
+
+        Returns:
+            생성된 ProductionJob 리스트 (id, order_id, started_at, ...).
+            백엔드가 리스트가 아닌 응답을 주면 빈 리스트 반환.
+
+        Raises:
+            requests.RequestException: 네트워크/서버 에러.
+        """
+        result = self._post(
+            "/api/production/schedule/start",
+            {"order_ids": order_ids},
+        )
+        return result if isinstance(result, list) else []
 
     def create_priority_log(
         self,

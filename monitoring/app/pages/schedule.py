@@ -27,6 +27,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -103,7 +104,19 @@ class SchedulePage(QWidget):
     # ================================================================
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        # 페이지 전체를 스크롤 가능하도록 구성 (작은 창에서도 하단 버튼 접근 보장)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        outer.addWidget(scroll)
+
+        content = QWidget()
+        scroll.setWidget(content)
+        root = QVBoxLayout(content)
         root.setContentsMargins(24, 24, 24, 24)
         root.setSpacing(14)
 
@@ -148,34 +161,9 @@ class SchedulePage(QWidget):
 
         root.addLayout(split_layout, stretch=1)
 
-        # 하단 액션 버튼
+        # 하단 액션 버튼 (페이지 하단: 보조 액션만)
         action_row = QHBoxLayout()
         action_row.setSpacing(10)
-
-        self._calc_btn = QPushButton("⚙ 우선순위 계산")
-        self._calc_btn.setObjectName("primaryButton")
-        self._calc_btn.setMinimumHeight(42)
-        self._calc_btn.clicked.connect(self._on_calculate)
-        self._calc_btn.setStyleSheet(
-            "QPushButton { background-color: #2563eb; color: white; "
-            "font-weight: 700; font-size: 14px; border-radius: 8px; "
-            "padding: 10px 20px; } "
-            "QPushButton:hover { background-color: #1d4ed8; } "
-            "QPushButton:disabled { background-color: #9ca3af; }"
-        )
-        action_row.addWidget(self._calc_btn)
-
-        self._clear_btn = QPushButton("선택 해제")
-        self._clear_btn.setMinimumHeight(42)
-        self._clear_btn.clicked.connect(self._on_clear_selection)
-        self._clear_btn.setStyleSheet(
-            "QPushButton { background-color: #f3f4f6; color: #374151; "
-            "font-weight: 600; font-size: 13px; border: 1px solid #d1d5db; "
-            "border-radius: 8px; padding: 10px 18px; } "
-            "QPushButton:hover { background-color: #e5e7eb; }"
-        )
-        action_row.addWidget(self._clear_btn)
-
         action_row.addStretch()
 
         self._refresh_btn = QPushButton("↻ 새로고침")
@@ -239,6 +227,7 @@ class SchedulePage(QWidget):
         header_view.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         header_view.setSectionResizeMode(4, QHeaderView.ResizeToContents)
 
+        self._orders_table.setMinimumHeight(280)
         layout.addWidget(self._orders_table, stretch=1)
 
         self._orders_count_lbl = QLabel("총 0건")
@@ -246,6 +235,36 @@ class SchedulePage(QWidget):
             "font-size: 11px; color: #6b7280;"
         )
         layout.addWidget(self._orders_count_lbl)
+
+        # 승인 주문 풀 바로 아래 액션 버튼 (계산 + 선택 해제)
+        pool_actions = QHBoxLayout()
+        pool_actions.setSpacing(8)
+
+        self._calc_btn = QPushButton("⚙ 우선순위 계산")
+        self._calc_btn.setObjectName("primaryButton")
+        self._calc_btn.setMinimumHeight(38)
+        self._calc_btn.clicked.connect(self._on_calculate)
+        self._calc_btn.setStyleSheet(
+            "QPushButton { background-color: #2563eb; color: white; "
+            "font-weight: 700; font-size: 13px; border-radius: 8px; "
+            "padding: 8px 16px; } "
+            "QPushButton:hover { background-color: #1d4ed8; } "
+            "QPushButton:disabled { background-color: #9ca3af; }"
+        )
+        pool_actions.addWidget(self._calc_btn, stretch=2)
+
+        self._clear_btn = QPushButton("선택 해제")
+        self._clear_btn.setMinimumHeight(38)
+        self._clear_btn.clicked.connect(self._on_clear_selection)
+        self._clear_btn.setStyleSheet(
+            "QPushButton { background-color: #f3f4f6; color: #374151; "
+            "font-weight: 600; font-size: 12px; border: 1px solid #d1d5db; "
+            "border-radius: 8px; padding: 8px 14px; } "
+            "QPushButton:hover { background-color: #e5e7eb; }"
+        )
+        pool_actions.addWidget(self._clear_btn, stretch=1)
+
+        layout.addLayout(pool_actions)
 
         return panel
 
@@ -278,7 +297,7 @@ class SchedulePage(QWidget):
         )
         self._results_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._results_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._results_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._results_table.setSelectionMode(QAbstractItemView.MultiSelection)
         self._results_table.verticalHeader().setVisible(False)
         self._results_table.setAlternatingRowColors(True)
         self._results_table.setStyleSheet(
@@ -300,6 +319,7 @@ class SchedulePage(QWidget):
         header_view.setSectionResizeMode(5, QHeaderView.ResizeToContents)
 
         self._results_table.itemSelectionChanged.connect(self._on_result_selected)
+        self._results_table.setMinimumHeight(280)
         layout.addWidget(self._results_table, stretch=1)
 
         # 선택된 결과의 상세 (추천 사유 등)
@@ -311,6 +331,24 @@ class SchedulePage(QWidget):
         )
         self._reason_label.setMinimumHeight(60)
         layout.addWidget(self._reason_label)
+
+        # 결과 테이블 바로 아래: 선택 주문 일괄 생산 시작 버튼 (크게, 눈에 띄게)
+        self._start_selected_btn = QPushButton("▶  선택 주문 생산 시작  ▶")
+        self._start_selected_btn.setMinimumHeight(50)
+        self._start_selected_btn.setCursor(Qt.PointingHandCursor)
+        self._start_selected_btn.setToolTip(
+            "위 결과 테이블에서 체크한 주문(들)을 일괄 생산 개시합니다 (다중 선택 지원)"
+        )
+        self._start_selected_btn.clicked.connect(self._on_start_selected)
+        self._start_selected_btn.setStyleSheet(
+            "QPushButton { background-color: #10b981; color: white; "
+            "font-weight: 800; font-size: 15px; border: none; "
+            "border-radius: 10px; padding: 12px 24px; letter-spacing: 1px; } "
+            "QPushButton:hover { background-color: #059669; } "
+            "QPushButton:pressed { background-color: #047857; } "
+            "QPushButton:disabled { background-color: #d1d5db; color: #6b7280; }"
+        )
+        layout.addWidget(self._start_selected_btn)
 
         return panel
 
@@ -474,15 +512,32 @@ class SchedulePage(QWidget):
             delay_item.setForeground(QColor(DELAY_RISK_COLOR.get(delay, "#9ca3af")))
             self._results_table.setItem(idx, 4, delay_item)
 
-            ready = result.get("ready_status", "")
-            ready_item = QTableWidgetItem(
-                "✓ 가능" if ready == "ready" else "✗ 불가"
+            # 착수 컬럼: 생산 시작 버튼 (ready_status='ready' 면 활성화)
+            ready = str(result.get("ready_status", ""))
+            order_id = str(result.get("order_id", ""))
+            start_btn = QPushButton("▶ 생산 시작")
+            start_btn.setEnabled(ready == "ready")
+            start_btn.setCursor(Qt.PointingHandCursor)
+            if ready == "ready":
+                start_btn.setToolTip(f"주문 {order_id} 생산을 즉시 개시")
+                start_btn.setStyleSheet(
+                    "QPushButton { background-color: #10b981; color: white; "
+                    "font-weight: 600; font-size: 11px; border: none; "
+                    "border-radius: 4px; padding: 4px 10px; } "
+                    "QPushButton:hover { background-color: #059669; }"
+                )
+            else:
+                blocking = ", ".join(result.get("blocking_reasons", [])) or "착수 제약"
+                start_btn.setToolTip(f"착수 불가: {blocking}")
+                start_btn.setStyleSheet(
+                    "QPushButton { background-color: #e5e7eb; color: #9ca3af; "
+                    "font-size: 11px; border: none; border-radius: 4px; "
+                    "padding: 4px 10px; }"
+                )
+            start_btn.clicked.connect(
+                lambda _checked=False, oid=order_id: self._on_start_single(oid)
             )
-            ready_item.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
-            ready_item.setForeground(
-                QColor("#10b981" if ready == "ready" else "#ef4444")
-            )
-            self._results_table.setItem(idx, 5, ready_item)
+            self._results_table.setCellWidget(idx, 5, start_btn)
 
     def _on_result_selected(self) -> None:
         rows = self._results_table.selectionModel().selectedRows()
@@ -517,6 +572,126 @@ class SchedulePage(QWidget):
 
     def _on_clear_selection(self) -> None:
         self._orders_table.clearSelection()
+
+    # ================================================================
+    # 액션: 생산 개시
+    # ================================================================
+
+    def _on_start_single(self, order_id: str) -> None:
+        """결과 테이블의 행별 '▶ 생산 시작' 버튼 클릭."""
+        if not order_id:
+            return
+        confirm = QMessageBox.question(
+            self,
+            "생산 개시 확인",
+            f"주문 {order_id} 의 생산을 개시합니다.\n"
+            "ProductionJob 이 생성되고 주문 상태가 'in_production' 으로 전환됩니다.\n\n"
+            "계속하시겠습니까?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if confirm == QMessageBox.Yes:
+            self._do_start([order_id])
+
+    def _on_start_selected(self) -> None:
+        """상단 '▶ 선택 생산 시작' 버튼: 결과 테이블에서 다중 선택된 주문 일괄 개시."""
+        rows = self._results_table.selectionModel().selectedRows()
+        if not rows:
+            QMessageBox.information(
+                self,
+                "선택 필요",
+                "우선순위 결과 테이블에서 시작할 주문을 1건 이상 선택하세요.\n"
+                "(Ctrl/Shift 로 다중 선택)",
+            )
+            return
+
+        sorted_results = sorted(
+            self._priority_results,
+            key=lambda r: (r.get("rank", 999), -float(r.get("total_score", 0))),
+        )
+
+        order_ids: list[str] = []
+        blocked: list[str] = []
+        for idx_model in rows:
+            row = idx_model.row()
+            if row >= len(sorted_results):
+                continue
+            r = sorted_results[row]
+            oid = str(r.get("order_id", ""))
+            if r.get("ready_status") == "ready":
+                order_ids.append(oid)
+            else:
+                blocked.append(oid)
+
+        if not order_ids:
+            QMessageBox.warning(
+                self,
+                "착수 불가",
+                "선택된 주문 모두 착수 제약에 걸려 있습니다.\n"
+                "'✗ 불가' 상태 주문은 제외하고 다시 선택하세요.",
+            )
+            return
+
+        msg = f"선택된 {len(order_ids)}건의 주문 생산을 개시합니다.\n\n"
+        msg += "\n".join(f"  • {oid}" for oid in order_ids)
+        if blocked:
+            msg += f"\n\n⚠ 착수 불가로 제외된 주문: {', '.join(blocked)}"
+        msg += "\n\n계속하시겠습니까?"
+
+        confirm = QMessageBox.question(
+            self,
+            "다중 생산 개시 확인",
+            msg,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if confirm == QMessageBox.Yes:
+            self._do_start(order_ids)
+
+    def _do_start(self, order_ids: list[str]) -> None:
+        """백엔드 /api/production/schedule/start 호출 + 결과 표시."""
+        try:
+            self._start_selected_btn.setEnabled(False)
+            self._start_selected_btn.setText("⏳ 생산 개시 중...")
+            jobs = self._api.start_production(order_ids)
+        except requests.RequestException as exc:
+            QMessageBox.critical(
+                self,
+                "생산 개시 실패",
+                f"백엔드 API 호출 실패:\n{exc}\n\n"
+                "백엔드 서버가 실행 중인지 확인하세요.",
+            )
+            return
+        finally:
+            self._start_selected_btn.setEnabled(True)
+            self._start_selected_btn.setText("▶ 선택 생산 시작")
+
+        if not jobs:
+            QMessageBox.warning(
+                self,
+                "생성된 Job 없음",
+                "백엔드가 빈 결과를 반환했습니다.\n"
+                "주문이 이미 'in_production' 이거나 'approved' 상태가 아닐 수 있습니다.",
+            )
+            return
+
+        # 성공 요약: 생성된 JOB 과 started_at 표기
+        lines = [
+            f"  • {j.get('id', '?')} ← 주문 {j.get('order_id', '?')} "
+            f"(시작: {j.get('started_at', '-')[:19].replace('T', ' ')})"
+            for j in jobs
+        ]
+        QMessageBox.information(
+            self,
+            "생산 개시 완료",
+            f"{len(jobs)} 건의 ProductionJob 이 생성되었습니다.\n\n"
+            + "\n".join(lines),
+        )
+
+        # 풀/결과 갱신 (상태 전환 반영)
+        self.refresh()
+        self._priority_results = []
+        self._render_results_table()
 
     # ================================================================
     # WebSocket / MQTT 브로드캐스트 (선택적)

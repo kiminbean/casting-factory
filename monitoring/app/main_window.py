@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
     QMainWindow,
     QStackedWidget,
     QStatusBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -72,6 +73,7 @@ class MainWindow(QMainWindow):
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(220)
+        self._sidebar = sidebar
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(0, 0, 0, 0)
         side_layout.setSpacing(0)
@@ -94,6 +96,25 @@ class MainWindow(QMainWindow):
         side_layout.addWidget(version_lbl)
 
         root.addWidget(sidebar)
+
+        # 사이드바 토글 바 (얇은 수직 버튼)
+        self._sidebar_toggle = QToolButton()
+        self._sidebar_toggle.setObjectName("sidebarToggle")
+        self._sidebar_toggle.setCheckable(False)
+        self._sidebar_toggle.setText("◀")
+        self._sidebar_toggle.setToolTip("사이드바 숨기기/보이기 (Ctrl+B)")
+        self._sidebar_toggle.setFixedWidth(16)
+        self._sidebar_toggle.setCursor(Qt.PointingHandCursor)
+        self._sidebar_toggle.setAutoRaise(True)
+        self._sidebar_toggle.setStyleSheet(
+            "QToolButton#sidebarToggle {"
+            " background-color: #e5e7eb; color: #374151;"
+            " border: none; border-right: 1px solid #d1d5db;"
+            " font-size: 11px; padding: 0; }"
+            "QToolButton#sidebarToggle:hover { background-color: #d1d5db; }"
+        )
+        self._sidebar_toggle.clicked.connect(self._toggle_sidebar)
+        root.addWidget(self._sidebar_toggle)
 
         # 우측 스택 (NAV_ITEMS 순서와 반드시 일치)
         self._stack = QStackedWidget()
@@ -162,6 +183,12 @@ class MainWindow(QMainWindow):
         # 알림 중복 방지 (같은 critical 5초 내 재발행 차단)
         self._seen_alerts: set[str] = set()
 
+        # 사이드바 토글 단축키 Ctrl+B
+        self._toggle_sidebar_action = QAction("사이드바 토글", self)
+        self._toggle_sidebar_action.setShortcut(QKeySequence("Ctrl+B"))
+        self._toggle_sidebar_action.triggered.connect(self._toggle_sidebar)
+        self.addAction(self._toggle_sidebar_action)
+
         # 페이지 단축키 Ctrl+1..6
         for i in range(len(NAV_ITEMS)):
             action = QAction(f"Page {i + 1}", self)
@@ -176,6 +203,15 @@ class MainWindow(QMainWindow):
         if 0 <= row < self._stack.count():
             self._stack.setCurrentIndex(row)
 
+    def _toggle_sidebar(self) -> None:
+        """좌측 사이드바 표시/숨김 토글."""
+        visible = self._sidebar.isVisible()
+        self._sidebar.setVisible(not visible)
+        self._sidebar_toggle.setText("▶" if visible else "◀")
+        self._sidebar_toggle.setToolTip(
+            "사이드바 보이기 (Ctrl+B)" if visible else "사이드바 숨기기 (Ctrl+B)"
+        )
+
     # ---------- 주기 갱신 ----------
     def _start_refresh_timer(self) -> None:
         self._timer = QTimer(self)
@@ -184,9 +220,17 @@ class MainWindow(QMainWindow):
         self._timer.start()
 
     def _refresh_current_page(self) -> None:
+        # 이전 refresh 가 아직 진행 중이면 중복 실행 방지 (메인 스레드 큐 폭주 방지)
+        if getattr(self, "_refreshing", False):
+            return
         page = self._stack.currentWidget()
-        if hasattr(page, "refresh"):
+        if not hasattr(page, "refresh"):
+            return
+        self._refreshing = True
+        try:
             page.refresh()
+        finally:
+            self._refreshing = False
 
     # ---------- WebSocket ----------
     def _start_websocket(self) -> None:
@@ -248,17 +292,11 @@ class MainWindow(QMainWindow):
             )
 
     def _on_ws_message(self, payload: dict[str, Any]) -> None:
-        # 모든 페이지에 브로드캐스트 (각자 타입 필터링)
-        for page in (
-            self._dashboard,
-            self._map,
-            self._production,
-            self._schedule,
-            self._quality,
-            self._logistics,
-        ):
-            if hasattr(page, "handle_ws_message"):
-                page.handle_ws_message(payload)
+        # 현재 보이는 페이지에만 전달 (보이지 않는 페이지가 HTTP 재조회로 메인 스레드 막는 것 방지).
+        # 비가시 페이지의 데이터는 나중에 사용자가 해당 탭으로 이동할 때 타이머/초기 refresh 로 갱신됨.
+        page = self._stack.currentWidget()
+        if page is not None and hasattr(page, "handle_ws_message"):
+            page.handle_ws_message(payload)
 
     # ---------- MQTT ----------
     def _start_mqtt(self) -> None:

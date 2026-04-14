@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QBrush, QColor, QFont
 from PyQt5.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -16,6 +17,10 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+
+# 주문/아이템 진행 테이블 컬럼 순서와 일치해야 함
+ITEM_STAGE_COLUMNS: list[str] = ["대기", "주탕", "탈형", "후처리", "검사", "적재"]
 
 from app.api_client import ApiClient
 from app.widgets.charts import HourlyProductionChart, TemperatureChart
@@ -133,9 +138,9 @@ class ProductionPage(QWidget):
         stages_label.setObjectName("sectionTitle")
         layout.addWidget(stages_label)
 
-        self._stages_table = QTableWidget(0, 5)
+        self._stages_table = QTableWidget(0, 3)
         self._stages_table.setHorizontalHeaderLabels(
-            ["단계", "상태", "진행률", "시작 시각", "담당 설비"]
+            ["단계", "상태", "담당 설비"]
         )
         self._stages_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.Stretch
@@ -145,6 +150,23 @@ class ProductionPage(QWidget):
         self._stages_table.setAlternatingRowColors(True)
         self._stages_table.setMaximumHeight(220)
         layout.addWidget(self._stages_table)
+
+        # 주문 → 제품 개당 실시간 위치 테이블
+        item_label = QLabel("주문별 제품 실시간 위치")
+        item_label.setObjectName("sectionTitle")
+        layout.addWidget(item_label)
+
+        item_columns = ["주문", "제품", "Item"] + ITEM_STAGE_COLUMNS
+        self._item_progress_table = QTableWidget(0, len(item_columns))
+        self._item_progress_table.setHorizontalHeaderLabels(item_columns)
+        header = self._item_progress_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)  # 제품명 열만 가변
+        self._item_progress_table.verticalHeader().setVisible(False)
+        self._item_progress_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._item_progress_table.setAlternatingRowColors(True)
+        self._item_progress_table.setMaximumHeight(260)
+        layout.addWidget(self._item_progress_table)
 
         # 공정 파라미터 이력 테이블 (v0.8)
         param_label = QLabel("공정 파라미터 이력")
@@ -201,6 +223,9 @@ class ProductionPage(QWidget):
                     item.setTextAlignment(Qt.AlignCenter)
                 self._param_table.setItem(row, col, item)
 
+        # 주문 → 제품 개당 실시간 위치
+        self._refresh_item_progress()
+
         # 공정 단계
         stages = self._api.get_process_stages() or []
         self._stages_table.setRowCount(len(stages))
@@ -210,14 +235,58 @@ class ProductionPage(QWidget):
             status_item.setTextAlignment(Qt.AlignCenter)
             self._stages_table.setItem(row, 1, status_item)
             self._stages_table.setItem(
-                row, 2, QTableWidgetItem(f"{stage.get('progress', 0)}%")
+                row, 2, QTableWidgetItem(str(stage.get("equipment", "")))
             )
-            self._stages_table.setItem(
-                row, 3, QTableWidgetItem(str(stage.get("started_at", "")))
+
+    def _refresh_item_progress(self) -> None:
+        """주문 → Item 단위 실시간 공정 위치 테이블 갱신.
+
+        각 행은 1개 item, 컬럼은 [주문, 제품, Item, 대기, 주탕, 탈형, 후처리, 검사, 적재].
+        현재 단계 셀은 ●(파랑), 통과한 단계 셀은 ✓(회색)으로 표시.
+        """
+        rows = self._api.get_order_item_progress() or []
+        # 주문 ID → Item 자연 정렬
+        rows = sorted(rows, key=lambda r: (str(r.get("order_id", "")), str(r.get("item", ""))))
+
+        self._item_progress_table.setRowCount(len(rows))
+        current_color = QColor("#2563eb")  # 파랑 - 현재 단계
+        done_color = QColor("#9ca3af")     # 회색 - 완료된 단계
+        bold = QFont()
+        bold.setBold(True)
+
+        for row, info in enumerate(rows):
+            order_id = str(info.get("order_id", ""))
+            product = str(info.get("product", ""))
+            item_id = str(info.get("item", ""))
+            stage = str(info.get("stage", "대기"))
+
+            # 좌측 3개 메타 컬럼
+            self._item_progress_table.setItem(row, 0, QTableWidgetItem(order_id))
+            self._item_progress_table.setItem(row, 1, QTableWidgetItem(product))
+            item_cell = QTableWidgetItem(item_id)
+            item_cell.setFont(bold)
+            item_cell.setTextAlignment(Qt.AlignCenter)
+            self._item_progress_table.setItem(row, 2, item_cell)
+
+            # 단계 컬럼: 현재 ●, 통과한 단계 ✓
+            current_idx = (
+                ITEM_STAGE_COLUMNS.index(stage)
+                if stage in ITEM_STAGE_COLUMNS
+                else 0
             )
-            self._stages_table.setItem(
-                row, 4, QTableWidgetItem(str(stage.get("equipment", "")))
-            )
+            for col_offset in range(len(ITEM_STAGE_COLUMNS)):
+                col = 3 + col_offset
+                if col_offset < current_idx:
+                    cell = QTableWidgetItem("✓")
+                    cell.setForeground(QBrush(done_color))
+                elif col_offset == current_idx:
+                    cell = QTableWidgetItem("●")
+                    cell.setForeground(QBrush(current_color))
+                    cell.setFont(bold)
+                else:
+                    cell = QTableWidgetItem("")
+                cell.setTextAlignment(Qt.AlignCenter)
+                self._item_progress_table.setItem(row, col, cell)
 
     def handle_ws_message(self, payload: dict[str, Any]) -> None:
         msg_type = payload.get("type", "")
