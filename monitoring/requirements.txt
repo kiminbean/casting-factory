@@ -3,3 +3,7 @@ PyQtChart==5.15.7
 requests==2.32.3
 websocket-client==1.8.0
 paho-mqtt==2.1.0
+# V6: Management Service gRPC 직결 (Phase 4)
+grpcio>=1.80.0,<2.0
+grpcio-tools>=1.80.0,<2.0
+protobuf>=6.30.0,<7.0

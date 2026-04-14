@@ -5,7 +5,7 @@
 
 ## Tech Stack
 - Frontend: Next.js 16 App Router + TypeScript
-- Backend: FastAPI 0.115 + SQLAlchemy 2.0 + SQLite
+- Backend: FastAPI 0.115 + SQLAlchemy 2.0 + PostgreSQL 16 (2026-04-14 SQLite 폴백 제거됨)
 - API Proxy: next.config.ts rewrites /api/* → localhost:8000/api/*
 - 기존 패턴: src/lib/api.ts (apiFetch + snake_case→camelCase 변환)
 

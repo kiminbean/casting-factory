@@ -346,3 +346,46 @@ class PriorityChangeLog(Base):
     reason = Column(String, nullable=False)
     changed_by = Column(String, nullable=False, default="admin")
     changed_at = Column(String, nullable=False)
+
+
+# ============================================================================
+# V6 아키텍처 (2026-04-14) — Confluence DB v47 공식 스키마 채택
+# ============================================================================
+
+class WorkOrder(Base):
+    """생산 작업지시 — Confluence DB v47 의 work_order 테이블.
+
+    승인된 발주(orders.status='approved')에 한해 생성. ProductionJob 를 대체.
+    @MX:NOTE: status 값은 QUE/PROC/SUCC/FAIL (Confluence work_stat enum).
+    """
+
+    __tablename__ = "work_orders"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)  # work_ord_id
+    order_id = Column(String, ForeignKey("orders.id"), nullable=False, index=True)
+    pattern_id = Column(String, nullable=True)  # FK → order_detail.pattern_id (없으면 NULL)
+    qty = Column(Integer, nullable=False, default=0)
+    status = Column(String, nullable=False, default="QUE")  # QUE/PROC/SUCC/FAIL
+    plan_start = Column(String, nullable=True)  # ISO 8601
+    act_start = Column(String, nullable=True)
+    act_end = Column(String, nullable=True)
+
+
+class Item(Base):
+    """개별 제품 1개 단위 실시간 공정 추적 — Confluence DB v47 의 Item 테이블.
+
+    work_order.qty 만큼 생성. cur_stage 로 위치 추적, insp_id 로 검사 결과 연결.
+    @MX:ANCHOR: V6 아키텍처의 핵심 추적 단위. UI 의 "주문별 제품 실시간 위치" 테이블이 직접 표시.
+    @MX:REASON: 1개 생산되는 과정(생산+검사+적재)을 item_id 단위로 추적 (CASE1 채택).
+    """
+
+    __tablename__ = "items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)  # item_id
+    order_id = Column(String, ForeignKey("orders.id"), nullable=False, index=True)
+    work_order_id = Column(Integer, ForeignKey("work_orders.id"), nullable=False, index=True)
+    cur_stage = Column(String(10), nullable=False, default="QUE")
+    # cur_stage 값: QUE / MM / DM / TR_PP / PP / IP / TR_LD / SH
+    curr_res = Column(String(10), nullable=True)  # 현재 점유 자원 (ARM1, AMR1 등)
+    insp_id = Column(Integer, nullable=True)  # FK → inspection_records.id (검사 후)
+    mfg_at = Column(String, nullable=True)  # 공정별 시작 시각 ISO 8601

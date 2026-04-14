@@ -1,5 +1,24 @@
 @AGENTS.md
 
+# V6 아키텍처 결정 (2026-04-14)
+
+**프로세스 이원화**:
+- `backend/app/` — Interface Service (FastAPI, :8000, HTTP). Admin/Customer PC 용.
+- `backend/management/` — Management Service (gRPC, :50051). Factory Operator PC(PyQt) 직결.
+
+**클라이언트별 채널**:
+- PyQt → `monitoring/app/management_client.py` (gRPC) + 기존 api_client (WebSocket 보조)
+- Next.js → FastAPI REST (HTTP)
+
+**이유**: Interface Service 장애/AWS 이관 시에도 공장 가동 유지 (SPOF 제거).
+
+**DB 정책 (2026-04-14)**: PostgreSQL 16 + TimescaleDB **단독**. SQLite 폴백 완전 제거.
+운영/개발 모두 동일 PG (`100.107.120.14:5432 / smartcast_robotics`, role `team2`).
+DATABASE_URL 미설정 시 backend 가 fail-fast.
+
+**설계 문서**: `docs/management_service_design.md`
+**API 정의**: `backend/management/proto/management.proto`
+
 # Confluence Facts Index
 
 프로젝트 작업 중 Confluence 기반 사실 확인이 필요할 때, 아래 목차를 참고하여 `docs/CONFLUENCE_FACTS.md`의 **해당 섹션만** 직접 읽어 참조하세요. 전체 파일(1035줄)을 한 번에 읽지 말 것.

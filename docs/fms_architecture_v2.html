@@ -73,8 +73,40 @@
     <li><a href="#s5">컴포넌트별 상세 분석</a></li>
     <li><a href="#s6">Confluence 시나리오 기준 실행 검증</a></li>
     <li><a href="#s7">구현 우선순위 및 로드맵</a></li>
+    <li><a href="#s8">V6 결정 (2026-04-14 추가)</a></li>
   </ol>
 </nav>
+
+<!-- ═══ V6 결정 추가 ═══ -->
+<section class="section" id="s8">
+  <h2 class="section-title"><span class="num">8</span> V6 결정 (2026-04-14)</h2>
+  <div class="card" style="border-left: 4px solid var(--accent)">
+    <h3>Management Service 독립 프로세스화 + gRPC 직결</h3>
+    <div class="highlight h-info">
+      <strong>합의 사항</strong>: Factory Operator PC(PyQt)는 Interface Service(FastAPI)를 거치지 않고
+      Management Service(gRPC :50051) 와 직접 TCP 통신한다.
+    </div>
+    <table>
+      <tr><th>항목</th><th>결정</th></tr>
+      <tr><td>프로토콜</td><td>gRPC (Protocol Buffers)</td></tr>
+      <tr><td>포트</td><td>50051</td></tr>
+      <tr><td>네트워크</td><td>공장 내부망 전용 (외부 방화벽 차단)</td></tr>
+      <tr><td>PyQt 연결</td><td>Management Service 직결</td></tr>
+      <tr><td>Admin/Customer PC</td><td>Interface Service(HTTP) 유지</td></tr>
+      <tr><td>DB</td><td>Interface Service 와 공유 (PostgreSQL + TimescaleDB)</td></tr>
+    </table>
+    <div class="highlight h-good" style="margin-top:1rem">
+      <strong>이유</strong>: Interface Service 장애/AWS 이관 중에도 공장 가동을 중단시키지 않기 위함.
+      현장 PC 는 Interface Service 의 배포·장애·네트워크 변경에 영향받지 않는다.
+    </div>
+    <p style="margin-top:1rem">
+      상세 설계 문서: <code class="c">docs/management_service_design.md</code><br>
+      gRPC API 정의: <code class="c">backend/management/proto/management.proto</code><br>
+      서버 스캐폴드: <code class="c">backend/management/</code><br>
+      PyQt 클라이언트: <code class="c">monitoring/app/management_client.py</code>
+    </p>
+  </div>
+</section>
 
 <!-- ═══ 1 ═══ -->
 <section class="section" id="s1">

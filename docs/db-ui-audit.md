@@ -1,3 +1,7 @@
+> **2026-04-14 추가**: 본 감사는 기존 FastAPI 단일 서버 기준이다. V6 아키텍처 전환 후에는
+> Management Service(gRPC :50051) 가 대부분의 쓰기 경로를 담당한다. 스키마 자체는 공유 DB 를
+>유지하므로 감사 결과(삭제 후보 0건)는 그대로 유효. 설계: `docs/management_service_design.md`.
+
 # DB ↔ UI 정합성 감사 (2026-04-14)
 
 > 기준: UI(PyQt monitoring + Next.js web)에 노출되지 않는 컬럼은 삭제 후보.
@@ -15,7 +19,7 @@
 | UI 직접 표시 컬럼 | 약 52 |
 | 내부 사용(INTERNAL) | 약 70 |
 | 삭제 후보(ORPHAN) | **0** (재검증 결과: 모든 테이블이 UI 또는 내부에서 사용 중) |
-| 운영 PG 반영 권장 | 조건부 — dev SQLite 검증 후 |
+| 운영 PG 반영 권장 | 조건부 — 본 감사 결과 0건이므로 작업 없음 (2026-04-14 SQLite 폴백 제거됨) |
 
 결론: "UI에 없으면 전부 삭제"를 **단순 적용하면 안 됩니다**. 대부분의 비표시 컬럼은 route 응답, WS payload, seed, FK 제약, 가격/상태 계산 등 내부 로직에서 사용됩니다. 진짜 orphan 은 제한적입니다.
 
@@ -325,15 +329,15 @@ grep -rn "sorter_log\|SorterLog\|sort_direction\|sorter_angle" \
 3. `backend/app/seed.py` — 시드 블록 제거
 4. `backend/app/routes/quality.py` — import/쿼리 제거
 
-### Step 3 — SQLite dev DB 적용
+### Step 3 — PostgreSQL DB 적용 (SQLite 단계 폐지)
 
 ```bash
 cd backend
 source venv/bin/activate
-# 백업
-cp casting_factory.db casting_factory.db.bak-$(date +%Y%m%d)
+# 백업 (운영 PG)
+pg_dump $DATABASE_URL -t sorter_logs -F c -f /tmp/sorter_logs.dump
 # 드롭
-sqlite3 casting_factory.db "DROP TABLE IF EXISTS sorter_logs;"
+psql $DATABASE_URL -c "DROP TABLE IF EXISTS sorter_logs;"
 # 회귀 검증
 uvicorn app.main:app --host 0.0.0.0 --port 8000 &
 curl -s http://localhost:8000/docs -o /dev/null -w "%{http_code}\n"  # 200 확인

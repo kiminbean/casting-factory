@@ -649,42 +649,75 @@ class SchedulePage(QWidget):
             self._do_start(order_ids)
 
     def _do_start(self, order_ids: list[str]) -> None:
-        """백엔드 /api/production/schedule/start 호출 + 결과 표시."""
+        """Management Service(gRPC :50051) 에 생산 개시 요청 (V6 Phase 4).
+
+        기존 HTTP /api/production/schedule/start 대신 gRPC 직결 호출.
+        Interface Service 장애/이관 시에도 공장 가동 유지가 목적.
+        """
+        # gRPC 의존 import 는 메서드 내부로 (앱 초기 로드 부담 최소화)
+        try:
+            import grpc  # noqa: F401
+            from app.management_client import ManagementClient
+        except ImportError as exc:
+            QMessageBox.critical(
+                self,
+                "gRPC 모듈 로드 실패",
+                f"grpcio / management_client 임포트 실패:\n{exc}\n\n"
+                "monitoring/scripts/gen_proto.sh 실행 후 다시 시도하세요.",
+            )
+            return
+
+        client = None
         try:
             self._start_selected_btn.setEnabled(False)
             self._start_selected_btn.setText("⏳ 생산 개시 중...")
-            jobs = self._api.start_production(order_ids)
-        except requests.RequestException as exc:
+            client = ManagementClient()
+            wos = client.start_production(order_ids)
+        except __import__("grpc").RpcError as exc:
+            QMessageBox.critical(
+                self,
+                "생산 개시 실패 (gRPC)",
+                f"Management Service 호출 실패:\n"
+                f"  endpoint: {client.endpoint if client else '(unknown)'}\n"
+                f"  code: {exc.code().name if hasattr(exc, 'code') else 'N/A'}\n"
+                f"  detail: {exc.details() if hasattr(exc, 'details') else exc}\n\n"
+                "Management Service(:50051) 가 실행 중인지 확인하세요.",
+            )
+            return
+        except Exception as exc:
             QMessageBox.critical(
                 self,
                 "생산 개시 실패",
-                f"백엔드 API 호출 실패:\n{exc}\n\n"
-                "백엔드 서버가 실행 중인지 확인하세요.",
+                f"예상치 못한 오류:\n{exc}",
             )
             return
         finally:
             self._start_selected_btn.setEnabled(True)
             self._start_selected_btn.setText("▶ 선택 생산 시작")
+            if client is not None:
+                client.close()
 
-        if not jobs:
+        if not wos:
             QMessageBox.warning(
                 self,
-                "생성된 Job 없음",
-                "백엔드가 빈 결과를 반환했습니다.\n"
-                "주문이 이미 'in_production' 이거나 'approved' 상태가 아닐 수 있습니다.",
+                "생성된 WorkOrder 없음",
+                "Management Service 가 빈 결과를 반환했습니다.\n"
+                "선택한 주문이 'approved' 상태가 아니거나 이미 work_order 가 있을 수 있습니다.",
             )
             return
 
-        # 성공 요약: 생성된 JOB 과 started_at 표기
+        # 성공 요약: 생성된 WorkOrder + qty (item 분해 결과)
         lines = [
-            f"  • {j.get('id', '?')} ← 주문 {j.get('order_id', '?')} "
-            f"(시작: {j.get('started_at', '-')[:19].replace('T', ' ')})"
-            for j in jobs
+            f"  • WO #{wo.id} ← 주문 {wo.order_id} "
+            f"(qty={wo.qty}, status={wo.status}, "
+            f"시작: {wo.plan_start_iso[:19].replace('T', ' ') if wo.plan_start_iso else '-'})"
+            for wo in wos
         ]
+        total_items = sum(wo.qty for wo in wos)
         QMessageBox.information(
             self,
             "생산 개시 완료",
-            f"{len(jobs)} 건의 ProductionJob 이 생성되었습니다.\n\n"
+            f"{len(wos)} 건의 WorkOrder 가 생성되었습니다 (총 {total_items} items).\n\n"
             + "\n".join(lines),
         )
 

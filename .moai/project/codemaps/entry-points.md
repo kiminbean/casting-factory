@@ -38,7 +38,6 @@
 | 진입점 | 파일 | 실행 방법 |
 |--------|------|----------|
 | Confluence 동기화 | `scripts/sync_confluence_facts.py` | `python3 scripts/sync_confluence_facts.py` |
-| SQLite→PG 마이그레이션 | `backend/scripts/migrate_sqlite_to_pg.py` | `python3 backend/scripts/migrate_sqlite_to_pg.py` |
 
 ## 2. REST API 엔드포인트 전체 목록 (30개)
 

@@ -29,8 +29,8 @@ SmartCast Robotics 주물 스마트 공장 관제 시스템. 주문 접수→생
 ├──────────────────────────┼───────────────────────────────┤
 │  Data Layer              │                               │
 │  ┌───────────────────────▼─────────────────────────────┐ │
-│  │  PostgreSQL 16 + TimescaleDB                        │ │
-│  │  (dev fallback: SQLite)                             │ │
+│  │  PostgreSQL 16 + TimescaleDB (단독)                  │ │
+│  │  100.107.120.14:5432 / smartcast_robotics            │ │
 │  └─────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -76,6 +76,6 @@ SmartCast Robotics 주물 스마트 공장 관제 시스템. 주문 접수→생
 2. **Key Convention Bridge**: `src/lib/api.ts`의 `convertKeys()` — 백엔드 snake_case ↔ 프론트 camelCase 자동 변환
 3. **Client-Side ID Generation**: 주문 ID(`ORD-YYYYMMDD-XXXX`), 고객 ID(`CUST-XXXXXX`)를 클라이언트에서 생성
 4. **Dual UI Strategy**: 웹(관리자+고객)과 데스크톱(공장 운영자)으로 사용자 분리
-5. **Dev Fallback**: `DATABASE_URL` 미설정 시 SQLite 자동 폴백 (개발 편의)
+5. **PG 단독 정책 (2026-04-14)**: `DATABASE_URL` 미설정 시 fail-fast (이전 SQLite 폴백 제거)
 6. **Seed on Startup**: FastAPI lifespan에서 `seed_database()` 호출 — 개발 환경 초기 데이터 자동 주입
 7. **Step-First Customer UX**: 주문 폼 5단계 (주문자정보→제품선택→사양입력→견적확인→주문완료)

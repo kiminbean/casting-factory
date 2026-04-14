@@ -1,0 +1,189 @@
+// Management Service gRPC API
+// Target: port 50051 (internal factory network)
+// Consumers: Factory Operator PC (PyQt), Interface Service (FastAPI)
+// Rationale: Factory SPOF 제거 + Interface Service AWS 이관 대비
+
+syntax = "proto3";
+
+package casting.management.v1;
+
+// -----------------------------------------------------------------------------
+// 공용 메시지
+// -----------------------------------------------------------------------------
+
+message Timestamp {
+  string iso8601 = 1;  // "2026-04-14T14:30:00Z"
+}
+
+message Empty {}
+
+// Confluence DB v47 의 work_order.work_stat 와 1:1 매핑
+enum WorkOrderStatus {
+  WORK_ORDER_STATUS_UNSPECIFIED = 0;
+  WORK_ORDER_STATUS_QUE         = 1;  // queued (생산 대기)
+  WORK_ORDER_STATUS_PROC        = 2;  // processing (생산중)
+  WORK_ORDER_STATUS_SUCC        = 3;  // success (생산완료)
+  WORK_ORDER_STATUS_FAIL        = 4;  // failed (생산 실패)
+}
+
+// Confluence DB v47 의 Item.cur_stage 와 1:1 매핑 (8 단계)
+// PyQt UI 의 6 컬럼 매핑:
+//   대기→QUE, 주탕→MM, 탈형→DM, 후처리→PP, 검사→IP, 적재→TR_LD
+//   TR_PP, SH 는 내부 단계 (UI 미표시)
+enum ItemStage {
+  ITEM_STAGE_UNSPECIFIED = 0;
+  ITEM_STAGE_QUE   = 1;  // 대기 (생산 대기)
+  ITEM_STAGE_MM    = 2;  // Mold Making (주형 제작 + 주탕)
+  ITEM_STAGE_DM    = 3;  // Demolding (탈형)
+  ITEM_STAGE_TR_PP = 4;  // Transport to Post Processing (후처리 구역 이송)
+  ITEM_STAGE_PP    = 5;  // Post Processing (후처리)
+  ITEM_STAGE_IP    = 6;  // Inspection (검사)
+  ITEM_STAGE_TR_LD = 7;  // Transport to Loading Zone (적재 구역 이송)
+  ITEM_STAGE_SH    = 8;  // Shipping (출고)
+}
+
+enum RobotType {
+  ROBOT_TYPE_UNSPECIFIED = 0;
+  ROBOT_TYPE_AMR         = 1;
+  ROBOT_TYPE_COBOT       = 2;
+  ROBOT_TYPE_CONVEYOR    = 3;
+}
+
+// -----------------------------------------------------------------------------
+// Task Manager
+// -----------------------------------------------------------------------------
+
+message StartProductionRequest {
+  repeated string order_ids = 1;
+}
+
+// Confluence work_order 테이블과 1:1 매핑
+message WorkOrder {
+  int64           id          = 1;   // work_ord_id (SERIAL)
+  string          order_id    = 2;   // ord_id FK → order
+  string          pattern_id  = 3;   // pattern_id FK → order_detail
+  int32           qty         = 4;   // 주문 수량
+  WorkOrderStatus status      = 5;   // QUE/PROC/SUCC/FAIL
+  Timestamp       plan_start  = 6;
+  Timestamp       act_start   = 7;
+  Timestamp       act_end     = 8;
+  repeated Item   items       = 9;   // 이 work_order 가 분해해 생성한 Item 목록
+}
+
+message StartProductionResponse {
+  repeated WorkOrder work_orders = 1;
+}
+
+// Confluence Item 테이블과 1:1 매핑
+message Item {
+  int64     id          = 1;   // item_id (SERIAL)
+  string    order_id    = 2;   // ord_id FK
+  ItemStage cur_stage   = 3;   // QUE/MM/DM/TR_PP/PP/IP/TR_LD/SH
+  string    curr_res    = 4;   // res_id FK → resource (현재 점유 자원)
+  int64     insp_id     = 5;   // FK → inspection_result (없으면 0)
+  Timestamp mfg_at      = 6;   // 공정별 시작 시각
+}
+
+message ListItemsRequest {
+  string    order_id     = 1;   // optional filter
+  ItemStage stage_filter = 2;
+  int32     limit        = 3;
+}
+
+message ListItemsResponse {
+  repeated Item items = 1;
+}
+
+// -----------------------------------------------------------------------------
+// Task Allocator
+// -----------------------------------------------------------------------------
+
+message AllocateRequest {
+  int64 item_id = 1;
+}
+
+message AllocateResponse {
+  int64  item_id          = 1;
+  string chosen_robot_id  = 2;
+  double score            = 3;
+  string rationale        = 4;
+}
+
+// -----------------------------------------------------------------------------
+// Traffic Manager
+// -----------------------------------------------------------------------------
+
+message RoutePoint {
+  double x = 1;
+  double y = 2;
+  string waypoint_id = 3;
+}
+
+message PlanRouteRequest {
+  string robot_id = 1;
+  RoutePoint start = 2;
+  RoutePoint goal  = 3;
+}
+
+message PlanRouteResponse {
+  repeated RoutePoint path = 1;
+  repeated string reserved_edges = 2;
+  double estimated_duration_sec = 3;
+}
+
+// -----------------------------------------------------------------------------
+// Robot Executor
+// -----------------------------------------------------------------------------
+
+message ExecuteCommandRequest {
+  int64  item_id  = 1;
+  string robot_id = 2;
+  string command  = 3;   // "navigate" | "pick" | "place" | "charge"
+  bytes  payload  = 4;   // JSON or protobuf serialized
+}
+
+message ExecuteCommandResponse {
+  bool   accepted = 1;
+  string reason   = 2;
+}
+
+// -----------------------------------------------------------------------------
+// Execution Monitor (Server Streaming)
+// -----------------------------------------------------------------------------
+
+message ItemEvent {
+  int64     item_id  = 1;
+  ItemStage stage    = 2;
+  string    robot_id = 3;
+  string    message  = 4;
+  Timestamp at       = 5;
+}
+
+message WatchItemsRequest {
+  string order_id = 1;  // optional filter
+}
+
+// -----------------------------------------------------------------------------
+// Service Definition
+// -----------------------------------------------------------------------------
+
+service ManagementService {
+  // Task Manager (work_order + items)
+  rpc StartProduction(StartProductionRequest) returns (StartProductionResponse);
+  rpc ListItems(ListItemsRequest) returns (ListItemsResponse);
+
+  // Task Allocator
+  rpc AllocateItem(AllocateRequest) returns (AllocateResponse);
+
+  // Traffic Manager
+  rpc PlanRoute(PlanRouteRequest) returns (PlanRouteResponse);
+
+  // Robot Executor
+  rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
+
+  // Execution Monitor — server streaming
+  rpc WatchItems(WatchItemsRequest) returns (stream ItemEvent);
+
+  // Health
+  rpc Health(Empty) returns (Empty);
+}

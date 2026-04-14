@@ -1,11 +1,15 @@
 """Database engine and session factory.
 
-PostgreSQL 16 + TimescaleDB가 운영 DB. 개발 편의를 위해 DATABASE_URL 이 설정되지 않은
-경우에 한해 SQLite 파일로 폴백한다. 실제 배포 환경에서는 반드시 PostgreSQL 을 사용할 것.
+PostgreSQL 16 + TimescaleDB 전용. SQLite 폴백은 2026-04-14 부로 완전 제거됨.
+운영/개발 모두 동일 PG (Tailscale 100.107.120.14:5432, db=smartcast_robotics, role=team2)
+를 사용한다.
 
 환경 변수:
-    DATABASE_URL - e.g. "postgresql+psycopg://user:pass@localhost:5432/casting_factory"
-                   or   "sqlite:///./casting_factory.db"
+    DATABASE_URL - 필수. 예: "postgresql+psycopg://user:pass@host:5432/dbname"
+                   미설정 시 RuntimeError 로 즉시 실패한다.
+
+@MX:ANCHOR: PG 단일 DB 정책 (V6 아키텍처 결정 2026-04-14)
+@MX:REASON: SPOF 가정 단순화 + Interface/Management 두 서비스 간 데이터 일관성 보장.
 """
 
 from __future__ import annotations
@@ -18,9 +22,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
-# @MX:NOTE: PostgreSQL 이 기본, SQLite 는 개발 폴백 (Phase 1 부터 PG 사용)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DEFAULT_SQLITE_URL = f"sqlite:///{os.path.join(BASE_DIR, 'casting_factory.db')}"
 
 
 def _load_env_local() -> None:
@@ -43,18 +45,23 @@ def _load_env_local() -> None:
 
 
 _load_env_local()
-DATABASE_URL: str = os.environ.get("DATABASE_URL", _DEFAULT_SQLITE_URL)
+
+DATABASE_URL: str | None = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL 환경변수가 설정되지 않았습니다. "
+        "backend/.env.local 에 PostgreSQL 연결 문자열을 설정하세요. "
+        "예: DATABASE_URL=postgresql+psycopg://user:pass@host:5432/dbname"
+    )
+if DATABASE_URL.startswith("sqlite"):
+    raise RuntimeError(
+        "SQLite 는 더 이상 지원되지 않습니다 (2026-04-14). "
+        "PostgreSQL 연결 문자열을 사용하세요: postgresql+psycopg://..."
+    )
 
 
 def _build_engine(url: str) -> Engine:
-    """Create SQLAlchemy engine with driver-specific options."""
-    if url.startswith("sqlite"):
-        return create_engine(
-            url,
-            connect_args={"check_same_thread": False},
-            echo=False,
-        )
-    # PostgreSQL (or other network DB) - connection pooling
+    """Create SQLAlchemy engine for PostgreSQL with connection pooling."""
     return create_engine(
         url,
         pool_size=10,

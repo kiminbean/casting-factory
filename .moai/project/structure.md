@@ -44,10 +44,16 @@ casting-factory/
 │       ├── utils.ts                # 상태 라벨/색상 맵, 포맷터
 │       └── mock-data.ts (575줄)    # 구 mock 데이터 (일부 레거시)
 │
-├── backend/                        # FastAPI + SQLAlchemy 2.0 + PostgreSQL 16
-│   ├── .env.local                  # DATABASE_URL (gitignored, 600 권한)
+├── backend/                        # 두 서비스 분리: Interface(FastAPI) + Management(gRPC)
+│   ├── management/                 # ★ V6 신규: Management Service (gRPC :50051)
+│   │   ├── server.py               # gRPC 서버 진입점
+│   │   ├── proto/management.proto  # API 계약 (Protocol Buffers)
+│   │   ├── services/               # Task Mgr / Allocator / Traffic / Executor / Monitor
+│   │   ├── requirements.txt        # grpcio, grpcio-tools, protobuf
+│   │   ├── Makefile                # `make proto`, `make run`
+│   │   └── README.md
+│   ├── .env.local                  # DATABASE_URL (gitignored, 600 권한). PG 필수.
 │   ├── requirements.txt            # fastapi/sqlalchemy/psycopg/alembic/asyncpg/redis/asyncio-mqtt
-│   ├── casting_factory.db          # SQLite 폴백 아티팩트 (legacy, 현재 미사용)
 │   ├── venv/                       # Python 가상환경
 │   ├── app/
 │   │   ├── main.py                 # FastAPI 앱, lifespan, 8 라우터 등록
@@ -66,7 +72,6 @@ casting-factory/
 │   │       ├── schedule.py (420줄) # 7요소 가중 우선순위 엔진
 │   │       └── websocket.py        # /ws/dashboard 5초 tick 브로드캐스트
 │   └── scripts/
-│       ├── migrate_sqlite_to_pg.py # 일회성 데이터 이관 (2026-04-09)
 │       ├── migrate_products_front_truth.sql  # Product 스키마 확장 + PRD-*→D*
 │       └── migrate_load_classes.sql          # EN 124 하중 등급 6개
 │
@@ -196,7 +201,6 @@ launchd (매일 09:07)
 
 ## 레거시 / 정리 대상
 
-- `backend/casting_factory.db`: SQLite 폴백 시대 아티팩트 (현재 PG 사용). 완전 전환 검증 후 삭제 가능.
 - `src/lib/mock-data.ts` (575줄): 현재 실사용처 Grep 기준 미확인. 일부 레거시 추정.
 - `src/lib/types.ts` 의 `Product` 인터페이스: 구식 (category_label, priceRange 등 미반영). `customer/page.tsx` 는 자체 로컬 정의 사용.
 - `requirements.txt` 의 `asyncpg / asyncio-mqtt / redis / alembic`: 아직 코드 import 없음, 향후 예약.

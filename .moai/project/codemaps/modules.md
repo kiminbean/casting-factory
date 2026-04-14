@@ -62,7 +62,7 @@
 | 파일 | 역할 |
 |------|------|
 | `main.py` | FastAPI 앱 생성, 라우터 등록, lifespan (seed) |
-| `database.py` | SQLAlchemy engine/session, PG/SQLite 분기, `.env.local` 로드 |
+| `database.py` | SQLAlchemy engine/session, PG 단독, `.env.local` 로드, DATABASE_URL 미설정 시 fail-fast |
 | `seed.py` | 초기 시드 데이터 (제품, 하중등급, 데모 주문 등) |
 
 ### 2.2 Routes (`backend/app/routes/`)

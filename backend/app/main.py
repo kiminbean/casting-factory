@@ -1,25 +1,16 @@
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import DATABASE_URL, Base, SessionLocal, engine
+from app.database import Base, SessionLocal, engine
 from app.routes import alerts, logistics, orders, production, quality, schedule, websocket
 from app.seed import seed_database
-
-# SQLite 전용 초기화 경로 (PG 전환 후에는 사용되지 않음)
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DB_PATH = os.path.join(_BASE_DIR, "casting_factory.db")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # SQLite 사용 시에만 파일을 지우고 재시드한다 (개발 편의).
-    # PostgreSQL 은 스키마/데이터를 보존하고 create_all + idempotent seed 만 실행.
-    if DATABASE_URL.startswith("sqlite") and os.path.exists(_DB_PATH):
-        engine.dispose()
-        os.remove(_DB_PATH)
+    # PostgreSQL 단독: 스키마/데이터를 보존하고 create_all + idempotent seed 만 실행.
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:

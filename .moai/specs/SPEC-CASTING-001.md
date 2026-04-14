@@ -1,5 +1,9 @@
 # SPEC-CASTING-001: Casting Production Dashboard
 
+> **2026-04-14 갱신 노트**: 본 SPEC 의 "DB: SQLite" 기재는 v3.0 시점(2026-03-31)의 사실이며,
+> 2026-04-09 PostgreSQL 16 + TimescaleDB 로 이관, 2026-04-14 SQLite 폴백을 완전 제거함.
+> 현재 정식 DB 는 PostgreSQL 단독 (`100.107.120.14:5432 / smartcast_robotics`).
+
 ## Overview
 Casting factory production monitoring dashboard with real-time process tracking, order management, quality inspection, logistics control, and factory floor map visualization.
 

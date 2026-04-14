@@ -35,8 +35,124 @@ class ProductionPage(QWidget):
     def __init__(self, api: ApiClient) -> None:
         super().__init__()
         self._api = api
+        # item_id → 현재 stage 코드 in-memory 캐시 (gRPC 스트림으로 갱신).
+        # _refresh_item_progress 가 폴링으로 채울 때도 동일 캐시 사용.
+        self._item_stage_cache: dict[int, str] = {}
+        # PyQt 라벨(대기/주탕/탈형/...) → V6 stage 코드 매핑
+        # CONFLUENCE 결정: 대기=QUE, 주탕=MM, 탈형=DM, 후처리=PP, 검사=IP, 적재=TR_LD/SH
+        self._label_to_codes: dict[str, set[str]] = {
+            "대기": {"QUE"},
+            "주탕": {"MM"},
+            "탈형": {"DM"},
+            "후처리": {"PP", "TR_PP"},  # 이송 중도 후처리 단계로 표시
+            "검사": {"IP"},
+            "적재": {"TR_LD", "SH"},
+        }
         self._build_ui()
         self.refresh()
+        self._start_item_stream()
+
+    # ---------- gRPC stream 통합 (V6 Phase 3) ----------
+    def _start_item_stream(self) -> None:
+        """Management Service WatchItems 구독 시작 (별도 QThread)."""
+        try:
+            from app.workers.item_stream_worker import ItemStreamWorker, ItemStreamThread
+        except ImportError:
+            # gRPC 의존 미설치 환경이면 조용히 폴링만 사용
+            return
+        self._stream_worker = ItemStreamWorker(order_filter=None)
+        self._stream_worker.item_event.connect(self._on_item_event)
+        self._stream_thread = ItemStreamThread(self._stream_worker)
+        self._stream_thread.start()
+
+    def _on_item_event(self, item_id: int, stage_code: str, robot_id: str, at_iso: str) -> None:
+        """gRPC 스트림 콜백 (메인 스레드 실행). 캐시 + 행 1개만 즉시 갱신."""
+        prev = self._item_stage_cache.get(item_id)
+        self._item_stage_cache[item_id] = stage_code
+        if prev != stage_code:
+            # stage 변경 → 해당 item 행만 다시 그림
+            self._update_item_row(item_id, stage_code)
+
+    def _update_item_row(self, item_id: int, stage_code: str) -> None:
+        """item_progress_table 에서 해당 item_id 행을 찾아 마커 위치 이동."""
+        if not hasattr(self, "_item_progress_table"):
+            return
+        # Item 컬럼(index 2) 에 "I-{id}" 형태로 표시되도록 _refresh_item_progress 에서 보장
+        target = f"I-{item_id}"
+        for row in range(self._item_progress_table.rowCount()):
+            cell = self._item_progress_table.item(row, 2)
+            if cell and cell.text() == target:
+                self._render_item_row_stage(row, stage_code)
+                return
+
+    # ---------- gRPC ListItems → 폴링 데이터 소스 ----------
+    def _fetch_items_via_grpc(self) -> list[dict[str, Any]] | None:
+        """gRPC list_items 로 모든 Item 가져와 mock 형식으로 정규화.
+
+        반환: [{order_id, product, item, stage}, ...]
+        실패하면 None 반환 (호출자가 mock fallback).
+        """
+        try:
+            from app.management_client import ManagementClient
+        except ImportError:
+            return None
+        client = None
+        try:
+            client = ManagementClient()
+            items = client.list_items(limit=200)
+        except Exception:  # noqa: BLE001
+            return None
+        finally:
+            if client is not None:
+                client.close()
+
+        # gRPC stage enum int → 한국어 라벨 (UI 컬럼명)
+        STAGE_INT_TO_LABEL = {
+            1: "대기", 2: "주탕", 3: "탈형", 4: "후처리",
+            5: "후처리", 6: "검사", 7: "적재", 8: "적재",
+        }
+        rows: list[dict[str, Any]] = []
+        for it in items:
+            rows.append({
+                "order_id": it.order_id,
+                "product": "-",  # Phase 3 범위 외, Phase 5에서 product join
+                "item": f"I-{it.id}",
+                "stage": STAGE_INT_TO_LABEL.get(int(it.cur_stage), "대기"),
+            })
+        return rows
+
+    def _render_item_row_stage(self, row: int, stage_code: str) -> None:
+        """단일 행의 stage 마커를 코드 기준으로 다시 그림 (gRPC 이벤트용)."""
+        # V6 코드 → PyQt 한국어 컬럼 인덱스
+        code_to_label = {
+            "QUE": "대기", "MM": "주탕", "DM": "탈형",
+            "PP": "후처리", "TR_PP": "후처리",
+            "IP": "검사", "TR_LD": "적재", "SH": "적재",
+        }
+        target_label = code_to_label.get(stage_code, "대기")
+        try:
+            current_idx = ITEM_STAGE_COLUMNS.index(target_label)
+        except ValueError:
+            return
+
+        current_color = QColor("#2563eb")
+        done_color = QColor("#9ca3af")
+        bold = QFont()
+        bold.setBold(True)
+
+        for col_offset in range(len(ITEM_STAGE_COLUMNS)):
+            col = 3 + col_offset
+            if col_offset < current_idx:
+                cell = QTableWidgetItem("✓")
+                cell.setForeground(QBrush(done_color))
+            elif col_offset == current_idx:
+                cell = QTableWidgetItem("●")
+                cell.setForeground(QBrush(current_color))
+                cell.setFont(bold)
+            else:
+                cell = QTableWidgetItem("")
+            cell.setTextAlignment(Qt.AlignCenter)
+            self._item_progress_table.setItem(row, col, cell)
 
     def _build_ui(self) -> None:
         outer = QVBoxLayout(self)
@@ -243,8 +359,10 @@ class ProductionPage(QWidget):
 
         각 행은 1개 item, 컬럼은 [주문, 제품, Item, 대기, 주탕, 탈형, 후처리, 검사, 적재].
         현재 단계 셀은 ●(파랑), 통과한 단계 셀은 ✓(회색)으로 표시.
+
+        V6 Phase 3+: gRPC ListItems 우선 사용. 실패 시 mock fallback.
         """
-        rows = self._api.get_order_item_progress() or []
+        rows = self._fetch_items_via_grpc() or self._api.get_order_item_progress() or []
         # 주문 ID → Item 자연 정렬
         rows = sorted(rows, key=lambda r: (str(r.get("order_id", "")), str(r.get("item", ""))))
 
