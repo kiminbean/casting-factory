@@ -54,10 +54,32 @@ pytest tests/ --cov=services --cov-report=term-missing
 |---|---|---|
 | `MANAGEMENT_GRPC_HOST` | `0.0.0.0` | gRPC 바인딩 주소 |
 | `MANAGEMENT_GRPC_PORT` | `50051` | gRPC 포트 |
+| `MGMT_GRPC_TLS_ENABLED` | `0` | **★ V6 S-001: 1 이면 mTLS 활성** |
+| `MGMT_TLS_CERT_DIR` | `./certs` | cert 디렉터리 |
+| `MGMT_TLS_SERVER_KEY` | `./certs/server.key` | 서버 private key |
+| `MGMT_TLS_SERVER_CRT` | `./certs/server.crt` | 서버 cert |
+| `MGMT_TLS_CA_CRT` | `./certs/ca.crt` | CA cert (클라이언트 검증) |
+| `MGMT_TLS_REQUIRE_CLIENT_CERT` | `1` | 1=mTLS, 0=server-only TLS |
 | `MGMT_MQTT_HOST` | `localhost` | MQTT 브로커 (Robot Executor publish 용) |
 | `MGMT_MQTT_PORT` | `1883` | MQTT 포트 |
 | `MGMT_MQTT_QOS` | `1` | publish QoS |
 | `MGMT_MQTT_CLIENT_ID` | `casting-mgmt-executor` | MQTT client id |
+
+## mTLS 설정 (운영 환경 권장)
+
+```bash
+# 1) cert 발급 (한 번만)
+bash scripts/gen_certs.sh
+
+# 2) 서버 기동 (mTLS)
+MGMT_GRPC_TLS_ENABLED=1 python server.py
+
+# 3) PyQt 클라이언트 (mTLS)
+cd ../../monitoring
+MGMT_GRPC_TLS_ENABLED=1 python main.py
+```
+
+cert 디렉터리는 `.gitignore` 처리됨. 운영 배포 시 별도 채널로 cert 전달 (Tailscale, scp, secret manager 등).
 
 DATABASE_URL 은 `backend/.env.local` 에서 자동 로딩 (Interface Service 와 공유).
 

@@ -69,3 +69,9 @@ docs/.confluence_snapshot.json
 .coverage.*
 htmlcov/
 .pytest_cache/
+
+# mTLS certs (V6 S-001) — never commit private keys
+backend/management/certs/
+*.key
+*.srl
+

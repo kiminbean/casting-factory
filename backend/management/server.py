@@ -221,6 +221,53 @@ class ImagePublisherServicer(management_pb2_grpc.ImagePublisherServiceServicer):
         )
 
 
+def _load_tls_credentials():
+    """V6 S-001: mTLS 환경변수 활성 시 ssl_server_credentials 반환, 아니면 None.
+
+    환경변수:
+        MGMT_GRPC_TLS_ENABLED  = 1 면 활성
+        MGMT_TLS_CERT_DIR      = cert 디렉터리 (기본 ./certs/)
+        MGMT_TLS_SERVER_KEY    = 서버 private key 경로 (기본 ${CERT_DIR}/server.key)
+        MGMT_TLS_SERVER_CRT    = 서버 cert 경로 (기본 ${CERT_DIR}/server.crt)
+        MGMT_TLS_CA_CRT        = CA cert (클라이언트 검증용, 기본 ${CERT_DIR}/ca.crt)
+        MGMT_TLS_REQUIRE_CLIENT_CERT = 1 면 mTLS, 0 이면 server-only TLS (기본 1)
+    """
+    if os.environ.get("MGMT_GRPC_TLS_ENABLED", "0") not in ("1", "true", "yes"):
+        return None
+    cert_dir = os.environ.get(
+        "MGMT_TLS_CERT_DIR",
+        os.path.join(_THIS_DIR, "certs"),
+    )
+    key_path = os.environ.get("MGMT_TLS_SERVER_KEY", os.path.join(cert_dir, "server.key"))
+    crt_path = os.environ.get("MGMT_TLS_SERVER_CRT", os.path.join(cert_dir, "server.crt"))
+    ca_path = os.environ.get("MGMT_TLS_CA_CRT", os.path.join(cert_dir, "ca.crt"))
+
+    for p in (key_path, crt_path, ca_path):
+        if not os.path.exists(p):
+            raise FileNotFoundError(
+                f"mTLS 활성화됐으나 cert 파일 없음: {p}\n"
+                "scripts/gen_certs.sh 를 먼저 실행하세요."
+            )
+
+    with open(key_path, "rb") as f:
+        server_key = f.read()
+    with open(crt_path, "rb") as f:
+        server_crt = f.read()
+    with open(ca_path, "rb") as f:
+        ca_crt = f.read()
+
+    require_client = os.environ.get("MGMT_TLS_REQUIRE_CLIENT_CERT", "1") in ("1", "true", "yes")
+    creds = grpc.ssl_server_credentials(
+        [(server_key, server_crt)],
+        root_certificates=ca_crt,
+        require_client_auth=require_client,
+    )
+    logger.info(
+        "mTLS 활성: cert_dir=%s require_client_auth=%s", cert_dir, require_client,
+    )
+    return creds
+
+
 def serve() -> None:
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     management_pb2_grpc.add_ManagementServiceServicer_to_server(
@@ -230,9 +277,17 @@ def serve() -> None:
         ImagePublisherServicer(), server
     )
     bind_addr = f"{HOST}:{PORT}"
-    server.add_insecure_port(bind_addr)
+
+    creds = _load_tls_credentials()
+    if creds is not None:
+        server.add_secure_port(bind_addr, creds)
+        scheme = "TLS"
+    else:
+        server.add_insecure_port(bind_addr)
+        scheme = "INSECURE (V6 S-001: MGMT_GRPC_TLS_ENABLED=1 권장)"
+
     server.start()
-    logger.info("Management Service listening on %s", bind_addr)
+    logger.info("Management Service listening on %s [%s]", bind_addr, scheme)
 
     # Graceful shutdown
     def _stop(_signum, _frame):

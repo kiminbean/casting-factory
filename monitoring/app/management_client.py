@@ -76,8 +76,60 @@ class ManagementClient:
         self._host = host
         self._port = port
         self._timeout = timeout
-        self._channel = grpc.insecure_channel(f"{host}:{port}")
+        self._channel = self._build_channel(host, port)
         self._stub = management_pb2_grpc.ManagementServiceStub(self._channel)
+
+    @staticmethod
+    def _build_channel(host: str, port: int):
+        """V6 S-001: TLS 환경변수 활성 시 secure_channel, 아니면 insecure.
+
+        환경변수:
+            MGMT_GRPC_TLS_ENABLED  = 1 면 TLS 활성
+            MGMT_TLS_CERT_DIR      = cert 디렉터리 (기본 backend/management/certs)
+            MGMT_TLS_CA_CRT        = CA cert (기본 ${CERT_DIR}/ca.crt)
+            MGMT_TLS_CLIENT_KEY    = 클라이언트 private key (기본 ${CERT_DIR}/client.key)
+            MGMT_TLS_CLIENT_CRT    = 클라이언트 cert (기본 ${CERT_DIR}/client.crt)
+            MGMT_TLS_SERVER_NAME   = TLS SNI override (기본 host 값)
+        """
+        target = f"{host}:{port}"
+        if os.environ.get("MGMT_GRPC_TLS_ENABLED", "0") not in ("1", "true", "yes"):
+            return grpc.insecure_channel(target)
+
+        # mTLS 활성: client cert 로딩
+        # 기본 cert 디렉터리: monitoring/ 옆의 backend/management/certs/
+        default_cert_dir = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..",
+                          "backend", "management", "certs")
+        )
+        cert_dir = os.environ.get("MGMT_TLS_CERT_DIR", default_cert_dir)
+        ca_path = os.environ.get("MGMT_TLS_CA_CRT", os.path.join(cert_dir, "ca.crt"))
+        key_path = os.environ.get("MGMT_TLS_CLIENT_KEY", os.path.join(cert_dir, "client.key"))
+        crt_path = os.environ.get("MGMT_TLS_CLIENT_CRT", os.path.join(cert_dir, "client.crt"))
+
+        for p in (ca_path, key_path, crt_path):
+            if not os.path.exists(p):
+                raise FileNotFoundError(
+                    f"TLS 활성화됐으나 cert 파일 없음: {p}"
+                )
+
+        with open(ca_path, "rb") as f:
+            ca = f.read()
+        with open(key_path, "rb") as f:
+            client_key = f.read()
+        with open(crt_path, "rb") as f:
+            client_crt = f.read()
+
+        creds = grpc.ssl_channel_credentials(
+            root_certificates=ca,
+            private_key=client_key,
+            certificate_chain=client_crt,
+        )
+        options = []
+        sni = os.environ.get("MGMT_TLS_SERVER_NAME")
+        if sni:
+            options.append(("grpc.ssl_target_name_override", sni))
+        logger.info("ManagementClient TLS 활성: %s (sni=%s)", target, sni or host)
+        return grpc.secure_channel(target, creds, options=options or None)
 
     @property
     def endpoint(self) -> str:
