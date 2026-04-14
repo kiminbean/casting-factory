@@ -66,6 +66,10 @@ pytest tests/ --cov=services --cov-report=term-missing
 | `MGMT_MQTT_CLIENT_ID` | `casting-mgmt-esp` | MQTT client id |
 | `MGMT_MQTT_USER` | (미설정) | **★ V6 S-002: MQTT 사용자명 (없으면 익명)** |
 | `MGMT_MQTT_PASS` | (미설정) | **★ V6 S-002: MQTT 비밀번호** |
+| `MGMT_ADAPTIVE_POLLING` | `1` | **★ V6 P-001: ExecutionMonitor 적응형 polling** |
+| `MGMT_POLL_QUIET_CYCLES` | `5` | quiet 사이클 N건 누적 시 backoff |
+| `MGMT_POLL_BACKOFF_FACTOR` | `2.0` | backoff 시 interval 곱셈 |
+| `MGMT_MAX_POLL_INTERVAL_SEC` | `8.0` | adaptive interval 상한 |
 
 ## MQTT 인증 설정 (운영 환경 권장)
 

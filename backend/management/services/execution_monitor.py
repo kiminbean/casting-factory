@@ -67,6 +67,15 @@ for _stage in list(DEFAULT_SLA_SEC):
 # alert 중복 발행 방지 캐시 TTL (초). 같은 item-stage 가 N초 안에 또 SLA 위반이어도 한 번만 alert.
 ALERT_DEDUP_TTL_SEC = float(os.environ.get("MGMT_ALERT_DEDUP_TTL_SEC", "300"))
 
+# V6 P-001: Adaptive polling interval (변경 없을 때 점진적으로 늘림, 변경 발생 시 즉시 복귀)
+# - QUIET_CYCLES_TO_BACKOFF: N 사이클 연속 변경 0건 시 간격 1단계 증가
+# - BACKOFF_FACTOR: 매 backoff 시 곱하기 (기본 2배)
+# - 상한: SLA 최단값의 절반 (기본 IP=30s 의 절반=15s, 환경변수 override 가능)
+ADAPTIVE_POLLING = os.environ.get("MGMT_ADAPTIVE_POLLING", "1") in ("1", "true", "yes")
+QUIET_CYCLES_TO_BACKOFF = int(os.environ.get("MGMT_POLL_QUIET_CYCLES", "5"))
+BACKOFF_FACTOR = float(os.environ.get("MGMT_POLL_BACKOFF_FACTOR", "2.0"))
+MAX_POLL_INTERVAL_SEC = float(os.environ.get("MGMT_MAX_POLL_INTERVAL_SEC", "8.0"))
+
 
 def _stage_enum(stage: str | None) -> int:
     return _STAGE_TO_ENUM.get(stage or "QUE", 0)
@@ -89,6 +98,7 @@ class ExecutionMonitor:
 
     def __init__(self, poll_interval_sec: float = 1.0,
                  sla_overrides: dict[str, float] | None = None) -> None:
+        self._base_interval = poll_interval_sec
         self._interval = poll_interval_sec
         self._sla = dict(DEFAULT_SLA_SEC)
         if sla_overrides:
@@ -96,6 +106,12 @@ class ExecutionMonitor:
         # 인스턴스 공유 캐시 (alerts dedup)
         self._last_alert: dict[tuple[int, str], float] = {}
         self._stage_started_mono: dict[int, tuple[str, float]] = {}
+        # V6 P-001: Adaptive polling 상태
+        # SLA 최단값의 절반을 max interval cap (감지 정확도 보호)
+        positive_slas = [v for v in self._sla.values() if v > 0]
+        sla_min_half = (min(positive_slas) / 2.0) if positive_slas else MAX_POLL_INTERVAL_SEC
+        self._max_interval = min(MAX_POLL_INTERVAL_SEC, max(self._base_interval, sla_min_half))
+        self._quiet_cycles = 0
         # 백그라운드 자동 polling — 클라이언트 stream 없어도 SLA 감시 + alerts 발행
         self._bg_snapshot: dict[int, str] = {}
         self._bg_first_pass = True
@@ -104,20 +120,53 @@ class ExecutionMonitor:
         self._bg_thread = _t.Thread(target=self._background_loop, daemon=True,
                                     name="ExecMonitor-bg")
         self._bg_thread.start()
-        logger.info("ExecutionMonitor background SLA polling 시작 (interval=%.1fs)",
-                    self._interval)
+        logger.info(
+            "ExecutionMonitor background SLA polling 시작 "
+            "(base=%.1fs, max=%.1fs, adaptive=%s)",
+            self._base_interval, self._max_interval, ADAPTIVE_POLLING,
+        )
 
     def _background_loop(self) -> None:
-        """클라이언트 연결 여부와 무관하게 SLA 감시. 이벤트는 버리고 alerts 만 INSERT."""
+        """클라이언트 연결 여부와 무관하게 SLA 감시. 이벤트는 버리고 alerts 만 INSERT.
+
+        V6 P-001: Adaptive interval — quiet cycles 가 누적되면 점진적으로 늘어나
+        DB 부담 최소화. 변경/타임아웃 발생 시 즉시 base interval 로 복귀.
+        """
         while not self._bg_stop:
             try:
-                _events, self._bg_snapshot = self._tick(
+                events, self._bg_snapshot = self._tick(
                     self._bg_snapshot, order_filter=None, first_pass=self._bg_first_pass
                 )
                 self._bg_first_pass = False
+                self._adapt_interval(activity=len(events))
             except Exception as exc:  # noqa: BLE001
                 logger.exception("ExecMonitor background tick error: %s", exc)
             time.sleep(self._interval)
+
+    def _adapt_interval(self, activity: int) -> None:
+        """이벤트 수에 따라 다음 polling 간격 조정.
+
+        - activity > 0 (변경/타임아웃 발생): base interval 로 복귀
+        - activity == 0 인 사이클이 QUIET_CYCLES_TO_BACKOFF 누적: BACKOFF_FACTOR 적용
+        """
+        if not ADAPTIVE_POLLING:
+            return
+        if activity > 0:
+            if self._interval != self._base_interval:
+                logger.debug("activity 감지 — interval 복귀 → %.1fs", self._base_interval)
+            self._interval = self._base_interval
+            self._quiet_cycles = 0
+            return
+        self._quiet_cycles += 1
+        if self._quiet_cycles >= QUIET_CYCLES_TO_BACKOFF:
+            new_interval = min(self._interval * BACKOFF_FACTOR, self._max_interval)
+            if new_interval > self._interval:
+                logger.debug(
+                    "quiet %d 사이클 — interval 증가 %.1fs → %.1fs",
+                    self._quiet_cycles, self._interval, new_interval,
+                )
+                self._interval = new_interval
+            self._quiet_cycles = 0  # 다음 backoff 까지 카운트 리셋
 
     # ------------------------------------------------------------------
     # gRPC server streaming entrypoint
