@@ -649,58 +649,44 @@ class SchedulePage(QWidget):
             self._do_start(order_ids)
 
     def _do_start(self, order_ids: list[str]) -> None:
-        """Management Service(gRPC :50051) 에 생산 개시 요청 (V6 Phase 4).
+        """Management Service(gRPC :50051) 에 생산 개시 요청 (V6 Phase 4 + review Q-002).
 
-        기존 HTTP /api/production/schedule/start 대신 gRPC 직결 호출.
-        Interface Service 장애/이관 시에도 공장 가동 유지가 목적.
+        Q-002 적용: 별도 QThread 워커로 실행 → GUI 프리즈 제거.
+        결과는 _on_start_succeeded / _on_start_failed 슬롯에서 처리.
 
         @MX:ANCHOR: PyQt → V6 Mgmt Service 의 첫 RPC 진입점. Phase 4 산출물.
-        @MX:REASON: 본 메서드 한 줄로 "PyQt 가 Interface 우회" 정책이 표현됨. 향후 다른 페이지의
-                    유사 RPC 호출 시 본 메서드를 패턴 참조.
+        @MX:REASON: 본 메서드 한 줄로 "PyQt 가 Interface 우회" 정책이 표현됨.
         """
-        # gRPC 의존 import 는 메서드 내부로 (앱 초기 로드 부담 최소화)
         try:
-            import grpc  # noqa: F401
-            from app.management_client import ManagementClient
+            from app.workers.start_production_worker import (
+                StartProductionWorker, StartProductionThread,
+            )
         except ImportError as exc:
             QMessageBox.critical(
                 self,
-                "gRPC 모듈 로드 실패",
-                f"grpcio / management_client 임포트 실패:\n{exc}\n\n"
-                "monitoring/scripts/gen_proto.sh 실행 후 다시 시도하세요.",
+                "워커 모듈 로드 실패",
+                f"start_production_worker 임포트 실패:\n{exc}",
             )
             return
 
-        client = None
-        try:
-            self._start_selected_btn.setEnabled(False)
-            self._start_selected_btn.setText("⏳ 생산 개시 중...")
-            client = ManagementClient()
-            wos = client.start_production(order_ids)
-        except __import__("grpc").RpcError as exc:
-            QMessageBox.critical(
-                self,
-                "생산 개시 실패 (gRPC)",
-                f"Management Service 호출 실패:\n"
-                f"  endpoint: {client.endpoint if client else '(unknown)'}\n"
-                f"  code: {exc.code().name if hasattr(exc, 'code') else 'N/A'}\n"
-                f"  detail: {exc.details() if hasattr(exc, 'details') else exc}\n\n"
-                "Management Service(:50051) 가 실행 중인지 확인하세요.",
-            )
+        # 연속 클릭/중복 spawn 방지 — 진행 중이면 무시
+        if getattr(self, "_start_thread_active", False):
             return
-        except Exception as exc:
-            QMessageBox.critical(
-                self,
-                "생산 개시 실패",
-                f"예상치 못한 오류:\n{exc}",
-            )
-            return
-        finally:
-            self._start_selected_btn.setEnabled(True)
-            self._start_selected_btn.setText("▶ 선택 생산 시작")
-            if client is not None:
-                client.close()
+        self._start_thread_active = True
+        self._start_selected_btn.setEnabled(False)
+        self._start_selected_btn.setText("⏳ 생산 개시 중...")
 
+        worker = StartProductionWorker(order_ids)
+        worker.succeeded.connect(self._on_start_succeeded)
+        worker.failed.connect(self._on_start_failed)
+        worker.finished.connect(self._on_start_finished)
+
+        # _start_thread 는 인스턴스 멤버로 보관 (GC 로 인한 조기 종료 방지)
+        self._start_thread = StartProductionThread(worker)
+        self._start_thread.start()
+
+    def _on_start_succeeded(self, wos: list) -> None:
+        """워커 완료 슬롯 (메인 GUI 스레드)."""
         if not wos:
             QMessageBox.warning(
                 self,
@@ -709,8 +695,6 @@ class SchedulePage(QWidget):
                 "선택한 주문이 'approved' 상태가 아니거나 이미 work_order 가 있을 수 있습니다.",
             )
             return
-
-        # 성공 요약: 생성된 WorkOrder + qty (item 분해 결과)
         lines = [
             f"  • WO #{wo.id} ← 주문 {wo.order_id} "
             f"(qty={wo.qty}, status={wo.status}, "
@@ -724,9 +708,25 @@ class SchedulePage(QWidget):
             f"{len(wos)} 건의 WorkOrder 가 생성되었습니다 (총 {total_items} items).\n\n"
             + "\n".join(lines),
         )
-
-        # 풀/결과 갱신 (상태 전환 반영)
         self.refresh()
+
+    def _on_start_failed(self, kind: str, message: str) -> None:
+        title_map = {
+            "value": "입력 오류",
+            "grpc": "생산 개시 실패 (gRPC)",
+            "import": "모듈 로드 실패",
+            "other": "생산 개시 실패",
+        }
+        body_extra = ""
+        if kind == "grpc":
+            body_extra = "\n\nManagement Service(:50051) 가 실행 중인지 확인하세요."
+        QMessageBox.critical(self, title_map.get(kind, "오류"), message + body_extra)
+
+    def _on_start_finished(self) -> None:
+        """버튼 재활성 + 진행 중 플래그 해제 (성공/실패 무관)."""
+        self._start_thread_active = False
+        self._start_selected_btn.setEnabled(True)
+        self._start_selected_btn.setText("▶  선택 주문 생산 시작  ▶")
         self._priority_results = []
         self._render_results_table()
 
