@@ -75,3 +75,7 @@ backend/management/certs/
 *.key
 *.srl
 
+
+# MQTT 인증 (V6 S-002)
+backend/management/mosquitto/passwd
+backend/management/mosquitto/passwd.bak

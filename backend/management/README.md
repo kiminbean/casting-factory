@@ -63,7 +63,33 @@ pytest tests/ --cov=services --cov-report=term-missing
 | `MGMT_MQTT_HOST` | `localhost` | MQTT 브로커 (Robot Executor publish 용) |
 | `MGMT_MQTT_PORT` | `1883` | MQTT 포트 |
 | `MGMT_MQTT_QOS` | `1` | publish QoS |
-| `MGMT_MQTT_CLIENT_ID` | `casting-mgmt-executor` | MQTT client id |
+| `MGMT_MQTT_CLIENT_ID` | `casting-mgmt-esp` | MQTT client id |
+| `MGMT_MQTT_USER` | (미설정) | **★ V6 S-002: MQTT 사용자명 (없으면 익명)** |
+| `MGMT_MQTT_PASS` | (미설정) | **★ V6 S-002: MQTT 비밀번호** |
+
+## MQTT 인증 설정 (운영 환경 권장)
+
+```bash
+# 1) mosquitto 인증 설정 (한 번만)
+bash scripts/setup_mosquitto_auth.sh
+# → backend/management/mosquitto/{mosquitto.conf, passwd} 생성
+# → 비밀번호 1회 출력 (별도 보관)
+
+# 2) mosquitto 재시작 (인증 모드)
+pkill -f mosquitto
+mosquitto -c backend/management/mosquitto/mosquitto.conf -d
+
+# 3) Mgmt 서버 인증 환경변수
+export MGMT_MQTT_USER=casting
+export MGMT_MQTT_PASS='<발급받은-비밀번호>'
+python server.py
+
+# 4) ESP32 펌웨어 동기화 (PubSubClient.connect 에 user/pass 추가)
+```
+
+검증:
+- 익명 publish → `Connection Refused: not authorised`
+- 인증 publish → 정상
 
 ## mTLS 설정 (운영 환경 권장)
 

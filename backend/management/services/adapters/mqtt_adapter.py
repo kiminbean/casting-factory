@@ -31,6 +31,9 @@ MQTT_HOST = os.environ.get("MGMT_MQTT_HOST", "localhost")
 MQTT_PORT = int(os.environ.get("MGMT_MQTT_PORT", "1883"))
 MQTT_QOS = int(os.environ.get("MGMT_MQTT_QOS", "1"))
 MQTT_CLIENT_ID = os.environ.get("MGMT_MQTT_CLIENT_ID", "casting-mgmt-esp")
+# V6 S-002: 인증
+MQTT_USER = os.environ.get("MGMT_MQTT_USER")  # None 면 익명 (개발용)
+MQTT_PASS = os.environ.get("MGMT_MQTT_PASS")
 # 펌웨어 레거시 토픽 호환 (firmware/conveyor_controller/)
 MQTT_LEGACY_TOPIC = os.environ.get("MGMT_MQTT_LEGACY_CONVEYOR", "0") in ("1", "true", "yes")
 
@@ -64,11 +67,18 @@ class MqttAdapter:
                 client_id=MQTT_CLIENT_ID,
                 callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
             )
+            # V6 S-002: 인증 활성 시 username/password 설정
+            if MQTT_USER:
+                client.username_pw_set(MQTT_USER, MQTT_PASS or "")
             client.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
             client.loop_start()
             self._client = client
             self._connected = True
-            logger.info("MqttAdapter (ESP32) connected → %s:%s", MQTT_HOST, MQTT_PORT)
+            auth_mode = f"auth=user:{MQTT_USER}" if MQTT_USER else "anonymous (개발 모드)"
+            logger.info(
+                "MqttAdapter (ESP32) connected → %s:%s [%s]",
+                MQTT_HOST, MQTT_PORT, auth_mode,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.warning("MqttAdapter 연결 실패: %s — dispatch 시 재시도", exc)
             self._client = None
