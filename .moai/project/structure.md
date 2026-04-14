@@ -75,15 +75,21 @@ casting-factory/
 │       ├── migrate_products_front_truth.sql  # Product 스키마 확장 + PRD-*→D*
 │       └── migrate_load_classes.sql          # EN 124 하중 등급 6개
 │
-├── monitoring/                     # PyQt5 Factory PC 앱
+├── monitoring/                     # PyQt5 Factory PC 앱 (Python 3.12)
 │   ├── main.py                     # QApplication 진입점
-│   ├── config.py                   # CASTING_API_HOST=192.168.0.16:8000
+│   ├── config.py                   # CASTING_API_HOST 기본값
+│   ├── scripts/gen_proto.sh        # ★ V6: backend/management/proto → app/generated 컴파일
 │   └── app/
-│       ├── main_window.py          # MainWindow, 6 NAV_ITEMS, WS/MQTT 워커 브리지
-│       ├── api_client.py (493줄)   # HTTP + 404 캐시 + mock fallback
-│       ├── ws_worker.py            # websocket-client + QThread, 3초 재연결
+│       ├── main_window.py          # MainWindow, 6 NAV_ITEMS, WS/Alert/Item 워커 브리지
+│       ├── api_client.py (493줄)   # HTTP + 404 캐시 + mock fallback (잔여 조회용)
+│       ├── ws_worker.py            # websocket-client (V6: CASTING_WS_ENABLED=0 기본 비활성)
 │       ├── mqtt_worker.py          # paho-mqtt (optional)
 │       ├── mock_data.py            # 백엔드 404 시 폴백
+│       ├── management_client.py    # ★ V6: gRPC :50051 클라이언트 (StartProduction/ListItems/Watch*)
+│       ├── generated/              # ★ V6: protoc 산출물 (management_pb2*.py)
+│       ├── workers/                # ★ V6 신규 QThread 워커
+│       │   ├── item_stream_worker.py    # WatchItems gRPC stream
+│       │   └── alert_stream_worker.py   # WatchAlerts gRPC stream → 토스트
 │       ├── pages/                  # 6 페이지 (dashboard/map/production/
 │       │                           #          schedule/quality/logistics)
 │       ├── widgets/                # 10개 (Kpi/Conveyor/Amr/FactoryMap/

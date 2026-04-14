@@ -1,6 +1,25 @@
 # 주물공장 생산 관제 시스템 (Casting Factory MES)
 
-> **Last updated**: 2026-04-14
+> **Last updated**: 2026-04-14 (V6 아키텍처 마이그레이션 8단계 완료)
+
+## 0. V6 아키텍처 (2026-04-14)
+
+Interface Service(FastAPI :8000) 와 Management Service(gRPC :50051) 를 별도 프로세스로 분리. PyQt 는 Management Service 직결.
+
+| 구간 | 프로토콜 | 채널 | 엔드포인트 |
+|---|---|---|---|
+| Admin/Customer 웹 → Server | HTTP | Interface Service | `localhost:8000/api/*` |
+| **Factory PC PyQt → Server** | **gRPC TCP** | **Management Service** | **`localhost:50051`** |
+| Server → AMR/Cobot | ROS2 DDS (Lazy) | ros2_adapter (RPi 배포 시) | `MGMT_ROS2_ENABLED=1` |
+| Server → ESP32 | MQTT | mqtt_adapter | `casting/esp/{id}/cmd` |
+| Image Publisher → Server | gRPC streaming | ImagePublisherService | `:50051 PublishFrames` |
+
+**핵심 가치**: Interface Service 장애/AWS 이관 시에도 공장 가동 중단 없음 (SPOF 제거).
+
+**Management Service RPC** (8종):
+- StartProduction, ListItems, AllocateItem, PlanRoute, ExecuteCommand, WatchItems, WatchAlerts, Health
+
+**자세한 설계**: `docs/management_service_design.md`
 
 ## 프로젝트 개요
 
