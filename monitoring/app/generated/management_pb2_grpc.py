@@ -78,6 +78,11 @@ class ManagementServiceStub(object):
                 request_serializer=management__pb2.Empty.SerializeToString,
                 response_deserializer=management__pb2.Empty.FromString,
                 _registered_method=True)
+        self.GetLatestFrame = channel.unary_unary(
+                '/casting.management.v1.ManagementService/GetLatestFrame',
+                request_serializer=management__pb2.LatestFrameRequest.SerializeToString,
+                response_deserializer=management__pb2.LatestFrameResponse.FromString,
+                _registered_method=True)
 
 
 class ManagementServiceServicer(object):
@@ -141,6 +146,13 @@ class ManagementServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetLatestFrame(self, request, context):
+        """Latest Image Frame (Stage A — PyQt 품질 페이지 실시간 프레임 표시)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ManagementServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -183,6 +195,11 @@ def add_ManagementServiceServicer_to_server(servicer, server):
                     servicer.Health,
                     request_deserializer=management__pb2.Empty.FromString,
                     response_serializer=management__pb2.Empty.SerializeToString,
+            ),
+            'GetLatestFrame': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetLatestFrame,
+                    request_deserializer=management__pb2.LatestFrameRequest.FromString,
+                    response_serializer=management__pb2.LatestFrameResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -405,6 +422,33 @@ class ManagementService(object):
             '/casting.management.v1.ManagementService/Health',
             management__pb2.Empty.SerializeToString,
             management__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetLatestFrame(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/casting.management.v1.ManagementService/GetLatestFrame',
+            management__pb2.LatestFrameRequest.SerializeToString,
+            management__pb2.LatestFrameResponse.FromString,
             options,
             channel_credentials,
             insecure,

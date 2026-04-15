@@ -10,9 +10,11 @@ from PyQt5.QtGui import (
     QBrush,
     QColor,
     QFont,
+    QImage,
     QLinearGradient,
     QPainter,
     QPen,
+    QPixmap,
     QRadialGradient,
 )
 from PyQt5.QtWidgets import QFrame, QSizePolicy
@@ -47,6 +49,10 @@ class CameraLiveView(QFrame):
         self._confidence = 0.0
         self._inspected_at = "-"
         self._defect_type = ""
+        # Stage A — 실제 Jetson 프레임 (있으면 시뮬레이션 대신 표시)
+        self._pixmap: QPixmap | None = None
+        self._frame_sequence: int = 0
+        self._frame_received_at: str = ""
 
         # 스캔라인 애니메이션
         self._scan_y_ratio = 0.0
@@ -69,6 +75,33 @@ class CameraLiveView(QFrame):
         self._confidence = confidence
         self._inspected_at = inspected_at
         self._defect_type = defect_type
+        self.update()
+
+    def set_frame_bytes(
+        self,
+        data: bytes,
+        encoding: str = "jpeg",
+        sequence: int = 0,
+        received_at: str = "",
+    ) -> None:
+        """Stage A — Jetson 실제 프레임 바이트를 설정.
+
+        JPEG/PNG 바이트를 QPixmap 으로 디코딩해 보관. paintEvent 가 배경으로 그린다.
+        data 가 비어있거나 디코딩 실패 시 pixmap 을 None 으로 돌려 시뮬레이션 모드.
+        """
+        if not data:
+            self._pixmap = None
+            self._frame_sequence = 0
+            self._frame_received_at = ""
+            self.update()
+            return
+        img = QImage.fromData(data, encoding.upper() if encoding else "JPEG")
+        if img.isNull():
+            self._pixmap = None
+        else:
+            self._pixmap = QPixmap.fromImage(img)
+        self._frame_sequence = int(sequence)
+        self._frame_received_at = received_at or ""
         self.update()
 
     def _tick(self) -> None:
@@ -94,6 +127,20 @@ class CameraLiveView(QFrame):
         bg.setColorAt(0.0, QColor("#0f172a"))
         bg.setColorAt(1.0, QColor("#1e293b"))
         painter.fillRect(rect, QBrush(bg))
+
+        # Stage A — 실제 프레임 우선 렌더 (있으면 시뮬레이션 실루엣 생략)
+        if self._pixmap is not None and not self._pixmap.isNull():
+            scaled = self._pixmap.scaled(
+                int(w), int(h),
+                Qt.KeepAspectRatio, Qt.SmoothTransformation,
+            )
+            px = (w - scaled.width()) / 2
+            py = (h - scaled.height()) / 2
+            painter.drawPixmap(int(px), int(py), scaled)
+            # 코너 브래킷/스캔라인/결과 오버레이는 그대로 유지 — 아래로 진행
+            self._draw_overlay(painter, w, h)
+            painter.end()
+            return
 
         # 중앙에 가상 제품 실루엣 (원형)
         cx, cy = w / 2, h / 2
@@ -207,6 +254,47 @@ class CameraLiveView(QFrame):
             )
 
         painter.end()
+
+
+    def _draw_overlay(self, painter: QPainter, w: int, h: int) -> None:
+        """실제 프레임 위에 브래킷·PASS/FAIL 라벨·하단 정보 오버레이."""
+        style = RESULT_STYLE.get(self._result, RESULT_STYLE["idle"])
+        # 코너 브래킷
+        pen = QPen(QColor(style["overlay"]), 3)
+        painter.setPen(pen); painter.setBrush(Qt.NoBrush)
+        inset, clen = 24, 22
+        painter.drawLine(inset, inset, inset + clen, inset)
+        painter.drawLine(inset, inset, inset, inset + clen)
+        painter.drawLine(w - inset, inset, w - inset - clen, inset)
+        painter.drawLine(w - inset, inset, w - inset, inset + clen)
+        painter.drawLine(inset, h - inset, inset + clen, h - inset)
+        painter.drawLine(inset, h - inset, inset, h - inset - clen)
+        painter.drawLine(w - inset, h - inset, w - inset - clen, h - inset)
+        painter.drawLine(w - inset, h - inset, w - inset, h - inset - clen)
+
+        # 결과 라벨 (우상단)
+        label_w, label_h = 88, 30
+        label_x, label_y = w - label_w - 16, 16
+        painter.setBrush(QBrush(QColor(style["overlay"])))
+        painter.setPen(QPen(QColor(style["border"]), 2))
+        painter.drawRoundedRect(QRectF(label_x, label_y, label_w, label_h), 6, 6)
+        painter.setPen(QPen(QColor("#ffffff")))
+        painter.setFont(QFont("Helvetica Neue", 12, QFont.Bold))
+        painter.drawText(QRectF(label_x, label_y, label_w, label_h),
+                         Qt.AlignCenter, style["label"])
+
+        # 하단 정보 바
+        info_h = 54
+        painter.fillRect(QRectF(0, h - info_h, w, info_h),
+                         QBrush(QColor(0, 0, 0, 160)))
+        painter.setPen(QPen(QColor("#e5e7eb")))
+        painter.setFont(QFont("Helvetica Neue", 10))
+        painter.drawText(QRectF(16, h - info_h + 6, w - 32, 16), Qt.AlignLeft,
+                         f"카메라: LIVE · seq {self._frame_sequence}")
+        painter.drawText(QRectF(16, h - info_h + 22, w - 32, 16), Qt.AlignLeft,
+                         f"신뢰도: {self._confidence:.1f}%")
+        painter.drawText(QRectF(16, h - info_h + 38, w - 32, 16), Qt.AlignLeft,
+                         f"수신: {self._frame_received_at or '-'}")
 
 
 __all__ = ["CameraLiveView"]

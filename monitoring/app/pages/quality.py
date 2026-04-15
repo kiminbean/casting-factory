@@ -9,9 +9,11 @@
 """
 from __future__ import annotations
 
+import logging
+import os
 from typing import Any
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QGridLayout,
@@ -36,13 +38,61 @@ from app.widgets.defect_panels import InspectionStandardsPanel, TopDefectsPanel
 from app.widgets.sorter_dial import SorterCard
 
 
+logger = logging.getLogger(__name__)
+
+# Stage A — Jetson 실시간 프레임 polling
+_LIVE_CAMERA_ID = os.environ.get("MGMT_IP_CAMERA_ID", "CAM-INSP-01")
+_FRAME_POLL_MS = int(os.environ.get("MGMT_LIVE_FRAME_POLL_MS", "1000"))
+
+
 class QualityPage(QWidget):
     def __init__(self, api: ApiClient) -> None:
         super().__init__()
         self._api = api
+        self._mgmt = None  # Stage A — lazy init ManagementClient
         self._kpis: dict[str, KpiCard] = {}
+        self._last_frame_seq: int = -1
         self._build_ui()
         self.refresh()
+        # Stage A — 실시간 프레임 1Hz 타이머
+        self._frame_timer = QTimer(self)
+        self._frame_timer.setInterval(_FRAME_POLL_MS)
+        self._frame_timer.timeout.connect(self._poll_live_frame)
+        self._frame_timer.start()
+
+    def _ensure_mgmt_client(self):
+        if self._mgmt is not None:
+            return self._mgmt
+        try:
+            from app.management_client import ManagementClient
+            self._mgmt = ManagementClient()
+        except Exception:  # noqa: BLE001
+            logger.exception("ManagementClient 생성 실패")
+            return None
+        return self._mgmt
+
+    def _poll_live_frame(self) -> None:
+        """1Hz — Management Server 에서 최신 프레임 가져와 카메라 뷰에 반영."""
+        mgmt = self._ensure_mgmt_client()
+        if mgmt is None:
+            return
+        try:
+            frame = mgmt.get_latest_frame(_LIVE_CAMERA_ID)
+        except Exception:  # noqa: BLE001
+            logger.exception("get_latest_frame 실패")
+            return
+        if not frame:
+            return  # 프레임 없으면 기존 시뮬레이션/프레임 유지
+        seq = int(frame.get("sequence", 0))
+        if seq == self._last_frame_seq:
+            return  # 동일 seq 중복 업데이트 스킵
+        self._last_frame_seq = seq
+        self._camera.set_frame_bytes(
+            data=frame.get("data", b""),
+            encoding=frame.get("encoding", "jpeg"),
+            sequence=seq,
+            received_at=frame.get("received_at", ""),
+        )
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)

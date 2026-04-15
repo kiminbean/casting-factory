@@ -157,6 +157,30 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
     def Health(self, request, context):
         return management_pb2.Empty()
 
+    # ---------- Latest Image Frame (Stage A) ----------
+    def GetLatestFrame(self, request, context):
+        cam = request.camera_id or ""
+        frame = image_sink.latest(cam) if cam else None
+        if not frame:
+            return management_pb2.LatestFrameResponse(
+                available=False, camera_id=cam,
+            )
+        return management_pb2.LatestFrameResponse(
+            available=True,
+            camera_id=cam,
+            encoding=frame.get("encoding", ""),
+            width=int(frame.get("width", 0) or 0),
+            height=int(frame.get("height", 0) or 0),
+            data=frame.get("data", b""),
+            sequence=int(frame.get("sequence", 0) or 0),
+            captured_at=management_pb2.Timestamp(
+                iso8601=frame.get("captured_at", "") or ""
+            ),
+            received_at=management_pb2.Timestamp(
+                iso8601=frame.get("received_at", "") or ""
+            ),
+        )
+
 
 # ---------- ORM → proto 변환 헬퍼 ----------
 
