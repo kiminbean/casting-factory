@@ -70,6 +70,12 @@ pytest tests/ --cov=services --cov-report=term-missing
 | `MGMT_POLL_QUIET_CYCLES` | `5` | quiet 사이클 N건 누적 시 backoff |
 | `MGMT_POLL_BACKOFF_FACTOR` | `2.0` | backoff 시 interval 곱셈 |
 | `MGMT_MAX_POLL_INTERVAL_SEC` | `8.0` | adaptive interval 상한 |
+| `MGMT_AI_HOST` | (미설정) | **★ V6 AI Server (Phase 1 SSH 업로드): 호스트 (예: `100.66.177.119`)** |
+| `MGMT_AI_USER` | (미설정) | AI Server 사용자명 (예: `team2`) |
+| `MGMT_AI_PORT` | `22` | SSH 포트 |
+| `MGMT_AI_PASS` | (미설정) | SSH 비밀번호 — **env 전용, 커밋 금지** |
+| `MGMT_AI_SSH_KEY` | (미설정) | SSH private key 경로 (password 대신 권장) |
+| `MGMT_AI_REMOTE_DIR` | `/home/team2/datasets/inspection` | 업로드 베이스 디렉터리 |
 
 ## MQTT 인증 설정 (운영 환경 권장)
 
@@ -94,6 +100,48 @@ python server.py
 검증:
 - 익명 publish → `Connection Refused: not authorised`
 - 인증 publish → 정상
+
+## AI Server 연동 (Phase 1: 검사 이미지 SSH 업로드)
+
+AI Server (100.66.177.119, Tailscale) 로 검사 카메라 이미지를 전송해 학습 데이터셋을 구축한다.
+
+### 옵션 A — SSH 키 (권장)
+
+```bash
+# 1) 키 생성 (한 번만, passphrase 비움)
+ssh-keygen -t ed25519 -f ~/.ssh/ai_server_team2 -N ""
+
+# 2) AI Server 에 공개키 등록
+ssh-copy-id -i ~/.ssh/ai_server_team2.pub team2@100.66.177.119
+
+# 3) 환경변수
+export MGMT_AI_HOST=100.66.177.119
+export MGMT_AI_USER=team2
+export MGMT_AI_SSH_KEY=~/.ssh/ai_server_team2
+```
+
+### 옵션 B — 비밀번호 (env 전용, 키 등록 불가 시)
+
+```bash
+export MGMT_AI_HOST=100.66.177.119
+export MGMT_AI_USER=team2
+export MGMT_AI_PASS='<비밀번호>'      # ★ git 커밋 금지 (.gitignore 확인)
+```
+
+### 사용 예시
+
+```python
+from services.ai_client import AIUploader, AIServerConfig
+
+uploader = AIUploader(AIServerConfig.from_env())
+if uploader.enabled and uploader.health_check():
+    uploader.upload_image(
+        local_path="/tmp/frame_cam01_001.jpg",
+        remote_subdir="CAM-01/2026-04-15",
+    )
+```
+
+Phase 2 (추후): AI Server 추론 gRPC 엔드포인트 확정 후 별도 client 추가 예정.
 
 ## mTLS 설정 (운영 환경 권장)
 
