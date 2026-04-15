@@ -206,6 +206,15 @@ service ManagementService {
 
   // Latest Image Frame (Stage A — PyQt 품질 페이지 실시간 프레임 표시)
   rpc GetLatestFrame(LatestFrameRequest) returns (LatestFrameResponse);
+
+  // Stage B — Server streaming (image_sink condvar 기반 push)
+  rpc WatchCameraFrames(WatchFramesRequest) returns (stream LatestFrameResponse);
+}
+
+message WatchFramesRequest {
+  string camera_id      = 1;
+  uint64 after_sequence = 2;   // 재연결 시 이 seq 이후 프레임만
+  // keepalive timeout 은 서버 고정값 (10s). 상위 큰 트래픽 지연 방지.
 }
 
 message LatestFrameRequest {

@@ -13,7 +13,7 @@ import logging
 import os
 from typing import Any
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QThread
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QGridLayout,
@@ -40,59 +40,53 @@ from app.widgets.sorter_dial import SorterCard
 
 logger = logging.getLogger(__name__)
 
-# Stage A — Jetson 실시간 프레임 polling
+# Jetson 실시간 프레임 (Stage B: server streaming via CameraFrameWorker)
 _LIVE_CAMERA_ID = os.environ.get("MGMT_IP_CAMERA_ID", "CAM-INSP-01")
-_FRAME_POLL_MS = int(os.environ.get("MGMT_LIVE_FRAME_POLL_MS", "1000"))
 
 
 class QualityPage(QWidget):
     def __init__(self, api: ApiClient) -> None:
         super().__init__()
         self._api = api
-        self._mgmt = None  # Stage A — lazy init ManagementClient
         self._kpis: dict[str, KpiCard] = {}
-        self._last_frame_seq: int = -1
+        self._frame_thread: QThread | None = None
+        self._frame_worker = None  # type: ignore[var-annotated]
         self._build_ui()
         self.refresh()
-        # Stage A — 실시간 프레임 1Hz 타이머
-        self._frame_timer = QTimer(self)
-        self._frame_timer.setInterval(_FRAME_POLL_MS)
-        self._frame_timer.timeout.connect(self._poll_live_frame)
-        self._frame_timer.start()
+        # Stage B — Server streaming worker
+        self._start_frame_stream()
 
-    def _ensure_mgmt_client(self):
-        if self._mgmt is not None:
-            return self._mgmt
+    def _start_frame_stream(self) -> None:
         try:
-            from app.management_client import ManagementClient
-            self._mgmt = ManagementClient()
-        except Exception:  # noqa: BLE001
-            logger.exception("ManagementClient 생성 실패")
-            return None
-        return self._mgmt
+            from app.workers.camera_frame_worker import CameraFrameWorker
+        except ImportError:
+            logger.exception("CameraFrameWorker import 실패")
+            return
+        self._frame_thread = QThread(self)
+        self._frame_worker = CameraFrameWorker(camera_id=_LIVE_CAMERA_ID)
+        self._frame_worker.moveToThread(self._frame_thread)
+        self._frame_worker.frame_received.connect(self._on_frame)
+        self._frame_thread.started.connect(self._frame_worker.run)
+        self._frame_thread.start()
+        logger.info("CameraFrameWorker 기동: camera=%s", _LIVE_CAMERA_ID)
 
-    def _poll_live_frame(self) -> None:
-        """1Hz — Management Server 에서 최신 프레임 가져와 카메라 뷰에 반영."""
-        mgmt = self._ensure_mgmt_client()
-        if mgmt is None:
-            return
-        try:
-            frame = mgmt.get_latest_frame(_LIVE_CAMERA_ID)
-        except Exception:  # noqa: BLE001
-            logger.exception("get_latest_frame 실패")
-            return
-        if not frame:
-            return  # 프레임 없으면 기존 시뮬레이션/프레임 유지
-        seq = int(frame.get("sequence", 0))
-        if seq == self._last_frame_seq:
-            return  # 동일 seq 중복 업데이트 스킵
-        self._last_frame_seq = seq
+    def _on_frame(self, data: bytes, encoding: str, sequence: int, received_at: str) -> None:
+        """worker 에서 signal 로 받은 프레임을 카메라 뷰에 반영 (메인 스레드)."""
         self._camera.set_frame_bytes(
-            data=frame.get("data", b""),
-            encoding=frame.get("encoding", "jpeg"),
-            sequence=seq,
-            received_at=frame.get("received_at", ""),
+            data=data, encoding=encoding,
+            sequence=sequence, received_at=received_at,
         )
+
+    def shutdown(self) -> None:
+        """앱 종료 시 main_window 에서 호출 (없어도 daemon thread 라 프로세스 종료 시 정리됨)."""
+        if self._frame_worker is not None:
+            try:
+                self._frame_worker.request_stop()
+            except Exception:  # noqa: BLE001
+                pass
+        if self._frame_thread is not None:
+            self._frame_thread.quit()
+            self._frame_thread.wait(2000)
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)

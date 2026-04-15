@@ -83,6 +83,11 @@ class ManagementServiceStub(object):
                 request_serializer=management__pb2.LatestFrameRequest.SerializeToString,
                 response_deserializer=management__pb2.LatestFrameResponse.FromString,
                 _registered_method=True)
+        self.WatchCameraFrames = channel.unary_stream(
+                '/casting.management.v1.ManagementService/WatchCameraFrames',
+                request_serializer=management__pb2.WatchFramesRequest.SerializeToString,
+                response_deserializer=management__pb2.LatestFrameResponse.FromString,
+                _registered_method=True)
 
 
 class ManagementServiceServicer(object):
@@ -153,6 +158,13 @@ class ManagementServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def WatchCameraFrames(self, request, context):
+        """Stage B — Server streaming (image_sink condvar 기반 push)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ManagementServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -199,6 +211,11 @@ def add_ManagementServiceServicer_to_server(servicer, server):
             'GetLatestFrame': grpc.unary_unary_rpc_method_handler(
                     servicer.GetLatestFrame,
                     request_deserializer=management__pb2.LatestFrameRequest.FromString,
+                    response_serializer=management__pb2.LatestFrameResponse.SerializeToString,
+            ),
+            'WatchCameraFrames': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchCameraFrames,
+                    request_deserializer=management__pb2.WatchFramesRequest.FromString,
                     response_serializer=management__pb2.LatestFrameResponse.SerializeToString,
             ),
     }
@@ -448,6 +465,33 @@ class ManagementService(object):
             target,
             '/casting.management.v1.ManagementService/GetLatestFrame',
             management__pb2.LatestFrameRequest.SerializeToString,
+            management__pb2.LatestFrameResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchCameraFrames(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/casting.management.v1.ManagementService/WatchCameraFrames',
+            management__pb2.WatchFramesRequest.SerializeToString,
             management__pb2.LatestFrameResponse.FromString,
             options,
             channel_credentials,

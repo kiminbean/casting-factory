@@ -157,6 +157,25 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
     def Health(self, request, context):
         return management_pb2.Empty()
 
+    # ---------- Camera Frames Streaming (Stage B) ----------
+    def WatchCameraFrames(self, request, context):
+        """image_sink condvar 기반 pub/sub. Jetson push 즉시 yield."""
+        cam = request.camera_id or ""
+        if not cam:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details("camera_id required")
+            return
+        last_seq = int(request.after_sequence)
+        logger.info("WatchCameraFrames subscriber camera=%s after_seq=%d",
+                    cam, last_seq)
+        while context.is_active():
+            frame = image_sink.wait_new(cam, last_seq, timeout=10.0)
+            if frame is None:
+                continue  # keepalive timeout — 루프 재진입, 클라 여전히 살아있으면 OK
+            last_seq = int(frame.get("sequence", 0))
+            yield self._frame_to_response(cam, frame)
+        logger.info("WatchCameraFrames subscriber closed camera=%s", cam)
+
     # ---------- Latest Image Frame (Stage A) ----------
     def GetLatestFrame(self, request, context):
         cam = request.camera_id or ""
@@ -165,6 +184,10 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
             return management_pb2.LatestFrameResponse(
                 available=False, camera_id=cam,
             )
+        return self._frame_to_response(cam, frame)
+
+    @staticmethod
+    def _frame_to_response(cam: str, frame: dict):
         return management_pb2.LatestFrameResponse(
             available=True,
             camera_id=cam,
@@ -316,7 +339,9 @@ def _load_tls_credentials():
 
 
 def serve() -> None:
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    # WatchItems + WatchAlerts + WatchCameraFrames 등 스트리밍이 워커 점유.
+    # 다중 PyQt 클라이언트 + 내부 모니터링 대비 여유있게 32로 확장.
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=32))
     management_pb2_grpc.add_ManagementServiceServicer_to_server(
         ManagementServicer(), server
     )
