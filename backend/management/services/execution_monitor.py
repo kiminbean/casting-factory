@@ -97,10 +97,14 @@ class ExecutionMonitor:
     """
 
     def __init__(self, poll_interval_sec: float = 1.0,
-                 sla_overrides: dict[str, float] | None = None) -> None:
+                 sla_overrides: dict[str, float] | None = None,
+                 image_forwarder=None) -> None:
         self._base_interval = poll_interval_sec
         self._interval = poll_interval_sec
         self._sla = dict(DEFAULT_SLA_SEC)
+        # V6 AI 학습 데이터 브리지: IP 진입 시 최신 프레임을 AI Server 로 전달
+        self._image_forwarder = image_forwarder
+        self._ip_camera_id = os.environ.get("MGMT_IP_CAMERA_ID", "CAM-INSP-01")
         if sla_overrides:
             self._sla.update(sla_overrides)
         # 인스턴스 공유 캐시 (alerts dedup)
@@ -272,6 +276,15 @@ class ExecutionMonitor:
                     events.append(self._make_event(
                         item_id, stage, robot, message="" if first_pass else "stage_changed"
                     ))
+                    # IP 진입 트리거 — AI 학습 데이터셋용 스냅샷
+                    if stage_changed and stage == "IP" and self._image_forwarder is not None:
+                        try:
+                            self._image_forwarder.snapshot(
+                                item_id=item_id, stage="IP",
+                                camera_id=self._ip_camera_id,
+                            )
+                        except Exception:  # noqa: BLE001
+                            logger.exception("image_forwarder.snapshot 실패 item=%d", item_id)
 
                 # 2) SLA 타임아웃 검사 (변경 없을 때만)
                 if not first_pass and not stage_changed:

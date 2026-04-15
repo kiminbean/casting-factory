@@ -81,6 +81,11 @@ pytest tests/ --cov=services --cov-report=term-missing
 | `MGMT_JETSON_PORT` | `22` | SSH 포트 |
 | `MGMT_JETSON_PASS` | (미설정) | SSH 비밀번호 — **env 전용, 커밋 금지** |
 | `MGMT_JETSON_SSH_KEY` | (미설정) | SSH private key 경로 (password 대신 권장) |
+| `MGMT_IMAGE_SPOOL_DIR` | `/tmp/casting-image-spool` | 로컬 스풀 (IP 진입 스냅샷) |
+| `MGMT_IMAGE_BATCH_SEC` | `30` | image_forwarder 배치 업로드 주기(초) |
+| `MGMT_IMAGE_BATCH_MAX` | `50` | 1회 flush 최대 파일 수 |
+| `MGMT_IMAGE_SPOOL_MAX_FILES` | `5000` | 스풀 보관 한도 (초과 시 oldest drop) |
+| `MGMT_IP_CAMERA_ID` | `CAM-INSP-01` | IP 진입 시 스냅샷 대상 카메라 ID |
 
 ## MQTT 인증 설정 (운영 환경 권장)
 

@@ -45,6 +45,8 @@ from services.traffic_manager import TrafficManager  # noqa: E402
 from services.robot_executor import RobotExecutor  # noqa: E402
 from services.execution_monitor import ExecutionMonitor  # noqa: E402
 from services.image_sink import sink as image_sink  # noqa: E402
+from services.image_forwarder import ForwarderConfig, ImageForwarder  # noqa: E402
+from services.ai_client import AIServerConfig, AIUploader  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +65,11 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
         self.task_allocator = TaskAllocator()
         self.traffic_manager = TrafficManager()
         self.robot_executor = RobotExecutor()
-        self.execution_monitor = ExecutionMonitor()
+        # V6 AI 학습 데이터 브리지: Jetson → image_sink → forwarder → AI Server SSH 업로드
+        self.image_forwarder = _build_image_forwarder()
+        self.execution_monitor = ExecutionMonitor(
+            image_forwarder=self.image_forwarder,
+        )
 
     # ---------- Task Manager ----------
     def StartProduction(self, request, context):
@@ -219,6 +225,23 @@ class ImagePublisherServicer(management_pb2_grpc.ImagePublisherServiceServicer):
             sequence=last_seq, accepted=True,
             message=f"received {count} frames",
         )
+
+
+def _build_image_forwarder():
+    """ImageForwarder 를 구성. AI Server 설정이 없으면 None 반환 → 훅 비활성."""
+    ai_cfg = AIServerConfig.from_env()
+    if not ai_cfg.enabled:
+        logger.info("image_forwarder 비활성: AI Server 환경변수 미설정")
+        return None
+    fwd = ImageForwarder(
+        config=ForwarderConfig.from_env(),
+        sink_latest=image_sink.latest,
+        uploader=AIUploader(ai_cfg),
+    )
+    fwd.start()
+    logger.info("image_forwarder 활성: spool=%s batch=%.1fs",
+                fwd.cfg.spool_dir, fwd.cfg.batch_interval_sec)
+    return fwd
 
 
 def _load_tls_credentials():
