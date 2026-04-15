@@ -1,6 +1,26 @@
 # Conveyor v5.0 — Serial Bridge Firmware
 
-V6 새 아키텍처에 맞춘 **ESP32 Serial 전용** 펌웨어. WiFi/MQTT 제거.
+V6 새 아키텍처에 맞춘 **ESP32 Serial 전용** 펌웨어. v4.0 conveyor_controller 기반 + WiFi/MQTT 비활성화 + STOPPED 5초 타임아웃 제거 → Jetson RUN 수신 시에만 재시작.
+
+## v4.0 → v5.0 변경점
+
+| | v4.0 | v5.0 |
+|---|---|---|
+| 외부 통신 | WiFi + MQTT | **USB Serial (115200)** |
+| ST_STOPPED 탈출 | `visionResultReceived` 또는 **5s 타임아웃** | `visionResultReceived` **만** (타임아웃 제거) |
+| 명령 alias | `camera_ok`, `inspect_done` | 동일 + `RUN` 추가 |
+| 이벤트 출력 | JSON event only | JSON + **간단 토큰 라인**(STOPPED/STARTED/DONE) |
+| 컴파일 플래그 | — | `#define ENABLE_WIFI_MQTT 0` (기본 off) |
+
+## 유지된 v4.0 핵심 로직
+
+- TOF250 ASCII 파서 + 500ms debounce
+- **Anti-crosstalk**: TOF1 감지 중엔 TOF2 raw 무시
+- MIN_RUN_MS 1초 motor start 직후 TOF2 false trigger 차단
+- 5-state: IDLE → RUNNING → STOPPED → POST_RUN → CLEARING → IDLE
+- POST_RUN 4초 (사용자 요구)
+- CLEARING timeout 5초 (TOF2 stuck 안전장치)
+- sim_entry/sim_exit 명령 (센서 없이 상태기 테스트)
 
 ## 흐름
 

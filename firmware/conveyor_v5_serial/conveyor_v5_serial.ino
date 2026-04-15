@@ -1,210 +1,377 @@
 /*
- * Conveyor Belt Controller v5.0.0 — Serial Bridge (V6 Architecture)
+ * Conveyor Belt Controller v5.0 — Serial Bridge (V6 Architecture)
+ * Base: conveyor_controller v4.0.0 (성숙한 TOF 센서 로직·anti-crosstalk 재사용)
  *
- * New V6 policy: ESP32 는 USB Serial 로 Jetson (Image Publisher) 와만 통신.
- * WiFi/MQTT 를 완전히 제거하고 단순화.
+ * v4.0 → v5.0 주요 변경점:
+ *   1) WiFi/MQTT 기본 비활성 (#define ENABLE_WIFI_MQTT 0).
+ *      Jetson Image Publisher 와 **USB Serial** (/dev/ttyUSB0 @ 115200) 로만 통신.
+ *   2) ST_STOPPED 의 5초 타임아웃 자동 탈출 제거.
+ *      → Jetson 의 "RUN\n" (또는 camera_ok/inspect_done) 수신 시에만 POST_RUN 진입.
+ *   3) Serial 프로토콜 토큰 추가 (기존 JSON event 는 그대로 유지, 디버깅 용):
+ *        ESP → Jetson: BOOT / STOPPED / STARTED / DONE / PONG / STATE:<name>
+ *        Jetson → ESP: RUN / STOP / PING / STATUS / camera_ok / inspect_done
  *
- * 시나리오:
- *   1) 주물이 카메라 앞 센서2(TOF2) 에 감지되면 컨베이어 자동 정지
- *   2) ESP32 → Jetson: "STOPPED\n" 송신
- *   3) Jetson 이 이미지 촬영 완료 후 "RUN\n" 송신
- *   4) ESP32 → 컨베이어 ON, 4초 타이머 시작
- *   5) 4초 경과 → 컨베이어 OFF + "DONE\n" 송신, IDLE 복귀
+ * v4.0 과 동일하게 유지:
+ *   - TOF250 (Taidacent) x2 ASCII @ 9600: TOF1=GPIO16 (진입), TOF2=GPIO17 (카메라 앞)
+ *   - Motor L298N: ENA=GPIO25 (PWM), IN1=GPIO26, IN2=GPIO27
+ *   - Debounce (DEBOUNCE_MS=500ms), Anti-crosstalk gating (raw2 && !raw1),
+ *     MIN_RUN_MS=1000ms (motor start 후 TOF2 false trigger 차단)
  *
- * Serial 프로토콜 (Jetson ↔ ESP32, 115200 baud, ASCII line CR+LF 종료)
- *   Host→ESP32:
- *     "RUN\n"        RUN 요청 (STOPPED 상태일 때만 유효)
- *     "PING\n"       Health check — "PONG\n" 응답
- *     "STATUS\n"     현재 상태 1회 송신
- *   ESP32→Host:
- *     "STOPPED\n"    센서2 감지 → 정지 완료 (촬영 요청)
- *     "STARTED\n"    RUN 수신 후 모터 ON 완료
- *     "DONE\n"       4초 경과 후 자동 정지
- *     "PONG\n"       PING 응답
- *     "STATE:<name>\n"  현재 상태 (STATUS 요청 응답 또는 변경 시)
- *     "SENSOR1:<cm>\n"  (옵션) TOF1 거리 디버깅
- *     "SENSOR2:<cm>\n"  (옵션) TOF2 거리 디버깅
- *
- * Hardware (기존 v4.0 과 동일 배선):
- *   Motor: JGB37-555 12V DC via L298N (ENA=25, IN1=26, IN2=27)
- *   Sensor2 (카메라 앞): TOF250 Taidacent, White→GPIO17 (UART2 RX) @ 9600 ASCII
- *   Sensor1 (진입 감지, 옵션): TOF250, White→GPIO16 (UART1 RX) @ 9600 ASCII
- *     ※ 센서1 은 감지 이벤트 송신만 (상태기 영향 없음)
- *
- * Build: Arduino IDE / arduino-cli with ESP32 core 3.x
- *   FQBN: esp32:esp32:esp32
- *   baud: 115200 (Jetson Serial)
+ * State flow:
+ *   IDLE → (TOF1 감지) → RUNNING
+ *        → (TOF2 감지, MIN_RUN_MS 경과 후) → STOPPED + "STOPPED\n" TX
+ *        → (Jetson "RUN\n" RX) → POST_RUN + "STARTED\n" TX
+ *        → (POST_RUN_MS=4000ms 경과) → CLEARING + "DONE\n" TX
+ *        → (TOF2 clear) → IDLE
  */
 
 #include <HardwareSerial.h>
 
-// === Pin Definitions ===
+// === Feature flags ===
+#define ENABLE_WIFI_MQTT 0   // v5.0 기본 꺼둠. 1 로 바꾸면 v4.0 동작 (config.h 필요)
+
+#if ENABLE_WIFI_MQTT
+  #include <WiFi.h>
+  #include "ESP32MQTTClient.h"
+  #include "config.h"
+  ESP32MQTTClient mqttClient;
+  bool mqttConnected = false;
+  unsigned long lastHeartbeat = 0;
+#endif
+
+// === Pin Definitions (v4.0 동일) ===
 static const int PIN_MOTOR_ENA = 25;
 static const int PIN_MOTOR_IN1 = 26;
 static const int PIN_MOTOR_IN2 = 27;
-static const int PIN_TOF1_RX   = 16;  // 센서1 (진입) - 선택 사용
-static const int PIN_TOF2_RX   = 17;  // 센서2 (카메라 앞) - 주 트리거
+static const int PIN_TOF1_RX   = 16;
+static const int PIN_TOF2_RX   = 17;
 
-// === Serial / TOF baud ===
-static const long HOST_BAUD = 115200; // Jetson ↔ ESP32
-static const long TOF_BAUD  = 9600;   // TOF250 Taidacent
+// === Config (v4.0 동일) ===
+static const long TOF_BAUD = 9600;
+static const int  DETECT_MIN_MM = 1;
+static const int  DETECT_MAX_MM = 30;
+static const int  MOTOR_SPEED   = 180;
+static const unsigned long POST_RUN_MS     = 4000;  // v5: 사용자 요구 4초
+static const unsigned long CLEAR_TIMEOUT_MS = 5000;
+static const unsigned long REPORT_MS       = 300;
+static const unsigned long DEBOUNCE_MS     = 500;
+static const unsigned long MIN_RUN_MS      = 1000;
 
-// === Motion parameters ===
-static const int MOTOR_SPEED_PWM    = 200;   // 0..255 (약 ~78%)
-static const uint32_t RUN_DURATION_MS = 4000; // 4초 구동 후 자동 정지
-static const uint16_t DETECT_DISTANCE_CM = 15;  // 센서2 감지 임계 (cm)
+// v5: STOPPED 탈출은 Jetson RUN 수신에만 의존 (타임아웃 자동 탈출 제거)
+// 안전 타임아웃이 필요하면 아래를 양수로 (0 = 무한 대기).
+static const unsigned long STOP_WAIT_TIMEOUT_MS = 0;
 
-// === Heartbeat (옵션) ===
-static const uint32_t HEARTBEAT_MS = 0; // 0 = 비활성. 양수면 STATE 주기 송신
+// === States ===
+enum State { ST_IDLE, ST_RUNNING, ST_STOPPED, ST_POST_RUN, ST_CLEARING };
+const char* ST_NAME[] = {"IDLE", "RUNNING", "STOPPED", "POST_RUN", "CLEARING"};
 
-// === Sensor objects ===
-HardwareSerial TOF1(1);  // UART1
-HardwareSerial TOF2(2);  // UART2
+// === Globals ===
+HardwareSerial tof1(1);
+HardwareSerial tof2(2);
 
-// === State machine ===
-enum State { IDLE, STOPPED, RUNNING };
-State state = IDLE;
-uint32_t runStartMs = 0;
-uint32_t lastHeartbeatMs = 0;
+State state = ST_IDLE;
+unsigned long stateStart = 0;
+unsigned long lastReport = 0;
 
-// === TOF line parsers (ASCII NNN\r\n) ===
-String tof1Buf, tof2Buf;
+int dist1 = -1, dist2 = -1;
+bool det1 = false, det2 = false;
+bool raw1 = false, raw2 = false;
+unsigned long det1Start = 0, det2Start = 0;
+int objCount = 0;
 
-bool tryParseTof(HardwareSerial& port, String& buf, int& outCm) {
-  while (port.available()) {
-    char c = (char)port.read();
-    if (c == '\n' || c == '\r') {
-      if (buf.length() > 0) {
-        outCm = buf.toInt();
-        buf = "";
-        return true;
-      }
-    } else if (isDigit(c) && buf.length() < 6) {
-      buf += c;
-    } else {
-      buf = ""; // noise reset
-    }
-  }
-  return false;
-}
+bool visionResultReceived = false;
+String visionResult = "";
 
-// === Motor control ===
-void motorSet(bool on) {
-  digitalWrite(PIN_MOTOR_IN1, on ? HIGH : LOW);
+String buf1 = "";
+String buf2 = "";
+
+// === Forward decls ===
+void sendStatus();
+void handleCommand(const String& cmd, const String& source);
+
+// === Motor Control ===
+void motorOn() {
+  digitalWrite(PIN_MOTOR_IN1, HIGH);
   digitalWrite(PIN_MOTOR_IN2, LOW);
-  analogWrite(PIN_MOTOR_ENA, on ? MOTOR_SPEED_PWM : 0);
+  ledcWrite(PIN_MOTOR_ENA, MOTOR_SPEED);
+}
+void motorOff() {
+  digitalWrite(PIN_MOTOR_IN1, LOW);
+  digitalWrite(PIN_MOTOR_IN2, LOW);
+  ledcWrite(PIN_MOTOR_ENA, 0);
 }
 
-// === State transitions ===
-const char* stateName(State s) {
-  switch (s) {
-    case IDLE:    return "IDLE";
-    case STOPPED: return "STOPPED";
-    case RUNNING: return "RUNNING";
-  }
-  return "?";
-}
-
-void enterState(State s) {
-  state = s;
-  Serial.print("STATE:");
-  Serial.println(stateName(s));
-}
-
-// === Command handling (Jetson → ESP32) ===
-String cmdBuf;
-
-void handleCommand(const String& cmd) {
-  if (cmd == "PING") {
-    Serial.println("PONG");
-  } else if (cmd == "STATUS") {
-    Serial.print("STATE:");
-    Serial.println(stateName(state));
-  } else if (cmd == "RUN") {
-    if (state == STOPPED || state == IDLE) {
-      motorSet(true);
-      runStartMs = millis();
-      enterState(RUNNING);
-      Serial.println("STARTED");
-    } else {
-      Serial.println("ERR:already_running");
+// === TOF250 ASCII Parser (v4.0 동일) ===
+int parseTofLine(HardwareSerial& ss, String& buffer) {
+  int result = -1;
+  while (ss.available()) {
+    char c = ss.read();
+    if (c == '\r' || c == '\n') {
+      if (buffer.length() > 0) {
+        result = buffer.toInt();
+        buffer = "";
+      }
+    } else if (isdigit(c)) {
+      buffer += c;
+      if (buffer.length() > 10) buffer = "";
     }
-  } else if (cmd == "STOP") {
-    motorSet(false);
-    enterState(IDLE);
-  } else if (cmd.length() > 0) {
+  }
+  return result;
+}
+
+// === Sensor Reading (v4.0 anti-crosstalk 포함) ===
+void readSensors() {
+  unsigned long now = millis();
+
+  int d1 = parseTofLine(tof1, buf1);
+  if (d1 >= 0) {
+    dist1 = d1;
+    raw1 = (d1 >= DETECT_MIN_MM && d1 <= DETECT_MAX_MM);
+  }
+
+  int d2 = parseTofLine(tof2, buf2);
+  if (d2 >= 0) {
+    dist2 = d2;
+    raw2 = (d2 >= DETECT_MIN_MM && d2 <= DETECT_MAX_MM);
+  }
+
+  if (raw1) {
+    if (det1Start == 0) det1Start = now;
+    if (now - det1Start >= DEBOUNCE_MS) det1 = true;
+  } else {
+    det1Start = 0;
+    det1 = false;
+  }
+
+  // Anti-crosstalk: TOF1 active 중엔 TOF2 raw 무시 (v4.0 핵심)
+  bool raw2_valid = raw2 && !raw1;
+  if (raw2_valid) {
+    if (det2Start == 0) det2Start = now;
+    if (now - det2Start >= DEBOUNCE_MS) det2 = true;
+  } else {
+    det2Start = 0;
+    det2 = false;
+  }
+}
+
+// === Event publish (Serial + optional MQTT) ===
+void publishJson(const String& json) {
+  Serial.println(json);
+#if ENABLE_WIFI_MQTT
+  if (mqttConnected) mqttClient.publish(TOPIC_EVENT, json.c_str(), 0, false);
+#endif
+}
+
+// v5 신규: Jetson bridge 가 파싱하는 간단 토큰 라인
+void publishToken(const char* token) {
+  Serial.println(token);
+}
+
+void setState(State s) {
+  String msg = String("{\"event\":\"state\",\"to\":\"") + ST_NAME[s] + "\"}";
+  publishJson(msg);
+  // v5: Jetson bridge 가 인식하는 STATE:<NAME> 라인 추가
+  Serial.print("STATE:");
+  Serial.println(ST_NAME[s]);
+  state = s;
+  stateStart = millis();
+}
+
+// === State Machine ===
+void update() {
+  unsigned long elapsed = millis() - stateStart;
+
+  switch (state) {
+    case ST_IDLE:
+      if (det1) {
+        motorOn();
+        publishJson(String("{\"event\":\"entry\",\"dist\":") + dist1 + "}");
+        setState(ST_RUNNING);
+      }
+      break;
+
+    case ST_RUNNING:
+      if (elapsed < MIN_RUN_MS) break;
+      if (det2) {
+        motorOff();
+        visionResultReceived = false;
+        visionResult = "";
+        publishJson(String("{\"event\":\"exit\",\"dist\":") + dist2
+                    + ",\"inspection\":\"requested\"}");
+        setState(ST_STOPPED);
+        publishToken("STOPPED");  // ★ Jetson bridge 트리거
+      }
+      break;
+
+    case ST_STOPPED:
+      // v5: Jetson 의 RUN/camera_ok/inspect_done 수신 시에만 탈출
+      if (visionResultReceived) {
+        objCount++;
+        motorOn();
+        publishJson(String("{\"event\":\"post_start\",\"count\":") + objCount
+                    + ",\"reason\":\"jetson_run\""
+                    + ",\"result\":\"" + (visionResult.length() ? visionResult : "unknown") + "\"}");
+        visionResultReceived = false;
+        setState(ST_POST_RUN);
+        publishToken("STARTED");  // ★ Jetson 에 모터 재시작 통지
+      } else if (STOP_WAIT_TIMEOUT_MS > 0 && elapsed >= STOP_WAIT_TIMEOUT_MS) {
+        // 안전 타임아웃 (기본 0 = 비활성)
+        objCount++;
+        motorOn();
+        publishJson("{\"event\":\"post_start\",\"reason\":\"safety_timeout\"}");
+        setState(ST_POST_RUN);
+        publishToken("STARTED");
+      }
+      break;
+
+    case ST_POST_RUN:
+      if (elapsed >= POST_RUN_MS) {
+        publishJson(String("{\"event\":\"post_done\",\"tof2_det\":")
+                    + (det2 ? "true" : "false") + "}");
+        publishToken("DONE");  // ★ 4초 구동 완료
+        setState(ST_CLEARING);
+      }
+      break;
+
+    case ST_CLEARING:
+      if (!det2) {
+        motorOff();
+        publishJson(String("{\"event\":\"cycle_done\",\"count\":") + objCount + "}");
+        raw1 = raw2 = false;
+        det1 = det2 = false;
+        det1Start = det2Start = 0;
+        setState(ST_IDLE);
+      } else if (elapsed >= CLEAR_TIMEOUT_MS) {
+        motorOff();
+        publishJson("{\"event\":\"clear_timeout\",\"warn\":\"tof2_stuck\"}");
+        raw1 = raw2 = false;
+        det1 = det2 = false;
+        det1Start = det2Start = 0;
+        setState(ST_IDLE);
+      }
+      break;
+  }
+}
+
+// === Command handler ===
+void handleCommand(const String& cmd, const String& source) {
+  // v5 신규/기존 호환 alias
+  if (cmd == "RUN" || cmd == "run" || cmd == "camera_ok" || cmd == "inspect_done") {
+    visionResult = "ok";
+    visionResultReceived = true;
+    Serial.printf("{\"ack\":\"run\",\"src\":\"%s\"}\n", source.c_str());
+  }
+  else if (cmd == "PING" || cmd == "ping") {
+    publishToken("PONG");
+  }
+  else if (cmd == "STATUS" || cmd == "status") {
+    sendStatus();
+  }
+  else if (cmd == "STOP" || cmd == "stop") {
+    motorOff();
+    setState(ST_IDLE);
+  }
+  else if (cmd == "start") {          // v4 호환 (수동 시작)
+    motorOn(); setState(ST_RUNNING);
+  }
+  else if (cmd == "reset") {
+    motorOff();
+    objCount = 0;
+    raw1 = raw2 = false;
+    det1 = det2 = false;
+    det1Start = det2Start = 0;
+    visionResultReceived = false;
+    visionResult = "";
+    setState(ST_IDLE);
+  }
+  else if (cmd == "sim_entry") {
+    raw1 = true; det1 = true; dist1 = 50;
+    det1Start = millis() - DEBOUNCE_MS;
+    Serial.println("{\"ack\":\"sim_entry\"}");
+  }
+  else if (cmd == "sim_exit") {
+    raw2 = true; det2 = true; dist2 = 50;
+    det2Start = millis() - DEBOUNCE_MS;
+    Serial.println("{\"ack\":\"sim_exit\"}");
+  }
+  else if (cmd.length() > 0) {
     Serial.print("ERR:unknown_cmd:");
     Serial.println(cmd);
   }
 }
 
-// === Setup ===
-void setup() {
-  pinMode(PIN_MOTOR_ENA, OUTPUT);
-  pinMode(PIN_MOTOR_IN1, OUTPUT);
-  pinMode(PIN_MOTOR_IN2, OUTPUT);
-  motorSet(false);
-
-  Serial.begin(HOST_BAUD);
-  TOF1.begin(TOF_BAUD, SERIAL_8N1, PIN_TOF1_RX, -1);
-  TOF2.begin(TOF_BAUD, SERIAL_8N1, PIN_TOF2_RX, -1);
-
-  delay(100);
-  Serial.println();
-  Serial.println("BOOT:conveyor_v5_serial 1.0.0");
-  enterState(IDLE);
-}
-
-// === Main loop ===
-void loop() {
-  // 1) Command from Jetson
+// === Command parser (USB Serial only in v5) ===
+String cmdBuf;
+void processCmd() {
   while (Serial.available()) {
     char c = (char)Serial.read();
     if (c == '\n' || c == '\r') {
       if (cmdBuf.length() > 0) {
-        handleCommand(cmdBuf);
+        cmdBuf.trim();
+        handleCommand(cmdBuf, "usb");
         cmdBuf = "";
       }
-    } else if (cmdBuf.length() < 32) {
+    } else if (cmdBuf.length() < 64) {
       cmdBuf += c;
     } else {
-      cmdBuf = ""; // overflow
+      cmdBuf = "";
     }
   }
+}
 
-  // 2) Sensor polling
-  int d1 = -1, d2 = -1;
-  bool got1 = tryParseTof(TOF1, tof1Buf, d1);
-  bool got2 = tryParseTof(TOF2, tof2Buf, d2);
+void sendStatus() {
+  bool motorRunning = digitalRead(PIN_MOTOR_IN1) || digitalRead(PIN_MOTOR_IN2);
+  char buf[384];
+  snprintf(buf, sizeof(buf),
+    "{\"state\":\"%s\",\"elapsed\":%lu,\"motor\":%s,"
+    "\"range\":{\"min\":%d,\"max\":%d},"
+    "\"tof1\":{\"mm\":%d,\"det\":%s},"
+    "\"tof2\":{\"mm\":%d,\"det\":%s},"
+    "\"count\":%d}",
+    ST_NAME[state], millis() - stateStart,
+    motorRunning ? "true" : "false",
+    DETECT_MIN_MM, DETECT_MAX_MM,
+    dist1, det1 ? "true" : "false",
+    dist2, det2 ? "true" : "false",
+    objCount
+  );
+  Serial.println(buf);
+}
 
-  // 3) State machine
-  uint32_t now = millis();
-  switch (state) {
-    case IDLE:
-    case RUNNING:
-      // RUNNING 중 센서2 감지 → 정지 (카메라 앞 도착)
-      if (got2 && d2 > 0 && d2 <= DETECT_DISTANCE_CM) {
-        motorSet(false);
-        enterState(STOPPED);
-        Serial.println("STOPPED");
-      } else if (state == RUNNING && (now - runStartMs) >= RUN_DURATION_MS) {
-        // 4초 타임아웃 — 자동 정지
-        motorSet(false);
-        enterState(IDLE);
-        Serial.println("DONE");
-      }
-      break;
-    case STOPPED:
-      // Jetson 의 RUN 명령을 기다림 (handleCommand 에서 처리)
-      break;
+// === Setup & Loop ===
+void setup() {
+  Serial.begin(115200);
+  Serial.setTimeout(100);
+
+  tof1.begin(TOF_BAUD, SERIAL_8N1, PIN_TOF1_RX, -1);
+  tof2.begin(TOF_BAUD, SERIAL_8N1, PIN_TOF2_RX, -1);
+
+  pinMode(PIN_MOTOR_IN1, OUTPUT);
+  pinMode(PIN_MOTOR_IN2, OUTPUT);
+  digitalWrite(PIN_MOTOR_IN1, LOW);
+  digitalWrite(PIN_MOTOR_IN2, LOW);
+  ledcAttach(PIN_MOTOR_ENA, 1000, 8);
+  ledcWrite(PIN_MOTOR_ENA, 0);
+
+  delay(500);
+  Serial.println();
+  Serial.println("BOOT:conveyor_v5_serial 1.1.0");
+  publishJson("{\"boot\":\"conveyor_v5.0\",\"tof1\":16,\"tof2\":17,"
+              "\"tof_baud\":9600,\"proto\":\"serial_only\"}");
+  setState(ST_IDLE);
+
+#if ENABLE_WIFI_MQTT
+  // v4.0 스타일 WiFi/MQTT 는 필요 시 이 블록 활성화
+#endif
+}
+
+void loop() {
+  readSensors();
+  update();
+  processCmd();
+
+  if (millis() - lastReport >= REPORT_MS) {
+    lastReport = millis();
+    sendStatus();
   }
-
-  // 4) Heartbeat (옵션)
-  if (HEARTBEAT_MS > 0 && (now - lastHeartbeatMs) >= HEARTBEAT_MS) {
-    lastHeartbeatMs = now;
-    Serial.print("HB:");
-    Serial.println(stateName(state));
-  }
-
-  delay(5); // 200Hz 루프
 }
