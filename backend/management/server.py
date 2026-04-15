@@ -331,7 +331,17 @@ def _load_tls_credentials():
 def serve() -> None:
     # WatchItems + WatchAlerts + WatchCameraFrames 등 스트리밍이 워커 점유.
     # 다중 PyQt 클라이언트 + 내부 모니터링 대비 여유있게 32로 확장.
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=32))
+    # keepalive: 죽은 클라이언트(단절된 TCP) 를 빠르게 정리. 구독자 수 가볍게 유지.
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=32),
+        options=[
+            ("grpc.keepalive_time_ms", 30000),
+            ("grpc.keepalive_timeout_ms", 10000),
+            ("grpc.keepalive_permit_without_calls", 1),
+            ("grpc.http2.min_ping_interval_without_data_ms", 20000),
+            ("grpc.http2.max_pings_without_data", 0),
+        ],
+    )
     management_pb2_grpc.add_ManagementServiceServicer_to_server(
         ManagementServicer(), server
     )

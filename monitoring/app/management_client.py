@@ -92,8 +92,15 @@ class ManagementClient:
             MGMT_TLS_SERVER_NAME   = TLS SNI override (기본 host 값)
         """
         target = f"{host}:{port}"
+        # keep-alive ping: 서버/네트워크 끊김을 빠르게 감지 (특히 장기 streaming RPC 용)
+        keepalive = [
+            ("grpc.keepalive_time_ms", 30000),
+            ("grpc.keepalive_timeout_ms", 10000),
+            ("grpc.keepalive_permit_without_calls", 1),
+            ("grpc.http2.max_pings_without_data", 0),
+        ]
         if os.environ.get("MGMT_GRPC_TLS_ENABLED", "0") not in ("1", "true", "yes"):
-            return grpc.insecure_channel(target)
+            return grpc.insecure_channel(target, options=keepalive)
 
         # mTLS 활성: client cert 로딩
         # 기본 cert 디렉터리: monitoring/ 옆의 backend/management/certs/
@@ -124,12 +131,12 @@ class ManagementClient:
             private_key=client_key,
             certificate_chain=client_crt,
         )
-        options = []
+        options = list(keepalive)
         sni = os.environ.get("MGMT_TLS_SERVER_NAME")
         if sni:
             options.append(("grpc.ssl_target_name_override", sni))
         logger.info("ManagementClient TLS 활성: %s (sni=%s)", target, sni or host)
-        return grpc.secure_channel(target, creds, options=options or None)
+        return grpc.secure_channel(target, creds, options=options)
 
     @property
     def endpoint(self) -> str:

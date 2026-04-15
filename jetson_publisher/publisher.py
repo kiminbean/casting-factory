@@ -63,9 +63,16 @@ def _build_channel() -> grpc.Channel:
     port = _env_int("MANAGEMENT_GRPC_PORT", 50051)
     target = f"{host}:{port}"
     tls = os.environ.get("MGMT_GRPC_TLS_ENABLED", "0") == "1"
+    # keep-alive — 서버 재시작·Tailscale 끊김을 빠르게 감지해 재연결 트리거
+    keepalive = [
+        ("grpc.keepalive_time_ms", 30000),
+        ("grpc.keepalive_timeout_ms", 10000),
+        ("grpc.keepalive_permit_without_calls", 1),
+        ("grpc.http2.max_pings_without_data", 0),
+    ]
     if not tls:
         log.info("connecting %s (insecure)", target)
-        return grpc.insecure_channel(target)
+        return grpc.insecure_channel(target, options=keepalive)
     ca = open(os.environ["MGMT_TLS_CA_CRT"], "rb").read()
     crt = open(os.environ["MGMT_TLS_CLIENT_CRT"], "rb").read()
     key = open(os.environ["MGMT_TLS_CLIENT_KEY"], "rb").read()
@@ -73,7 +80,7 @@ def _build_channel() -> grpc.Channel:
         root_certificates=ca, private_key=key, certificate_chain=crt
     )
     log.info("connecting %s (mTLS)", target)
-    return grpc.secure_channel(target, creds)
+    return grpc.secure_channel(target, creds, options=keepalive)
 
 
 def _open_camera() -> cv2.VideoCapture:
