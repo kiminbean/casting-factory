@@ -76,6 +76,11 @@ pytest tests/ --cov=services --cov-report=term-missing
 | `MGMT_AI_PASS` | (미설정) | SSH 비밀번호 — **env 전용, 커밋 금지** |
 | `MGMT_AI_SSH_KEY` | (미설정) | SSH private key 경로 (password 대신 권장) |
 | `MGMT_AI_REMOTE_DIR` | `/home/team2/datasets/inspection` | 업로드 베이스 디렉터리 |
+| `MGMT_JETSON_HOST` | (미설정) | **★ V6 Image Publishing Service (Jetson Orin NX 16GB) 호스트 (예: `100.77.62.67`)** |
+| `MGMT_JETSON_USER` | (미설정) | Jetson 사용자명 (예: `jetson`) |
+| `MGMT_JETSON_PORT` | `22` | SSH 포트 |
+| `MGMT_JETSON_PASS` | (미설정) | SSH 비밀번호 — **env 전용, 커밋 금지** |
+| `MGMT_JETSON_SSH_KEY` | (미설정) | SSH private key 경로 (password 대신 권장) |
 
 ## MQTT 인증 설정 (운영 환경 권장)
 
@@ -142,6 +147,32 @@ if uploader.enabled and uploader.health_check():
 ```
 
 Phase 2 (추후): AI Server 추론 gRPC 엔드포인트 확정 후 별도 client 추가 예정.
+
+## Jetson Orin NX (Image Publishing Service) 접속
+
+V6 아키텍처에서 Jetson Orin NX 16GB 가 검사 카메라 프레임을 gRPC client streaming(`ImagePublisherService/PublishFrames`)으로 Management Server(:50051)에 push 한다. 서버가 클라이언트가 아니므로 **런타임에 Jetson 으로 호출할 일은 없음**. 아래 SSH 변수는 다음 용도에만 사용된다:
+
+- 원격 배포 (scp, rsync 로 publisher 코드/설정 업데이트)
+- 헬스체크·로그 수집
+- 부팅 시 자동 기동 스크립트 등록
+
+### 설정 (AI Server 와 동일한 env 패턴)
+
+```bash
+# 옵션 A — SSH 키 (권장)
+ssh-keygen -t ed25519 -f ~/.ssh/jetson_orin -N ""
+ssh-copy-id -i ~/.ssh/jetson_orin.pub jetson@100.77.62.67
+export MGMT_JETSON_HOST=100.77.62.67
+export MGMT_JETSON_USER=jetson
+export MGMT_JETSON_SSH_KEY=~/.ssh/jetson_orin
+
+# 옵션 B — 비밀번호 (env 전용)
+export MGMT_JETSON_HOST=100.77.62.67
+export MGMT_JETSON_USER=jetson
+export MGMT_JETSON_PASS='<비밀번호>'
+```
+
+`backend/.env.local` 에 슬롯이 준비되어 있으며, `.gitignore` 로 보호된다.
 
 ## mTLS 설정 (운영 환경 권장)
 
