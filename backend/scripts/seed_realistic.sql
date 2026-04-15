@@ -163,6 +163,9 @@ INSERT INTO work_orders (order_id, pattern_id, qty, status, plan_start, act_star
 -- ---------------------------------------------------------------------
 -- 공정 분포 (6건 work_order 평균):
 --   QUE 20% / MM 20% / DM 10% / TR_PP 5% / PP 20% / IP 10% / TR_LD 10% / SH 5%
+--
+-- ⚠️ 중요: mfg_at 은 "현재 시각 근처" 만 사용. 과거 시각 넣으면 ExecutionMonitor 가
+--         수백 item 을 SLA 초과로 인식 → alerts 폭주 + PyQt CPU 100% (2026-04-15 사고).
 INSERT INTO items (order_id, work_order_id, cur_stage, curr_res, insp_id, mfg_at)
 SELECT
   wo.order_id,
@@ -170,7 +173,9 @@ SELECT
   (ARRAY['QUE','QUE','MM','MM','DM','TR_PP','PP','PP','PP','IP','TR_LD','TR_LD','SH'])[(n % 13) + 1],
   (ARRAY[NULL,NULL,'ARM-001','ARM-002','ARM-001',NULL,'ARM-003',NULL,'ARM-003',NULL,'AMR-001','AMR-002','AMR-003'])[(n % 13) + 1],
   NULL,
-  (NOW() AT TIME ZONE 'UTC' - (random() * INTERVAL '48 hours'))::text
+  -- 현재 시각 ± 30초 랜덤 (SLA 정상 범위). 과거 시각 절대 금지.
+  to_char(now() at time zone 'UTC' - (random() * INTERVAL '30 seconds'),
+          'YYYY-MM-DD"T"HH24:MI:SS.US"+00:00"')
 FROM work_orders wo
 CROSS JOIN generate_series(1, wo.qty) AS n
 WHERE wo.id >= 4;  -- 신규 WO 만 (기존 1,2,3 건너뜀)
