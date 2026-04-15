@@ -204,11 +204,8 @@ service ManagementService {
   // Health
   rpc Health(Empty) returns (Empty);
 
-  // Latest Image Frame (Stage A — PyQt 품질 페이지 실시간 프레임 표시)
-  rpc GetLatestFrame(LatestFrameRequest) returns (LatestFrameResponse);
-
-  // Stage B — Server streaming (image_sink condvar 기반 push)
-  rpc WatchCameraFrames(WatchFramesRequest) returns (stream LatestFrameResponse);
+  // Stage B — 카메라 프레임 server streaming (image_sink condvar 기반 push)
+  rpc WatchCameraFrames(WatchFramesRequest) returns (stream CameraFrameResponse);
 }
 
 message WatchFramesRequest {
@@ -217,11 +214,7 @@ message WatchFramesRequest {
   // keepalive timeout 은 서버 고정값 (10s). 상위 큰 트래픽 지연 방지.
 }
 
-message LatestFrameRequest {
-  string camera_id = 1;  // 예: "CAM-INSP-01"
-}
-
-message LatestFrameResponse {
+message CameraFrameResponse {
   bool      available   = 1;   // 프레임 존재 여부
   string    camera_id   = 2;
   string    encoding    = 3;   // "jpeg" | "png" | ...

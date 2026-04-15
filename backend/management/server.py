@@ -176,19 +176,9 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
             yield self._frame_to_response(cam, frame)
         logger.info("WatchCameraFrames subscriber closed camera=%s", cam)
 
-    # ---------- Latest Image Frame (Stage A) ----------
-    def GetLatestFrame(self, request, context):
-        cam = request.camera_id or ""
-        frame = image_sink.latest(cam) if cam else None
-        if not frame:
-            return management_pb2.LatestFrameResponse(
-                available=False, camera_id=cam,
-            )
-        return self._frame_to_response(cam, frame)
-
     @staticmethod
     def _frame_to_response(cam: str, frame: dict):
-        return management_pb2.LatestFrameResponse(
+        return management_pb2.CameraFrameResponse(
             available=True,
             camera_id=cam,
             encoding=frame.get("encoding", ""),

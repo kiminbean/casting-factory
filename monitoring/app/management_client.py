@@ -173,37 +173,6 @@ class ManagementClient:
         req = management_pb2.WatchAlertsRequest(severity_filter=severity_filter or "")
         return self._stub.WatchAlerts(req)
 
-    def get_latest_frame(self, camera_id: str) -> dict | None:
-        """Stage A — image_sink 의 최신 프레임을 요청.
-
-        반환값 예:
-            {"available": True, "encoding": "jpeg", "width": 1280, "height": 720,
-             "data": b"\\xff\\xd8...", "sequence": 42,
-             "captured_at": "2026-04-15T...", "received_at": "..."}
-            또는 없으면 None
-        """
-        try:
-            resp = self._stub.GetLatestFrame(
-                management_pb2.LatestFrameRequest(camera_id=camera_id),
-                timeout=2.0,
-            )
-        except grpc.RpcError as e:
-            logger.warning("GetLatestFrame failed: %s", e)
-            return None
-        if not resp.available:
-            return None
-        return {
-            "available": True,
-            "camera_id": resp.camera_id,
-            "encoding": resp.encoding,
-            "width": int(resp.width),
-            "height": int(resp.height),
-            "data": bytes(resp.data),
-            "sequence": int(resp.sequence),
-            "captured_at": resp.captured_at.iso8601 if resp.HasField("captured_at") else "",
-            "received_at": resp.received_at.iso8601 if resp.HasField("received_at") else "",
-        }
-
     @staticmethod
     def stage_code_to_label(code: int) -> str:
         """proto enum 정수 → 코드 문자열 (UI 매핑용)."""
