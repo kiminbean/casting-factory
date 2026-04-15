@@ -32,7 +32,8 @@ WHERE id LIKE 'PHASE8-%'
 
 -- ---------------------------------------------------------------------
 -- 2) products 재구성 (UI 9종 사양)
---    기존 4종(D450, D600, D800, GRATING)은 ON CONFLICT 처리, 신규 9종 추가
+--    레거시 4종(D450, D600, D800, GRATING)은 2026-04-15 완전 삭제됨
+--    (tag pre-legacy-delete-20260415_154643 + pg_dump 백업 보관)
 -- ---------------------------------------------------------------------
 INSERT INTO products (id, name, category, base_price, option_pricing_json, design_image_url, model_3d_path) VALUES
   ('R-D450', '원형 맨홀뚜껑 KS D-450', 'round',  75000,
