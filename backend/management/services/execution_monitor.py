@@ -105,6 +105,10 @@ class ExecutionMonitor:
         # V6 AI 학습 데이터 브리지: IP 진입 시 최신 프레임을 AI Server 로 전달
         self._image_forwarder = image_forwarder
         self._ip_camera_id = os.environ.get("MGMT_IP_CAMERA_ID", "CAM-INSP-01")
+        # snapshot dedup: (item_id, stage) → last_fired monotonic. bg+stream 양쪽에서 공유
+        self._last_snapshot_fired: dict[tuple[int, str], float] = {}
+        self._snapshot_lock = __import__("threading").Lock()
+        self._SNAPSHOT_TTL_SEC = 60.0  # 같은 item-stage 재발화 최소 간격
         if sla_overrides:
             self._sla.update(sla_overrides)
         # 인스턴스 공유 캐시 (alerts dedup)
@@ -276,15 +280,24 @@ class ExecutionMonitor:
                     events.append(self._make_event(
                         item_id, stage, robot, message="" if first_pass else "stage_changed"
                     ))
-                    # IP 진입 트리거 — AI 학습 데이터셋용 스냅샷
+                    # IP 진입 트리거 — AI 학습 데이터셋용 스냅샷 (bg+stream 중복 방지)
                     if stage_changed and stage == "IP" and self._image_forwarder is not None:
-                        try:
-                            self._image_forwarder.snapshot(
-                                item_id=item_id, stage="IP",
-                                camera_id=self._ip_camera_id,
-                            )
-                        except Exception:  # noqa: BLE001
-                            logger.exception("image_forwarder.snapshot 실패 item=%d", item_id)
+                        key = (item_id, "IP")
+                        with self._snapshot_lock:
+                            last = self._last_snapshot_fired.get(key)
+                            if last is not None and (now_mono - last) < self._SNAPSHOT_TTL_SEC:
+                                fire = False
+                            else:
+                                self._last_snapshot_fired[key] = now_mono
+                                fire = True
+                        if fire:
+                            try:
+                                self._image_forwarder.snapshot(
+                                    item_id=item_id, stage="IP",
+                                    camera_id=self._ip_camera_id,
+                                )
+                            except Exception:  # noqa: BLE001
+                                logger.exception("image_forwarder.snapshot 실패 item=%d", item_id)
 
                 # 2) SLA 타임아웃 검사 (변경 없을 때만)
                 if not first_pass and not stage_changed:
