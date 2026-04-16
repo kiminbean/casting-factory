@@ -40,6 +40,20 @@ def _voltage_to_percent(voltage: float) -> float:
     return round(max(0.0, min(100.0, pct)), 2)
 
 
+class _MovingAverage:
+    """ADC 노이즈 제거용 이동평균 필터."""
+
+    def __init__(self, window: int = 6) -> None:
+        self._window = window
+        self._values: list[float] = []
+
+    def push(self, value: float) -> float:
+        self._values.append(value)
+        if len(self._values) > self._window:
+            self._values.pop(0)
+        return sum(self._values) / len(self._values)
+
+
 @dataclass
 class AmrStatus:
     id: str
@@ -152,23 +166,25 @@ def _start_ros2_subscriber(
         depth=5,
     )
 
+    # ROS2 토픽은 20Hz 퍼블리시 → 이동평균 윈도우 크게 설정
+    voltage_filters: dict[str, _MovingAverage] = {}
+
     def _make_callback(ns: str):
         amr_id = f"AMR-{ns.replace('amr', '').lstrip('/')}"
         if amr_id == "AMR-":
             amr_id = ns
+        voltage_filters[amr_id] = _MovingAverage(window=20)
 
         def cb(msg: BatteryState):
-            voltage = msg.voltage
-            if math.isnan(msg.percentage) or msg.percentage < 0:
-                battery = _voltage_to_percent(voltage)
-            else:
-                battery = round(msg.percentage * 100, 2)
+            raw_v = msg.voltage
+            avg_v = voltage_filters[amr_id].push(raw_v)
+            battery = _voltage_to_percent(avg_v)
 
             status = AmrStatus(
                 id=amr_id, host="dds",
                 status="online",
                 battery=battery,
-                voltage=round(voltage, 3),
+                voltage=round(avg_v, 3),
             )
             with lock:
                 cache[amr_id] = status
@@ -249,17 +265,26 @@ class AmrBatteryService:
             return list(self._cache.values())
 
     def _run_ssh(self) -> None:
+        # AMR 별 이동평균 필터 (ADC 노이즈 제거)
+        voltage_ma: dict[str, _MovingAverage] = {t.id: _MovingAverage(6) for t in self._targets}
+
         while not self._stop.is_set():
             for t in self._targets:
                 if self._stop.is_set():
                     break
                 data = _poll_one_ssh(t)
-                status = AmrStatus(
-                    id=t.id, host=t.host,
-                    status="online" if data else "offline",
-                    battery=data.get("battery", 0) if data else 0,
-                    voltage=data.get("voltage", 0) if data else 0,
-                )
+                if data:
+                    raw_v = data.get("voltage", 0)
+                    avg_v = voltage_ma[t.id].push(raw_v)
+                    avg_pct = _voltage_to_percent(avg_v)
+                    status = AmrStatus(
+                        id=t.id, host=t.host,
+                        status="online",
+                        battery=avg_pct,
+                        voltage=round(avg_v, 3),
+                    )
+                else:
+                    status = AmrStatus(id=t.id, host=t.host, status="offline")
                 with self._lock:
                     self._cache[t.id] = status
             self._stop.wait(timeout=self._interval)
