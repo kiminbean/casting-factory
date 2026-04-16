@@ -62,6 +62,9 @@ class AmrStatus:
     battery: float = 0.0
     voltage: float = 0.0
     location: str = "-"
+    task_state: int = 1      # AmrTaskState enum (1=IDLE)
+    task_id: str = ""
+    loaded_item: str = ""
 
 
 # ---------------------------------------------------------------------------

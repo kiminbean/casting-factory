@@ -52,12 +52,18 @@ class AmrStatusWorker(QObject):
                 self.connection_state.emit(connected)
 
             if robots:
-                # status 매핑: online → running (AmrStatusCard 호환)
+                # status 매핑: online → running (AmrStatusCard fallback 호환)
+                # task_state 가 있으면 AmrStatusCard 가 우선 사용
                 for r in robots:
                     if r.get("status") == "online":
                         r["status"] = "running"
                     elif r.get("status") == "offline":
                         r["status"] = "error"
+                logger.info(
+                    "AMR 상태 수신 %d대: %s",
+                    len(robots),
+                    [(r["id"], r.get("battery"), r.get("task_state")) for r in robots],
+                )
                 self.status_updated.emit(robots)
 
             # interruptible sleep

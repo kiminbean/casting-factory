@@ -104,25 +104,49 @@ class DashboardPage(QWidget):
             kpi_grid.addWidget(card, 0, idx)
         layout.addLayout(kpi_grid)
 
-        # 컨베이어 상태 카드 (MQTT 실시간) - 가로 배치
-        conveyor_label = QLabel("컨베이어 실시간 상태")
-        conveyor_label.setObjectName("sectionTitle")
-        layout.addWidget(conveyor_label)
-
-        self._conveyor_row = QHBoxLayout()
-        self._conveyor_row.setSpacing(14)
+        # 컨베이어 실시간 상태 (한 줄 간략 표시)
         self._conveyor_cards: dict[str, ConveyorCard] = {}
-        # 기본 1대 카드 미리 생성
+        self._conveyor_bar = QFrame()
+        self._conveyor_bar.setObjectName("tableCard")
+        self._conveyor_bar.setFrameShape(QFrame.StyledPanel)
+        self._conveyor_bar.setFixedHeight(40)
+        conv_bar_layout = QHBoxLayout(self._conveyor_bar)
+        conv_bar_layout.setContentsMargins(14, 4, 14, 4)
+        conv_bar_layout.setSpacing(12)
+        conv_bar_label = QLabel("컨베이어")
+        conv_bar_label.setStyleSheet("color: #6b7280; font-size: 11px; font-weight: bold;")
+        conv_bar_layout.addWidget(conv_bar_label)
+
+        self._conv_status_dot = QLabel("●")
+        self._conv_status_dot.setStyleSheet("color: #d1d5db; font-size: 12px;")
+        conv_bar_layout.addWidget(self._conv_status_dot)
+
+        self._conv_status_text = QLabel("오프라인")
+        self._conv_status_text.setStyleSheet("color: #374151; font-size: 12px; font-weight: 600;")
+        conv_bar_layout.addWidget(self._conv_status_text)
+
+        self._conv_motor_text = QLabel("모터: -")
+        self._conv_motor_text.setStyleSheet("color: #6b7280; font-size: 11px;")
+        conv_bar_layout.addWidget(self._conv_motor_text)
+
+        self._conv_count_text = QLabel("사이클: 0")
+        self._conv_count_text.setStyleSheet("color: #6b7280; font-size: 11px;")
+        conv_bar_layout.addWidget(self._conv_count_text)
+
+        self._conv_tof_text = QLabel("TOF1: -  TOF2: -")
+        self._conv_tof_text.setStyleSheet("color: #6b7280; font-size: 11px;")
+        conv_bar_layout.addWidget(self._conv_tof_text)
+
+        conv_bar_layout.addStretch()
+
+        # ConveyorCard 호환용 (MQTT 메시지 처리에 사용)
         default_card = ConveyorCard("1")
+        default_card.setVisible(False)
         self._conveyor_cards["1"] = default_card
-        self._conveyor_row.addWidget(default_card, stretch=1)
-        self._conveyor_row.addStretch()
 
-        conveyor_container = QWidget()
-        conveyor_container.setLayout(self._conveyor_row)
-        layout.addWidget(conveyor_container)
+        layout.addWidget(self._conveyor_bar)
 
-        # 중단 Row 1: 공장 미니맵 (풀와이드)
+        # 공장 현황 맵 (확대)
         map_container = QFrame()
         map_container.setObjectName("tableCard")
         map_layout = QVBoxLayout(map_container)
@@ -134,9 +158,11 @@ class DashboardPage(QWidget):
         map_layout.addWidget(map_title)
 
         self._mini_map = MiniFactoryMapView()
+        self._mini_map.setMinimumHeight(350)
+        self._mini_map.setMaximumHeight(500)
         map_layout.addWidget(self._mini_map)
 
-        layout.addWidget(map_container, stretch=2)
+        layout.addWidget(map_container, stretch=4)
 
         # 중단 Row 2: 주간 차트 + 최근 주문 (가로 분할)
         middle_row = QHBoxLayout()
@@ -276,8 +302,7 @@ class DashboardPage(QWidget):
             self.refresh()
 
     def handle_mqtt_message(self, topic: str, payload: dict[str, Any]) -> None:
-        """MQTT 메시지 수신 - 컨베이어 카드 실시간 갱신."""
-        # topic 예: conveyor/1/status
+        """MQTT 메시지 수신 - 컨베이어 한 줄 바 실시간 갱신."""
         parts = topic.split("/")
         if len(parts) < 2:
             return
@@ -289,22 +314,54 @@ class DashboardPage(QWidget):
         card = self._conveyor_cards.get(conveyor_id)
         if card is None:
             card = ConveyorCard(conveyor_id)
+            card.setVisible(False)
             self._conveyor_cards[conveyor_id] = card
-            # stretch 앞에 삽입 (마지막 stretch 제외)
-            idx = self._conveyor_row.count() - 1
-            self._conveyor_row.insertWidget(idx, card, stretch=1)
 
         if subtype == "status":
             card.update_from_payload(payload)
             card.set_online(True)
+            self._update_conveyor_bar(payload)
         elif subtype == "heartbeat":
             value = str(payload.get("value", "")).lower()
-            card.set_online(value == "online" or "alive" in payload)
-            if value == "offline":
-                card.mark_offline()
+            online = value == "online" or "alive" in payload
+            card.set_online(online)
+            if not online:
+                self._conv_status_dot.setStyleSheet("color: #d1d5db; font-size: 12px;")
+                self._conv_status_text.setText("오프라인")
+            else:
+                self._conv_status_dot.setStyleSheet("color: #10b981; font-size: 12px;")
         elif subtype == "event":
-            # entry / exit / cycle_done 등
             card.set_online(True)
+            self._conv_status_dot.setStyleSheet("color: #10b981; font-size: 12px;")
+
+    def _update_conveyor_bar(self, payload: dict[str, Any]) -> None:
+        """컨베이어 상태를 한 줄 바에 반영."""
+        state = str(payload.get("state", "offline"))
+        state_labels = {
+            "idle": "대기", "running": "이송 중", "stopped": "검사 대기",
+            "post_run": "후처리", "clearing": "배출 중", "error": "오류",
+        }
+        self._conv_status_text.setText(state_labels.get(state, state))
+        self._conv_status_dot.setStyleSheet(
+            f"color: {'#10b981' if state == 'running' else '#f59e0b' if state != 'idle' else '#9ca3af'};"
+            "font-size: 12px;"
+        )
+
+        motor = payload.get("motor")
+        if isinstance(motor, dict):
+            running = bool(motor.get("running"))
+        else:
+            running = bool(motor)
+        self._conv_motor_text.setText(f"모터: {'ON' if running else 'OFF'}")
+
+        count = payload.get("count", 0)
+        self._conv_count_text.setText(f"사이클: {count}")
+
+        tof1 = payload.get("tof1", {})
+        tof2 = payload.get("tof2", {})
+        t1 = f"{tof1.get('mm', '-')}mm" if tof1 else "-"
+        t2 = f"{tof2.get('mm', '-')}mm" if tof2 else "-"
+        self._conv_tof_text.setText(f"TOF1: {t1}  TOF2: {t2}")
 
     @staticmethod
     def _format_alert(alert: dict[str, Any]) -> str:

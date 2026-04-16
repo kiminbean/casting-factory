@@ -49,6 +49,21 @@ enum RobotType {
   ROBOT_TYPE_CONVEYOR    = 3;
 }
 
+// AMR 운송 작업 상태 (Transport State Machine)
+enum AmrTaskState {
+  AMR_TASK_STATE_UNSPECIFIED      = 0;
+  AMR_TASK_STATE_IDLE             = 1;   // 유휴
+  AMR_TASK_STATE_MOVE_TO_SOURCE   = 2;   // 출발지로 이동
+  AMR_TASK_STATE_AT_SOURCE        = 3;   // 출발지 도착
+  AMR_TASK_STATE_LOADING          = 4;   // 상차
+  AMR_TASK_STATE_LOAD_COMPLETED   = 5;   // 상차 완료
+  AMR_TASK_STATE_MOVE_TO_DEST     = 6;   // 도착지로 이동
+  AMR_TASK_STATE_AT_DESTINATION   = 7;   // 도착지 도착
+  AMR_TASK_STATE_UNLOADING        = 8;   // 하차중
+  AMR_TASK_STATE_UNLOAD_COMPLETED = 9;   // 하차 완료
+  AMR_TASK_STATE_FAILED           = 10;  // 실패
+}
+
 // -----------------------------------------------------------------------------
 // Task Manager
 // -----------------------------------------------------------------------------
@@ -186,17 +201,33 @@ message WatchAlertsRequest {
 message GetRobotStatusRequest {}
 
 message RobotStatusEntry {
-  string    id       = 1;  // "AMR-001", "COBOT-001" 등
-  RobotType type     = 2;
-  string    host     = 3;  // Tailscale IP
-  string    status   = 4;  // "online" | "offline" | "error"
-  float     battery  = 5;  // 0~100 (AMR 전용, Cobot 은 0)
-  float     voltage  = 6;  // 배터리 전압 (V)
-  string    location = 7;
+  string       id          = 1;   // "AMR-001", "COBOT-001" 등
+  RobotType    type        = 2;
+  string       host        = 3;   // Tailscale IP
+  string       status      = 4;   // "online" | "offline" | "error"
+  float        battery     = 5;   // 0~100 (AMR 전용, Cobot 은 0)
+  float        voltage     = 6;   // 배터리 전압 (V)
+  string       location    = 7;
+  AmrTaskState task_state  = 8;   // AMR 운송 상태 (Cobot 은 UNSPECIFIED)
+  string       task_id     = 9;   // 현재 수행 중인 작업 ID
+  string       loaded_item = 10;  // 적재 중인 Item ID
 }
 
 message GetRobotStatusResponse {
   repeated RobotStatusEntry robots = 1;
+}
+
+// AMR 상태 전이 (외부 push — PyQt, RPi, 시뮬레이터)
+message TransitionAmrStateRequest {
+  string       robot_id    = 1;
+  AmrTaskState new_state   = 2;
+  string       task_id     = 3;   // optional: 작업 ID
+  string       loaded_item = 4;   // optional: 적재 Item ID
+}
+
+message TransitionAmrStateResponse {
+  bool   accepted = 1;
+  string reason   = 2;
 }
 
 // -----------------------------------------------------------------------------
@@ -223,6 +254,9 @@ service ManagementService {
 
   // Robot Status
   rpc GetRobotStatus(GetRobotStatusRequest) returns (GetRobotStatusResponse);
+
+  // AMR State Machine — 외부 상태 전이
+  rpc TransitionAmrState(TransitionAmrStateRequest) returns (TransitionAmrStateResponse);
 
   // Health
   rpc Health(Empty) returns (Empty);

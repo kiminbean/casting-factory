@@ -51,6 +51,8 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
+        self.setMinimumSize(800, 600)
+        self.setMaximumSize(16777215, 16777215)  # QWIDGETSIZE_MAX
         self.resize(1400, 900)
 
         self._api = ApiClient()
