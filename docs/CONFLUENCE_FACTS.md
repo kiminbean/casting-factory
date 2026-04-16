@@ -2,7 +2,7 @@
 
 > **addinedute(addinedu_team_2)** space 주요 설계/기술 문서의 팩트 체크 정리본
 > 원본 페이지 변경 시 이 파일을 업데이트해야 함
-> **마지막 업데이트**: 2026-04-15 (cron sync: 4건)
+> **마지막 업데이트**: 2026-04-16 (cron sync: 5건)
 > **READ-ONLY**: 이 문서는 로컬 참조용이며 Confluence 원본은 수정하지 않음
 
 ## 사용 원칙
@@ -63,7 +63,7 @@ Root page: **3145739** (`01_Project_Design`)
 ### System Architecture (3375131)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/3375131
-**최종 수정**: v43 (2026-04-15 sync)
+**최종 수정**: v44 (2026-04-16 sync)
 
 # SA 설계 방법 
 System architecture (기능 명세서)에서 정의한 스펙 구현을 위해 HW/SW system level 설계해야한다. 
@@ -682,6 +682,27 @@ Image Publisher(Jetson), HW Controller(ESP32) 두 개의 컴포넌트로 분리
 
 - 
 HW Controller의 분리에 따라, ESP32와 Jetson의 통신을 위한 MQTT 통신이 추가됨
+
+1. 
+**HW Controller(ESP32)와 Image Publisher(Jetson-orin)간 Serial 통신 추가**
+
+  1. 
+1번째 포토센서에 물체가 감지되면 컨베이어 가동 **(HW Controller(ESP32)에서 컨베이어 직접 제어)**
+
+  1. 
+2번째 포토센서에 물체가 감지되면 아래 2가지 동작을 수행한다.
+
+    1. 
+컨베이어 중지 **(HW Controller(ESP32)에서 컨베이어 직접 제어)**
+
+    1. 
+Image Publisher에 연결된 카메라에서 이미지 캡처 **(ESP32 → Image Publisher간 Serial 통신)**
+
+  1. 
+이미지를 Management Service에 전송 **(Image Publisher → Manegement Service간 TCP 통신)**
+
+  1. 
+불량 검사가 완료되면 컨베이어 가동 **(Management Service → Image Publisher간 TCP 통신)**
 
 1. 
 **전반적인 네이밍 수정**
@@ -1592,9 +1613,47 @@ VDA 5050는 독일 자동차 산업 연합(VDA)이 정의한 Fleet Management In
 ### Terminology (3407906)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/3407906
-**최종 수정**: v15 (2026-04-15 sync)
+**최종 수정**: v25 (2026-04-16 sync)
 
 통일된 언어 사용 지향을 위해 용어 정리해놓았습니다. 문서 작성시에 이 페이지에 정리된 용어 사용 부탁드립니다!
+
+****
+****
+****
+| 한글 | 영어 | 설명 - 프로젝트 기준 |
+|---|---|---|
+****
+| 관제 | FMS | 다수의 로봇의 작업 할당 및 경로를 제어하는 시스템 |
+| 자율주행로봇 | AMR |   |
+| 로봇팔 | Robotic Arm |   |
+| 컨베이어 벨트 | Conveyor |   |
+| 로딩 | Loading | 컨베이어벨트에 반입 |
+| 언로딩 | Unloading | 컨베이어벨트에 반출 |
+| 포토 센서 | Photo Sensor | 맨홀 감지 역할 |
+****
+| 생산      (process) |   | 주조부터 검사까지 모든 과정 |
+| 주조 | Casting / cast | 금속을 녹여 주형에 부어 형상을 만드는 공정 |
+| 주형제작 | Mold Making | 맨홀을 만들기 위한 틀을 제작하는 과정 |
+| 주탕 | Pouring | 용탕을 주형에 붓는 과정 |
+| 패턴 | Pattern | 주형을 만들기 위한 원형 모델 |
+| 냉각 | Cooling | 용탕이 식으면서 고체로 변하는 과정 |
+| 탈형 | Demolding | 냉각된 맨홀에서 주형을 제거하는 과정 |
+| 후처리 | PostProcessing | 맨홀의 표면을 다듬고 불필요한 부분을 제거하는 과정 |
+| 검사 | Inspection | 제품의 품질을 확인하는 과정 |
+****
+| 이송      (process) |   | AMR이 물건을 가지고 이동하는 모든 과정 |
+| 상차 | Loading / load | AMR 위에 맨홀을 올리는 행위 |
+| 하차 | Unloading / unload | AMR 위에서 맨홀을 내리는 행위 |
+****
+| 적재       (process) |   | 적치와 출고과정을 통칭함 |
+| 적치 | Putaway | ​적치하는 process / 맨홀을 보관 랙에 넣는 행위 |
+| ​출고 | Shipping | 출고하는 process |
+| 파지 | Picking | 로봇arm이 무언가를 집는 행위 |
+| 보관 랙 | Storage Rack | 맨홀을 보관하는 랙 |
+| 슬롯형 보관함 | Slotted storage | AMR 위에 있는 보관함 |
+| 주물 |
+| 양품 | good product |   |
+| 불량품 | defect (n) / defective (adj) |   |
 
 # 주조 (Casting) 
 “주조 공정은 용탕을 주형에 주탕한 뒤 냉각·탈형을 거쳐 제품을 만드는 과정이며, 특히 주탕과 물류 과정은 자동화가 가장 필요한 핵심 구간입니다.”
@@ -1807,7 +1866,7 @@ AMR (Autonomous Mobile Robot): 자율주행 기반 물류 이동 로봇
 물류(Logistics) 용어
 
   - 
-입고 (Receiving / Inbound): 외부에서 원자재나 제품을 창고로 들여오는 과정
+적치(putaway): 입고된 원자재나 제품을 창고 내 지정된 위치에 보관하는 과정
 
   - 
 출고 (Shipping / Outbound): 창고에서 제품을 고객 또는 다음 공정으로 보내는 과정
@@ -1819,7 +1878,7 @@ AMR (Autonomous Mobile Robot): 자율주행 기반 물류 이동 로봇
 적치 (Storage / Put-away): 제품을 지정된 위치에 보관하는 과정
 
   - 
-피킹 (Picking): 주문에 맞게 필요한 제품을 선택·수집하는 작업
+파지 (Picking): 주문에 맞게 필요한 제품을 선택·수집하는 작업
 
   - 
 패킹 (Packing): 제품을 출하를 위해 포장하는 과정
@@ -1912,296 +1971,15 @@ Root page: **3703084** (`04_Implementation`)
 
 ---
 
-### 4.3 Prototypes (3407954)
+### 사형 주조 주제 가능성 검증 테스트 (3407954)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/3407954
-- **빈 페이지** (zero-width space만)
-
----
+**최종 수정**: v8 (2026-04-16 sync)
 
 ### DB (5898574)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/5898574
-**최종 수정**: v49 (2026-04-15 sync)
-
-# INFO: DB Schema 작성 요령 
-[https://dayelee313.atlassian.net/wiki/spaces/753667/pages/7471353/?draftShareId=06a0aaa7-f832-4ddc-a47e-e03a51e82bb9](https://dayelee313.atlassian.net/wiki/spaces/753667/pages/7471353/?draftShareId=06a0aaa7-f832-4ddc-a47e-e03a51e82bb9)
-
-# ERD Image 
-**약어 사전**
-
-****
-****
-****
-****
-| 약어 | 뜻 | 약어 | 뜻 |
-|---|---|---|---|
-| id | 고유번호 | msg | 메시지(Message) |
-| nm | 이름(Name) | at | 시각(Date/Time) |
-| stat | 상태(Status) | trans | 이송(Transport) |
-| qty | 수량(Quantity) | req | 요청(Request) |
-| res | 자원(Resource) | insp | 검사(Inspection) |
-| prod | 제품(Product) | ord | 주문(Order) |
-| cate | 카테고리(Category) | opt | 옵션(Option) |
-| cd | 코드(code) | mat | 재질(material) |
-| ptn | 패턴(pattern) | mfg | 생산(Manufacture) |
-
-# 공통 / 기준 정보
-| ptn | 패턴(pattern) | mfg | 생산(Manufacture) | 생산(Manufacture) |   |
-
-## category 
-
-- 
-카테고리 코드 
-
-  - 
-원형 CMH / 사각형 RMH / 타원형 EMH
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-
-| cate_cd | VARCHAR | 카테고리 코드 | Primary Key (EX.cir) |
-| cate_nm | VARCHAR | 카테고리명 | Unique,Not Null(ex) 원형맨홀,사각맨홀 |
-
-## product
-(모든 옵션에 대한 목록 테이블)
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-| prod_id | SERIAL | 제품 id | Primary Key |
-
-| cate_cd | VARCHAR | 카테고리 코드 | FK, Not Null (ex.CMH, EMH, RMH) |
-
-- 
-| prod_nm | VARCHAR | 제품명 | Not Null원형, 타원형, 사각형 |
-| base_price | DECIMAL | 기본 단가 | NOT NULL |
-| img_url | VARCHAR(400) | 기본 이미지 경로 |   |
-
-## product_option
-표준 주조 제품별 옵션 관리를 위한 테이블
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-| prod_opt_id | SERIAL | 제품 id | Primary Key |
-
-| prod_id | INT | 제품 id | FK(product 참조) |
-| mat_type | VARCHAR(20) | 재질 옵션 | (ex. 회주철, 덕타일) |
-| load_class | VARCHAR(20) | 하중 등급 옵션 | (ex.A15, D400, F900) |
-
-# 발주 / 주문 관리
-
-- 
-`customer_order`와 **1:N 관계** (1:N history table) . 
-
-  - 
-시간 (updated_at)에 따라 해당 order에 대한 상태 update 
-
-  - 
-따라서  `order_id` 자체를 PK이자 FK로 사용하는 것이 관리하기 좋음
-
-- 
-`CHECK` 제약 조건 
-step (production_status)
- 생산 중 | DONE 생산 완료 |  Delivering 출고 중 | Shipped 출고완료 
-MFG                              | DONE                 | DLVR                     | SHIP
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-| prog_id | SERIAL | 각 발주 정보마다 progress 진행상태 | PK |
-| ord_id | VARCHAR | 주문 번호 | FK |
-| step | VARCHAR | 공정 상태 | CHECK ('MFG' → ‘DONE' ->  ‘DLVR' → 'SHIP’) |
-| updated_at | TIMESTAMP | 상태 변경 일시 | DEFAULT now() |
-
-## order_detail
-주문 받은 제품 옵션 관리 테이블
-
-- 
-가정 
-
-  - 
-UI에서 비고란 제거 
-
-  - 
-고객이 주문한 정보에서 변경 불가능해서, 발주 입력 완료 순간 특히 가격을 포함한 모든 정보가 변동없음 
-
-  - 
-즉, 하나의 order_id는 하나의 option_id만 가짐 (1:1)
-
-- 
-`customer_order`와 **1:1 관계** 가짐. 따라서  `order_id` 자체를 PK이자 FK로 사용하는 것이 관리하기 좋음
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-
-| ord_id | VARCHAR | 주문 번호 | Primary Key,FK (customer_order 참조) |
-
-| prod_id | INT | 선택한 표준 제품 | FK (product 테이블 참조) |
-| diameter | DECIMAL | 직경 |   |
-| thickness | DECIMAL | 두께 |   |
-| material | VARCHAR(30) | 재질 |   |
-| load | VARCHAR(20) | 하중 등급 |   |
-| qty | INT | 주문 수량 |   |
-| final_price | DECIMAL | 확정 금액 |   |
-| due_date | DATE | 확정납기일 |   |
-| ship_addr | VARCHAR | 배송지 주소 |   |
-
-## Pattern
-패턴 정보 관리 테이블
-가정: 2개의 로봇팔 각 옆에 패턴은 항상 같은 위치에 존재 
-UI상에 패턴 정보 등록하는 부분이 필요함-Qt
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-
-| ptn_id | VARCHAR | 패턴 ID(커스텀된 패턴) | ex.PTN-주문번호PTN-20260414 |
-| ptn_loc | INT | 패턴위치 | (1~6번 위치) |
-
-| ord_id | VARCHAR | 주문 번호 | FK (order 참조) |
-
-## Item
-생산된 모든 제품의 "실시간 공정 단계” 와 “불량품 판단 결과"를 관리하는 마스터 테이블
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-| item_id | SERIAL | 아이템 고유 ID | Primary Key |
-
-| ord_id | VARCHAR | 주문 번호 | FK (order 참조) |
-
-- 
-
-- 
-
-- 
-
-- 
-
-- 
-
-- 
-
-- 
-| cur_stage | VARCHAR(10) | 공정 단계 {LABEL}LABEL Mold Making = MMDemolding = DMPostProcessing = PPInspection = IPTransport_PP = TR_PPTransport_LoadingZone = TR_LDShipping = SH |   |
-
-| curr_res | VARCHAR(10) | 점유 자원 ID | FK(resource 참조) |
-
-| insp_id | INT | 불량품 검사 결과 | FK(inspection_result 참조) |
-``
-| mfg_at | TIMESTAMP | 공정별 시작 시각 | DEFAULT now() |
-|   |   |   |   |
-|   |   |   |   |
-
-## post_process
-후처리 옵션을 관리하는 테이블
-
-- 
-후처리 옵션과 주문서는 N:M 관계
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-| post_id | SERIAL | 후처리 ID | Primary Key |
-| post_name | VARCHAR | 후처리 명칭 |   |
-| extra_cost | DECIMAL | 추가 단가 |   |
-
-## order_post_map
-어떤 주문에 어떤 후처리들이 선택되었는지 기록하는 테이블
-
-- 
-`ord_id`와 `post_id` 두 개를 묶어서 복합 키(Composite PK)로 사용
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-
-| ord_id | VARCHAR | 주문 번호 | PK, FK (order_detail 참조) |
-
-| post_id | INTEGER | 후처리 ID | PK, FK (post_process 참조) |
-
-# 생산 관리
-
-#  
-| post_id | INTEGER | 후처리 ID | PK, FK (post_process 참조) | PK, FK (post_process 참조) | VARCHAR | 이전 상태 |   |
-| new_status | VARCHAR | 변경 상태 |   |
-| changed_at | TIMESTAMP | 변경 시각 | Default now() |
-| reason | VARCHAR | 변경 사유 |   |
-
-## transport_resource
-이송 자원 (AMR) 관리 테이블. 
-
-- 
-`CHECK` 제약 조건 
-trans_res_stat (transport_resource_status)
-idle  유휴 | working   이송중 | charging    충전중 | error   사용불가
-IDLE       | WORK                 | CHRG                   | ERR
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-
-| res_id | VARCHAR | 자원 고유 ID | PK,FK(resource 참조)ex.AMR1 |
-````````
-| trans_res_stat | VARCHAR | 현재 상태 | CHECK ('IDLE', 'WORK','CHRG', 'ERR') |
-| battery | INT | 배터리 잔량(%) |   |
-| updated_at | TIMESTAMP | 상태 갱신 시각 | Default now() |
-
-# 공정 간 이송 관리
-
-# 품질 검사 / 분류 관리
-
-# 적재 / 창고 관리
-
-****
-****
-****
-****
-| 필드명 | 데이터 타입 | 설명 | 비고 |
-|---|---|---|---|
-| location_id | SERIAL | 적재 위치 id | Primary Key |
-| zone_id | VARCHAR | 적재구역 id | REF zone(zone_id) |
-| item_id | INT | 아이템 id (낱개) | REF item(item_id) |
-| map position |   | (r, c) | (row, column)을 저장하고, 실제 (x, y, z)위치는 하드 코딩 |
-``````
-| status | VARCHAR | 위치 상태 | empty \| occupied \| reserved |
-| stored_at | TIMESTAMP | 적재된 시간 | Default now() |
-
-# 출고 관리
+**최종 수정**: v58 (2026-04-16 sync)
 
 ### GUI (6389916)
 
@@ -2224,7 +2002,7 @@ SR내용+ GUI내용 통합 버전
 ### SmartCast Robotics GitHub 폴더 구조 초안 (20217883)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/20217883
-**최종 수정**: v16 (2026-04-11 sync)
+**최종 수정**: v17 (2026-04-16 sync)
 
 # SmartCast Robotics GitHub 폴더 구조 초안
 
