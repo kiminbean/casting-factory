@@ -146,7 +146,11 @@ class DashboardPage(QWidget):
 
         layout.addWidget(self._conveyor_bar)
 
-        # 공장 현황 맵 (확대)
+        # 중단: 공장 맵(왼쪽 50%) | 주간 차트 + 최근 주문(오른쪽 50%)
+        mid_row = QHBoxLayout()
+        mid_row.setSpacing(14)
+
+        # -- 왼쪽: 공장 현황 맵 --
         map_container = QFrame()
         map_container.setObjectName("tableCard")
         map_layout = QVBoxLayout(map_container)
@@ -158,19 +162,19 @@ class DashboardPage(QWidget):
         map_layout.addWidget(map_title)
 
         self._mini_map = MiniFactoryMapView()
-        self._mini_map.setMinimumHeight(350)
-        self._mini_map.setMaximumHeight(500)
-        map_layout.addWidget(self._mini_map)
+        self._mini_map.setMinimumHeight(300)
+        self._mini_map.setMaximumHeight(16777215)
+        map_layout.addWidget(self._mini_map, stretch=1)
 
-        layout.addWidget(map_container, stretch=4)
+        mid_row.addWidget(map_container, stretch=1)
 
-        # 중단 Row 2: 주간 차트 + 최근 주문 (가로 분할)
-        middle_row = QHBoxLayout()
-        middle_row.setSpacing(14)
+        # -- 오른쪽: 주간 차트(위) + 최근 주문(아래) --
+        right_col = QVBoxLayout()
+        right_col.setSpacing(14)
 
         self._weekly_chart = WeeklyProductionChart()
-        self._weekly_chart.setMinimumHeight(240)
-        middle_row.addWidget(self._weekly_chart, stretch=3)
+        self._weekly_chart.setMinimumHeight(180)
+        right_col.addWidget(self._weekly_chart, stretch=1)
 
         # 최근 주문 테이블
         orders_container = QFrame()
@@ -194,8 +198,10 @@ class DashboardPage(QWidget):
         self._orders_table.setEditTriggers(QTableWidget.NoEditTriggers)
         orders_layout.addWidget(self._orders_table)
 
-        middle_row.addWidget(orders_container, stretch=2)
-        layout.addLayout(middle_row, stretch=2)
+        right_col.addWidget(orders_container, stretch=1)
+
+        mid_row.addLayout(right_col, stretch=1)
+        layout.addLayout(mid_row, stretch=4)
 
         # 알림 목록 (하단) - severity 아이콘/색상 위젯
         alert_title = QLabel("실시간 알림")
