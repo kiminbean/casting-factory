@@ -180,6 +180,27 @@ class ManagementClient:
         req = management_pb2.WatchAlertsRequest(severity_filter=severity_filter or "")
         return self._stub.WatchAlerts(req)
 
+    def get_robot_status(self) -> list[dict]:
+        """AMR/Cobot 실시간 상태 조회. dict list 반환."""
+        try:
+            req = management_pb2.GetRobotStatusRequest()
+            resp = self._stub.GetRobotStatus(req, timeout=self._timeout)
+            return [
+                {
+                    "id": r.id,
+                    "type": "amr" if r.type == 1 else "cobot" if r.type == 2 else "unknown",
+                    "host": r.host,
+                    "status": r.status,
+                    "battery": round(r.battery, 1),
+                    "voltage": round(r.voltage, 3),
+                    "location": r.location,
+                }
+                for r in resp.robots
+            ]
+        except grpc.RpcError as e:
+            logger.warning("GetRobotStatus 실패: %s", e)
+            return []
+
     @staticmethod
     def stage_code_to_label(code: int) -> str:
         """proto enum 정수 → 코드 문자열 (UI 매핑용)."""

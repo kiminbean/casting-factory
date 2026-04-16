@@ -180,6 +180,26 @@ message WatchAlertsRequest {
 }
 
 // -----------------------------------------------------------------------------
+// Robot Status (AMR / Cobot 실시간 상태)
+// -----------------------------------------------------------------------------
+
+message GetRobotStatusRequest {}
+
+message RobotStatusEntry {
+  string    id       = 1;  // "AMR-001", "COBOT-001" 등
+  RobotType type     = 2;
+  string    host     = 3;  // Tailscale IP
+  string    status   = 4;  // "online" | "offline" | "error"
+  float     battery  = 5;  // 0~100 (AMR 전용, Cobot 은 0)
+  float     voltage  = 6;  // 배터리 전압 (V)
+  string    location = 7;
+}
+
+message GetRobotStatusResponse {
+  repeated RobotStatusEntry robots = 1;
+}
+
+// -----------------------------------------------------------------------------
 // Service Definition
 // -----------------------------------------------------------------------------
 
@@ -200,6 +220,9 @@ service ManagementService {
   // Execution Monitor — server streaming
   rpc WatchItems(WatchItemsRequest) returns (stream ItemEvent);
   rpc WatchAlerts(WatchAlertsRequest) returns (stream AlertEvent);
+
+  // Robot Status
+  rpc GetRobotStatus(GetRobotStatusRequest) returns (GetRobotStatusResponse);
 
   // Health
   rpc Health(Empty) returns (Empty);

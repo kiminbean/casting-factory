@@ -32,29 +32,6 @@ APP_VERSION: str = "1.0.0"
 
 REFRESH_INTERVAL_MS: int = 8000
 
-# AMR SSH 설정 (Pinky Pro, Tailscale)
-# 형식: [(id, host, user, password, port), …]
-AMR_TARGETS: list[tuple[str, str, str, str, int]] = [
-    (
-        os.environ.get("AMR_1_ID", "AMR-001"),
-        os.environ.get("AMR_1_HOST", "100.115.21.107"),
-        os.environ.get("AMR_1_USER", "pinky"),
-        os.environ.get("AMR_1_PASS", "1"),
-        int(os.environ.get("AMR_1_PORT", "22")),
-    ),
-    (
-        os.environ.get("AMR_2_ID", "AMR-002"),
-        os.environ.get("AMR_2_HOST", "100.100.103.96"),
-        os.environ.get("AMR_2_USER", "pinky"),
-        os.environ.get("AMR_2_PASS", "1"),
-        int(os.environ.get("AMR_2_PORT", "22")),
-    ),
-    (
-        os.environ.get("AMR_3_ID", "AMR-003"),
-        os.environ.get("AMR_3_HOST", "100.87.221.81"),
-        os.environ.get("AMR_3_USER", "pinky"),
-        os.environ.get("AMR_3_PASS", "1"),
-        int(os.environ.get("AMR_3_PORT", "22")),
-    ),
-]
+# AMR 상태 폴링 간격 (PyQt → gRPC → Management Service)
+# SSH 접속 설정은 backend/.env.local 의 MGMT_AMR_*_HOST 참조
 AMR_POLL_INTERVAL: float = float(os.environ.get("AMR_POLL_INTERVAL", "10"))

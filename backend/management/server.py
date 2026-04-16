@@ -47,6 +47,7 @@ from services.execution_monitor import ExecutionMonitor  # noqa: E402
 from services.image_sink import sink as image_sink  # noqa: E402
 from services.image_forwarder import ForwarderConfig, ImageForwarder  # noqa: E402
 from services.ai_client import AIServerConfig, AIUploader  # noqa: E402
+from services.amr_battery import AmrBatteryService  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,9 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
         self.execution_monitor = ExecutionMonitor(
             image_forwarder=self.image_forwarder,
         )
+        # AMR 배터리 폴링 (SSH → pinkylib)
+        self.amr_battery = AmrBatteryService()
+        self.amr_battery.start()
 
     # ---------- Task Manager ----------
     def StartProduction(self, request, context):
@@ -152,6 +156,21 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
             if context.is_active() is False:
                 break
             yield event
+
+    # ---------- Robot Status ----------
+    def GetRobotStatus(self, request, context):
+        entries = []
+        for s in self.amr_battery.get_all():
+            entries.append(management_pb2.RobotStatusEntry(
+                id=s.id,
+                type=management_pb2.ROBOT_TYPE_AMR,
+                host=s.host,
+                status=s.status,
+                battery=s.battery,
+                voltage=s.voltage,
+                location=s.location,
+            ))
+        return management_pb2.GetRobotStatusResponse(robots=entries)
 
     # ---------- Health ----------
     def Health(self, request, context):

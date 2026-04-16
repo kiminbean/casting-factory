@@ -32,7 +32,7 @@ from app.pages.quality import QualityPage
 from app.pages.schedule import SchedulePage
 from app.widgets.alert_widgets import ToastNotification, _normalize_level
 from app.ws_worker import WebSocketWorker
-from config import APP_NAME, APP_VERSION, AMR_POLL_INTERVAL, AMR_TARGETS, REFRESH_INTERVAL_MS
+from config import APP_NAME, APP_VERSION, AMR_POLL_INTERVAL, REFRESH_INTERVAL_MS
 
 
 NAV_ITEMS: list[tuple[str, str]] = [
@@ -416,21 +416,16 @@ class MainWindow(QMainWindow):
             if hasattr(page, "handle_mqtt_message"):
                 page.handle_mqtt_message(topic, payload)
 
-    # ---------- AMR 실시간 배터리 (SSH 폴링) ----------
+    # ---------- AMR 실시간 배터리 (gRPC → Management Service) ----------
     def _start_amr_status(self) -> None:
-        if not AMR_TARGETS:
-            return
         try:
             from app.workers.amr_status_worker import (
-                AmrSshTarget,
                 AmrStatusThread,
                 AmrStatusWorker,
             )
         except ImportError:
             return
-        targets = [AmrSshTarget(id=t[0], host=t[1], user=t[2], password=t[3], port=t[4])
-                   for t in AMR_TARGETS]
-        self._amr_worker = AmrStatusWorker(targets, poll_interval=AMR_POLL_INTERVAL)
+        self._amr_worker = AmrStatusWorker(poll_interval=AMR_POLL_INTERVAL)
         self._amr_worker.status_updated.connect(self._on_amr_status)
         self._amr_thread = AmrStatusThread(self._amr_worker)
         self._amr_thread.start()
