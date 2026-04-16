@@ -3,22 +3,22 @@
 Elephant Robotics MyCobot 280 (JetCobot 에디션) 을 Mgmt Server 에서 조작하기 위한
 임시 어댑터. ROS2 드라이버(mycobot_ros2) 가 설치·기동되면 ros2_adapter 로 이전 예정.
 
-사용 패턴:
+사용 패턴 (멀티 인스턴스):
     from services.adapters.jetcobot_adapter import JetCobotAdapter
-    jc = JetCobotAdapter.from_env()
-    if jc.enabled:
-        print(jc.get_angles())          # [-34.2, -38.9, 7.1, 30.9, -1.0, 45.7]
-        print(jc.get_coords())          # [x, y, z, rx, ry, rz]
-        jc.send_angles([0,0,0,0,0,0], speed=30)
+    jc1 = JetCobotAdapter.from_env("1")   # MGMT_JETCOBOT_1_HOST …
+    jc2 = JetCobotAdapter.from_env("2")   # MGMT_JETCOBOT_2_HOST …
 
-환경변수:
-    MGMT_JETCOBOT_HOST          Tailscale IP
-    MGMT_JETCOBOT_USER          기본 jetcobot
-    MGMT_JETCOBOT_PASS          (또는 MGMT_JETCOBOT_SSH_KEY)
-    MGMT_JETCOBOT_PORT          기본 22
-    MGMT_JETCOBOT_SERIAL        로봇측 시리얼 경로 (기본 /dev/ttyJETCOBOT)
-    MGMT_JETCOBOT_BAUD          기본 1000000
-    MGMT_JETCOBOT_VENV_PY       기본 ~/venv/mycobot/bin/python
+    # 하위 호환: 인덱스 없이 호출하면 MGMT_JETCOBOT_HOST 참조
+    jc = JetCobotAdapter.from_env()
+
+환경변수 (접두어 MGMT_JETCOBOT_{idx}_):
+    MGMT_JETCOBOT_{idx}_HOST          Tailscale IP
+    MGMT_JETCOBOT_{idx}_USER          기본 jetcobot
+    MGMT_JETCOBOT_{idx}_PASS          (또는 MGMT_JETCOBOT_{idx}_SSH_KEY)
+    MGMT_JETCOBOT_{idx}_PORT          기본 22
+    MGMT_JETCOBOT_{idx}_SERIAL        로봇측 시리얼 경로 (기본 /dev/ttyJETCOBOT)
+    MGMT_JETCOBOT_{idx}_BAUD          기본 1000000
+    MGMT_JETCOBOT_{idx}_VENV_PY       기본 ~/venv/mycobot/bin/python
 
 @MX:NOTE: SSH 왕복 ~130ms (Tailscale 기준). 실시간 제어는 지연이 중요하면 부족 —
         ROS2 마이그레이션 시 DDS 로 교체 예정.
@@ -48,19 +48,21 @@ class JetCobotConfig:
     enabled: bool = False
 
     @classmethod
-    def from_env(cls) -> "JetCobotConfig":
-        host = os.environ.get("MGMT_JETCOBOT_HOST", "").strip()
-        user = os.environ.get("MGMT_JETCOBOT_USER", "jetcobot").strip()
-        password = os.environ.get("MGMT_JETCOBOT_PASS") or None
-        key_path = os.environ.get("MGMT_JETCOBOT_SSH_KEY") or None
+    def from_env(cls, idx: str = "") -> "JetCobotConfig":
+        """환경변수로부터 설정 로드. idx="1" → MGMT_JETCOBOT_1_HOST 등."""
+        prefix = f"MGMT_JETCOBOT_{idx}_" if idx else "MGMT_JETCOBOT_"
+        host = os.environ.get(f"{prefix}HOST", "").strip()
+        user = os.environ.get(f"{prefix}USER", "jetcobot").strip()
+        password = os.environ.get(f"{prefix}PASS") or None
+        key_path = os.environ.get(f"{prefix}SSH_KEY") or None
         enabled = bool(host and user and (password or key_path))
         return cls(
             host=host, user=user,
-            port=int(os.environ.get("MGMT_JETCOBOT_PORT", "22")),
+            port=int(os.environ.get(f"{prefix}PORT", "22")),
             password=password, key_path=key_path,
-            serial=os.environ.get("MGMT_JETCOBOT_SERIAL", "/dev/ttyJETCOBOT"),
-            baud=int(os.environ.get("MGMT_JETCOBOT_BAUD", "1000000")),
-            venv_py=os.environ.get("MGMT_JETCOBOT_VENV_PY", "~/venv/mycobot/bin/python"),
+            serial=os.environ.get(f"{prefix}SERIAL", "/dev/ttyJETCOBOT"),
+            baud=int(os.environ.get(f"{prefix}BAUD", "1000000")),
+            venv_py=os.environ.get(f"{prefix}VENV_PY", "~/venv/mycobot/bin/python"),
             enabled=enabled,
         )
 
@@ -76,8 +78,8 @@ class JetCobotAdapter:
         self.cfg = config
 
     @classmethod
-    def from_env(cls) -> "JetCobotAdapter":
-        return cls(JetCobotConfig.from_env())
+    def from_env(cls, idx: str = "") -> "JetCobotAdapter":
+        return cls(JetCobotConfig.from_env(idx))
 
     @property
     def enabled(self) -> bool:

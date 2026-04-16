@@ -1,5 +1,160 @@
 @AGENTS.md
 
+# CLAUDE.md
+
+## Project
+This repository is a full-stack product codebase.
+Primary goal: ship clear, maintainable, production-ready features with minimal complexity.
+Optimize for correctness, readability, and small diffs over cleverness.
+
+Typical stack assumptions unless files indicate otherwise:
+- Frontend: React / Next.js / TypeScript
+- Backend: Node.js or Python API services
+- Database: PostgreSQL
+- Cache/queue: Redis if present
+- Infra: Docker, Vercel, AWS, or similar
+- Package manager: prefer the one already used in the repo (`pnpm`, `npm`, `yarn`, `uv`, `poetry`, etc.)
+
+## Working style
+- Think first, edit second.
+- Before making non-trivial changes, write a short plan in 3-6 bullets.
+- Prefer the smallest change that fully solves the problem.
+- Preserve existing architecture unless there is a clear reason to improve it.
+- Do not introduce new abstractions, layers, hooks, helpers, or services unless repetition or complexity truly justifies them.
+- Avoid framework churn and dependency churn.
+- Remove dead code, stale comments, unused imports, and temporary debug artifacts after finishing work.
+- When uncertain, ask for clarification instead of guessing business logic.
+
+## Core engineering rules
+- Use TypeScript strict mode wherever TypeScript is present.
+- Do not use `any` unless absolutely unavoidable; prefer explicit types.
+- Prefer named exports over default exports.
+- Favor pure functions and small modules.
+- Keep functions short and single-purpose.
+- Prefer composition over inheritance.
+- Match existing repository conventions before introducing new patterns.
+- Comments should explain why, not restate what the code already says.
+- Do not leave placeholder code, fake TODO implementations, or mocked production paths unless explicitly requested.
+
+## Frontend rules
+- Build simple, predictable UI components.
+- Prefer server-driven data flow where the framework supports it.
+- Keep presentational components separate from data-fetching/business logic when practical.
+- Minimize client-side state; derive state when possible.
+- Do not overuse global state.
+- Use accessibility-friendly HTML first, then enhance.
+- Preserve design-system consistency if a UI library or component folder already exists.
+- Avoid deeply nested component trees and prop chains when a simpler layout is possible.
+- Handle loading, empty, error, and success states explicitly.
+
+## Backend rules
+- Keep handlers/controllers thin.
+- Put domain logic in clearly named service or use-case modules if the project already follows that pattern.
+- Validate all external input at boundaries.
+- Return consistent response shapes.
+- Prefer explicit error handling over silent failure.
+- Make database queries predictable and easy to inspect.
+- Avoid N+1 query patterns.
+- Keep API contracts stable; do not break existing clients without calling it out.
+- For background jobs, make retries and idempotency explicit.
+
+## Database rules
+- Treat schema changes as high-risk.
+- For migrations, prefer additive and reversible changes when possible.
+- Never destroy or rename production data structures without a migration plan.
+- Index fields intentionally, not speculatively.
+- Keep ORM models and SQL schema aligned.
+- If a query is performance-sensitive, explain tradeoffs briefly in code or PR notes.
+
+## Security rules
+- Never commit secrets or modify `.env` files with real credentials.
+- Sanitize and validate all untrusted input.
+- Protect auth, session, token, and webhook logic carefully.
+- Use least-privilege assumptions for backend integrations.
+- Do not log secrets, tokens, passwords, or sensitive PII.
+- Flag any security-sensitive change explicitly before finishing.
+
+## Testing rules
+- Add or update tests for non-trivial logic changes.
+- Prefer focused unit tests for pure logic and integration tests for API/database behavior.
+- Do not rewrite the entire test suite for a small feature.
+- If tests are absent, add the smallest meaningful coverage near the changed code.
+- Ensure existing tests still pass unless the task explicitly changes behavior.
+- Mention untested risk areas clearly if full coverage is impractical.
+
+## Performance rules
+- Prefer simple solutions first, then optimize measured bottlenecks.
+- Avoid unnecessary re-renders, duplicate requests, and repeated heavy computations.
+- Be careful with large payloads, unbounded queries, and expensive serialization.
+- For hot paths, choose clarity plus measured efficiency.
+
+## Git and change management
+- Make atomic changes.
+- Do not mix unrelated refactors with feature work.
+- Preserve backwards compatibility unless the task is explicitly a breaking change.
+- When refactoring, keep behavior unchanged and verify with tests where possible.
+- Summarize important tradeoffs and follow-up work at the end of the task.
+
+## Planning mode
+For medium or large tasks:
+1. Understand the request and inspect relevant files first.
+2. Produce a short implementation plan.
+3. Execute in small steps.
+4. After each step, verify nothing else was broken.
+5. Clean up dead code and confirm final behavior.
+
+## File review checklist
+Before editing, inspect:
+- package manifests
+- tsconfig / eslint / prettier settings
+- existing route and folder conventions
+- environment variable examples
+- test setup
+- CI config if relevant
+
+## Commands
+Use the project’s existing commands first. Common defaults:
+- Dev: `pnpm dev` / `npm run dev`
+- Build: `pnpm build` / `npm run build`
+- Lint: `pnpm lint` / `npm run lint`
+- Typecheck: `pnpm typecheck` / `npm run typecheck`
+- Test: `pnpm test` / `npm run test`
+- E2E: `pnpm test:e2e` / `npm run test:e2e`
+- Backend dev: check repo-specific scripts before inventing new ones
+Never assume commands; inspect `package.json`, `Makefile`, `pyproject.toml`, or repo docs first.
+
+## Architecture expectations
+Prefer this mental model unless the repo clearly uses another:
+- `app/`, `pages/`, or `src/routes/`: routing and entrypoints
+- `components/`: reusable UI
+- `features/`: feature-scoped UI and logic
+- `lib/`: shared utilities
+- `server/` or `api/`: backend endpoints and services
+- `db/`, `prisma/`, or `sql/`: schema and migrations
+- `tests/`: automated tests
+Respect the actual repository structure over this default.
+
+## Invariants
+- Do not change public API contracts silently.
+- Do not silently change database semantics.
+- Do not replace existing libraries without strong justification.
+- Do not add new dependencies unless necessary.
+- Do not weaken typing, validation, or security checks for convenience.
+- Do not make the code “more generic” unless that genericity is already needed now.
+
+## Output expectations
+When completing a task:
+- Briefly state what changed.
+- Mention files touched.
+- Mention how it was verified.
+- Mention remaining risks or assumptions.
+- Keep the summary concise and concrete.
+
+## If blocked
+- State exactly what is missing.
+- Offer the smallest next diagnostic step.
+- Do not fabricate behavior, data, APIs, or hidden business rules.
+
 # V6 아키텍처 결정 (2026-04-14)
 
 **프로세스 이원화**:
