@@ -129,6 +129,43 @@ async def simulate_handoff_ack(
     )
 
 
+class HandoffNotifyRequest(BaseModel):
+    """Management Service gRPC 핸들러 → FastAPI WebSocket 브리지.
+
+    Mgmt Service 와 FastAPI 는 별도 프로세스이므로 gRPC 처리 후 PyQt/Next.js 로
+    실시간 전파하려면 IPC 필요. 가장 간단한 방법으로 Mgmt 가 이 내부 엔드포인트에
+    POST 하면 FastAPI ConnectionManager 가 WebSocket 으로 브로드캐스트한다.
+
+    보안: localhost 전용 (CORS 로 막히진 않지만 관례상 내부 호출용).
+    """
+    task_id: str = ""
+    amr_id: str = ""
+    zone: str = "postprocessing"
+    ack_at: str
+    orphan: bool = False
+    source: str = "management_grpc"
+
+
+# dev 외에 prod 에서도 Mgmt 가 호출해야 하므로 public 내부 엔드포인트로 분리된 router 도 고려 가능.
+# 현재는 debug.py 내에 함께 두되 prod 에선 별도 경로로 이관 예정.
+@router.post("/_notify/handoff-ack")
+async def notify_handoff_ack(payload: HandoffNotifyRequest):
+    """Mgmt Service 가 호출 → WebSocket 브로드캐스트."""
+    from app.routes.websocket import manager
+    await manager.broadcast(
+        {
+            "type": "handoff.ack",
+            "task_id": payload.task_id,
+            "amr_id": payload.amr_id,
+            "zone": payload.zone,
+            "ack_at": payload.ack_at,
+            "orphan": payload.orphan,
+            "source": payload.source,
+        }
+    )
+    return {"broadcast": True, "listeners": len(manager.active_connections)}
+
+
 @router.get("/handoff-acks/recent")
 async def recent_handoff_acks(limit: int = 20, db: Session = Depends(get_db)):
     """최근 ACK 이벤트 목록 (디버깅 보조)."""

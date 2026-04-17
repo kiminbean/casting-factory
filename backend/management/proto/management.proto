@@ -258,6 +258,9 @@ service ManagementService {
   // AMR State Machine — 외부 상태 전이
   rpc TransitionAmrState(TransitionAmrStateRequest) returns (TransitionAmrStateResponse);
 
+  // SPEC-AMR-001: 후처리존 인수인계 버튼 이벤트 수신
+  rpc ReportHandoffAck(HandoffAckEvent) returns (HandoffAckResponse);
+
   // Health
   rpc Health(Empty) returns (Empty);
 
@@ -269,6 +272,27 @@ message WatchFramesRequest {
   string camera_id      = 1;
   uint64 after_sequence = 2;   // 재연결 시 이 seq 이후 프레임만
   // keepalive timeout 은 서버 고정값 (10s). 상위 큰 트래픽 지연 방지.
+}
+
+// -----------------------------------------------------------------------------
+// Handoff Acknowledgment (SPEC-AMR-001)
+// ESP32 버튼 → Jetson → Management. 작업자 인수인계 완료 신호를 수신하여
+// 대기 중인 AMR 태스크를 FIFO 로 해제한다.
+// -----------------------------------------------------------------------------
+
+message HandoffAckEvent {
+  string    source_device = 1;   // "ESP-CONVEYOR-01" 또는 "SIM-KEYBOARD"
+  string    zone          = 2;   // "postprocessing"
+  Timestamp occurred_at   = 3;
+  string    idempotency_key = 4; // 재전송 중복 방지 (source_device + event_ts_millis)
+}
+
+message HandoffAckResponse {
+  bool   accepted = 1;
+  string task_id  = 2;  // 해제된 태스크 ID (orphan 이면 빈 문자열)
+  string amr_id   = 3;  // 해제된 AMR ID (orphan 이면 빈 문자열)
+  string reason   = 4;  // "released" | "orphan_no_waiting_task" | "duplicate" | "error"
+  string ack_at   = 5;  // ISO8601 UTC
 }
 
 message CameraFrameResponse {

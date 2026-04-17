@@ -209,6 +209,114 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
             reason=f"invalid_transition: {ctx.state.name} → {new_state.name}",
         )
 
+    # ---------- Handoff ACK (SPEC-AMR-001) ----------
+    def ReportHandoffAck(self, request, context):
+        """후처리존 인수인계 버튼 이벤트 수신 → AMR 해제 + DB insert.
+
+        처리 순서:
+          1. FSM 에서 대기 중 AMR 조회 (FIFO)
+          2. DB 에 handoff_acks row insert (orphan 여부 포함)
+          3. 매칭 AMR 이 있으면 FSM 전이 (UNLOAD_COMPLETED)
+          4. TransportTask 상태도 'handoff_complete' 로 업데이트
+          5. 응답 반환 (Jetson 측이 idempotency 로 재전송 방지)
+        """
+        from datetime import datetime, timezone
+        from app.database import SessionLocal
+        from app.models import HandoffAck, TransportTask
+
+        zone = request.zone or "postprocessing"
+        source_device = request.source_device or "unknown"
+        idempotency_key = request.idempotency_key or None
+
+        # 1. 대기 AMR 조회
+        target_amr = self.amr_state_machine.find_waiting_amr_at_zone(zone)
+        orphan = target_amr is None
+
+        # 2. DB insert
+        now = datetime.now(timezone.utc)
+        db = SessionLocal()
+        try:
+            # idempotency 중복 체크
+            if idempotency_key:
+                dup = db.query(HandoffAck).filter(
+                    HandoffAck.idempotency_key == idempotency_key
+                ).first()
+                if dup is not None:
+                    logger.info("ReportHandoffAck: 중복 이벤트 skip key=%s", idempotency_key)
+                    return management_pb2.HandoffAckResponse(
+                        accepted=True,
+                        task_id=dup.task_id or "",
+                        amr_id=dup.amr_id or "",
+                        reason="duplicate",
+                        ack_at=dup.ack_at.isoformat() if dup.ack_at else now.isoformat(),
+                    )
+
+            # TransportTask 매칭 (해당 AMR 의 in-flight 태스크)
+            task_id = ""
+            if target_amr:
+                task = db.query(TransportTask).filter(
+                    TransportTask.assigned_robot_id == target_amr,
+                    TransportTask.status.in_(("in_progress", "assigned", "waiting_handoff_ack")),
+                ).order_by(TransportTask.requested_at.asc()).first()
+                if task:
+                    task_id = task.id
+                    task.status = "handoff_complete"
+                    task.completed_at = now.isoformat()
+
+            db.add(HandoffAck(
+                ack_at=now,
+                task_id=task_id or None,
+                zone=zone,
+                amr_id=target_amr or None,
+                ack_source="esp32_button",
+                button_device_id=source_device,
+                orphan_ack=orphan,
+                idempotency_key=idempotency_key,
+                extra={"via": "grpc"},
+            ))
+            db.commit()
+        finally:
+            db.close()
+
+        # 3. FSM 전이
+        reason = "orphan_no_waiting_task"
+        if target_amr:
+            ok, fsm_reason = self.amr_state_machine.confirm_handoff(target_amr)
+            reason = fsm_reason if ok else f"fsm_reject:{fsm_reason}"
+
+        # 4. FastAPI WebSocket 브로드캐스트 (IPC via HTTP)
+        # Mgmt Service 와 FastAPI 는 별도 프로세스 → 내부 notify 엔드포인트 호출.
+        # 실패해도 이벤트 자체는 DB 에 저장됐으므로 경고 로그만.
+        try:
+            import urllib.request, json as _json  # noqa: E401  표준 라이브러리만 사용 (httpx 의존 회피)
+            notify_url = os.environ.get(
+                "INTERFACE_NOTIFY_URL",
+                "http://localhost:8000/api/debug/_notify/handoff-ack",
+            )
+            body = _json.dumps({
+                "task_id": task_id,
+                "amr_id": target_amr or "",
+                "zone": zone,
+                "ack_at": now.isoformat(),
+                "orphan": orphan,
+                "source": "management_grpc",
+            }).encode()
+            req = urllib.request.Request(
+                notify_url, data=body,
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            urllib.request.urlopen(req, timeout=1.0).read()
+        except Exception as e:
+            logger.warning("Handoff WebSocket notify 실패 (무시): %s", e)
+
+        return management_pb2.HandoffAckResponse(
+            accepted=True,
+            task_id=task_id,
+            amr_id=target_amr or "",
+            reason=reason,
+            ack_at=now.isoformat(),
+        )
+
     # ---------- Health ----------
     def Health(self, request, context):
         return management_pb2.Empty()

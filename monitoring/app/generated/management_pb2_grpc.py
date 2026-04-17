@@ -83,6 +83,11 @@ class ManagementServiceStub(object):
                 request_serializer=management__pb2.TransitionAmrStateRequest.SerializeToString,
                 response_deserializer=management__pb2.TransitionAmrStateResponse.FromString,
                 _registered_method=True)
+        self.ReportHandoffAck = channel.unary_unary(
+                '/casting.management.v1.ManagementService/ReportHandoffAck',
+                request_serializer=management__pb2.HandoffAckEvent.SerializeToString,
+                response_deserializer=management__pb2.HandoffAckResponse.FromString,
+                _registered_method=True)
         self.Health = channel.unary_unary(
                 '/casting.management.v1.ManagementService/Health',
                 request_serializer=management__pb2.Empty.SerializeToString,
@@ -163,6 +168,13 @@ class ManagementServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ReportHandoffAck(self, request, context):
+        """SPEC-AMR-001: 후처리존 인수인계 버튼 이벤트 수신
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Health(self, request, context):
         """Health
         """
@@ -224,6 +236,11 @@ def add_ManagementServiceServicer_to_server(servicer, server):
                     servicer.TransitionAmrState,
                     request_deserializer=management__pb2.TransitionAmrStateRequest.FromString,
                     response_serializer=management__pb2.TransitionAmrStateResponse.SerializeToString,
+            ),
+            'ReportHandoffAck': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReportHandoffAck,
+                    request_deserializer=management__pb2.HandoffAckEvent.FromString,
+                    response_serializer=management__pb2.HandoffAckResponse.SerializeToString,
             ),
             'Health': grpc.unary_unary_rpc_method_handler(
                     servicer.Health,
@@ -483,6 +500,33 @@ class ManagementService(object):
             '/casting.management.v1.ManagementService/TransitionAmrState',
             management__pb2.TransitionAmrStateRequest.SerializeToString,
             management__pb2.TransitionAmrStateResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReportHandoffAck(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/casting.management.v1.ManagementService/ReportHandoffAck',
+            management__pb2.HandoffAckEvent.SerializeToString,
+            management__pb2.HandoffAckResponse.FromString,
             options,
             channel_credentials,
             insecure,

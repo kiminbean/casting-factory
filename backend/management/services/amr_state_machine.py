@@ -58,7 +58,9 @@ _TRANSITIONS: dict[TaskState, set[TaskState]] = {
     TaskState.LOADING:          {TaskState.LOAD_COMPLETED, TaskState.FAILED},
     TaskState.LOAD_COMPLETED:   {TaskState.MOVE_TO_DEST, TaskState.FAILED},
     TaskState.MOVE_TO_DEST:     {TaskState.AT_DESTINATION, TaskState.FAILED},
-    TaskState.AT_DESTINATION:   {TaskState.UNLOADING, TaskState.FAILED},
+    # SPEC-AMR-001: 후처리존 핸드오프 버튼은 AT_DESTINATION 에서 UNLOADING 을 건너뛰고
+    # 바로 UNLOAD_COMPLETED 로 전이할 수 있음 (작업자가 수동 하역 후 버튼 눌렀다는 의미).
+    TaskState.AT_DESTINATION:   {TaskState.UNLOADING, TaskState.UNLOAD_COMPLETED, TaskState.FAILED},
     TaskState.UNLOADING:        {TaskState.UNLOAD_COMPLETED, TaskState.FAILED},
     TaskState.UNLOAD_COMPLETED: {TaskState.IDLE, TaskState.FAILED},
     TaskState.FAILED:           {TaskState.IDLE},
@@ -140,6 +142,54 @@ class AmrStateMachine:
                 robot_id, old, new_state.name, ctx.task_id, ctx.loaded_item,
             )
             return True
+
+    def confirm_handoff(self, robot_id: str) -> tuple[bool, str]:
+        """SPEC-AMR-001: 후처리존 핸드오프 버튼 이벤트 수신 시 호출.
+
+        AT_DESTINATION 또는 UNLOADING 상태의 AMR 을 UNLOAD_COMPLETED 로 전이한다.
+        다른 상태면 전이 거부 + 로그.
+
+        Returns: (accepted, reason)
+          - (True, "released") 전이 성공
+          - (False, "wrong_state:<현재상태>") 현재 상태가 부적합
+          - (False, "not_registered") AMR 미등록
+        """
+        with self._lock:
+            ctx = self._robots.get(robot_id)
+            if ctx is None:
+                logger.warning("confirm_handoff: %s 미등록 AMR", robot_id)
+                return False, "not_registered"
+
+            if ctx.state not in (TaskState.AT_DESTINATION, TaskState.UNLOADING):
+                logger.warning(
+                    "confirm_handoff: %s 상태 부적합 %s (AT_DESTINATION/UNLOADING 요구)",
+                    robot_id, ctx.state.name,
+                )
+                return False, f"wrong_state:{ctx.state.name}"
+
+            old = ctx.state.name
+            ctx.state = TaskState.UNLOAD_COMPLETED
+            ctx.updated_at = time.monotonic()
+            logger.info("confirm_handoff: %s %s → UNLOAD_COMPLETED (버튼)", robot_id, old)
+            return True, "released"
+
+    def find_waiting_amr_at_zone(self, zone: str) -> str | None:
+        """SPEC-AMR-001: 주어진 zone 에서 핸드오프 ACK 대기 중인 가장 오래된 AMR 조회.
+
+        FIFO: updated_at 이 가장 오래된 AT_DESTINATION/UNLOADING 상태 AMR.
+        `zone` 파라미터는 향후 zone 매핑 정보가 AmrContext 에 추가되면 필터링용.
+        현재는 AT_DESTINATION/UNLOADING 이면 후처리존으로 간주.
+        """
+        with self._lock:
+            candidates = [
+                (rid, ctx.updated_at)
+                for rid, ctx in self._robots.items()
+                if ctx.state in (TaskState.AT_DESTINATION, TaskState.UNLOADING)
+            ]
+            if not candidates:
+                return None
+            candidates.sort(key=lambda x: x[1])
+            return candidates[0][0]
 
     def force_reset(self, robot_id: str) -> None:
         """강제 IDLE 리셋 (비상 정지 등)."""

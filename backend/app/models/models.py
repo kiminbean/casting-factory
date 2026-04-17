@@ -277,9 +277,9 @@ class HandoffAck(Base):
 
     __tablename__ = "handoff_acks"
 
-    # TimescaleDB 요구: PK 에 시간 컬럼 포함 → (id, ack_at) 복합 PK
+    # DB 서버에 TimescaleDB 미설치 → 단순 PK 사용. 추후 hypertable 전환 시 (id, ack_at) 로 변경.
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    ack_at = Column(DateTime(timezone=True), primary_key=True, nullable=False, default=_utc_now)
+    ack_at = Column(DateTime(timezone=True), nullable=False, default=_utc_now, index=True)
     task_id = Column(String, ForeignKey("transport_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
     zone = Column(String, nullable=False, index=True)
     amr_id = Column(String, nullable=True)
