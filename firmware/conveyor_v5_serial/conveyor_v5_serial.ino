@@ -26,6 +26,8 @@
  */
 
 #include <HardwareSerial.h>
+#include <SPI.h>
+#include <MFRC522.h>
 
 // === Feature flags ===
 #define ENABLE_WIFI_MQTT 0   // v5.0 기본 꺼둠. 1 로 바꾸면 v4.0 동작 (config.h 필요)
@@ -46,6 +48,14 @@ static const int PIN_MOTOR_IN2 = 27;
 static const int PIN_TOF1_RX   = 16;
 static const int PIN_TOF2_RX   = 17;
 
+// === RFID-RC522 (VSPI 고정 배선, 2026-04-17 확정) ===
+static const char* RFID_SPI_NAME = "VSPI";
+static const uint8_t PIN_RFID_SCK  = 18;
+static const uint8_t PIN_RFID_MISO = 19;
+static const uint8_t PIN_RFID_MOSI = 23;
+static const uint8_t PIN_RFID_SS   = 5;
+static const uint8_t PIN_RFID_RST  = 22;
+
 // === Config (v4.0 동일) ===
 static const long TOF_BAUD = 9600;
 static const int  DETECT_MIN_MM = 1;
@@ -56,6 +66,9 @@ static const unsigned long CLEAR_TIMEOUT_MS = 5000;
 static const unsigned long REPORT_MS       = 300;
 static const unsigned long DEBOUNCE_MS     = 500;
 static const unsigned long MIN_RUN_MS      = 1000;
+static const unsigned long RFID_REINIT_MS        = 3000;   // 리더 lost 시 재초기화 간격
+static const unsigned long RFID_HEALTHCHECK_MS   = 2000;
+static const unsigned long RFID_TAG_HOLD_MS      = 700;
 
 // v5: STOPPED 탈출은 Jetson RUN 수신에만 의존 (타임아웃 자동 탈출 제거)
 // 안전 타임아웃이 필요하면 아래를 양수로 (0 = 무한 대기).
@@ -68,6 +81,7 @@ const char* ST_NAME[] = {"IDLE", "RUNNING", "STOPPED", "POST_RUN", "CLEARING"};
 // === Globals ===
 HardwareSerial tof1(1);
 HardwareSerial tof2(2);
+MFRC522 rfid;
 
 State state = ST_IDLE;
 unsigned long stateStart = 0;
@@ -85,9 +99,21 @@ String visionResult = "";
 String buf1 = "";
 String buf2 = "";
 
+bool rfidReaderReady = false;
+byte activeRfidVersion = 0;
+unsigned long lastRfidInitAttemptMs = 0;
+unsigned long lastRfidHealthcheckMs = 0;
+unsigned long lastRfidSeenMs = 0;
+String lastRfidUid = "";
+String lastRfidType = "";
+
 // === Forward decls ===
+void publishJson(const String& json);
+void publishToken(const char* token);
 void sendStatus();
 void handleCommand(const String& cmd, const String& source);
+bool initRfid();
+void pollRfid();
 
 // === Motor Control ===
 void motorOn() {
@@ -117,6 +143,116 @@ int parseTofLine(HardwareSerial& ss, String& buffer) {
     }
   }
   return result;
+}
+
+String uidToString(const MFRC522::Uid& uid) {
+  String out;
+  for (byte i = 0; i < uid.size; ++i) {
+    if (i > 0) out += ':';
+    if (uid.uidByte[i] < 0x10) out += '0';
+    out += String(uid.uidByte[i], HEX);
+  }
+  out.toUpperCase();
+  return out;
+}
+
+void clearRfidTag() {
+  if (lastRfidUid.length() == 0) return;
+
+  publishJson(String("{\"event\":\"rfid_clear\",\"uid\":\"") + lastRfidUid + "\"}");
+  lastRfidUid = "";
+  lastRfidType = "";
+}
+
+// RC522 를 VSPI 고정 배선으로 1회 초기화. 실패 시 false 반환 (주기적 재시도).
+bool initRfid() {
+  clearRfidTag();
+  rfidReaderReady = false;
+  activeRfidVersion = 0;
+  lastRfidInitAttemptMs = millis();
+
+  SPI.end();
+  delay(10);
+  SPI.begin(PIN_RFID_SCK, PIN_RFID_MISO, PIN_RFID_MOSI, PIN_RFID_SS);
+  delay(10);
+
+  rfid.PCD_Init(PIN_RFID_SS, PIN_RFID_RST);
+  delay(50);
+
+  byte version = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+  if (version == 0x00 || version == 0xFF) {
+    publishJson("{\"event\":\"rfid_reader\",\"status\":\"not_found\"}");
+    Serial.println("RFID:READER:NOT_FOUND");
+    return false;
+  }
+
+  rfidReaderReady = true;
+  activeRfidVersion = version;
+  lastRfidHealthcheckMs = lastRfidInitAttemptMs;
+
+  publishJson(
+    String("{\"event\":\"rfid_reader\",\"status\":\"ready\",\"spi\":\"")
+    + RFID_SPI_NAME
+    + "\",\"ss\":" + PIN_RFID_SS
+    + ",\"rst\":" + PIN_RFID_RST
+    + ",\"version\":\"0x" + String(version, HEX) + "\"}"
+  );
+  Serial.printf(
+    "RFID:READER:FOUND spi=%s sck=%u miso=%u mosi=%u ss=%u rst=%u version=0x%02X\n",
+    RFID_SPI_NAME, PIN_RFID_SCK, PIN_RFID_MISO, PIN_RFID_MOSI,
+    PIN_RFID_SS, PIN_RFID_RST, version
+  );
+  return true;
+}
+
+void pollRfid() {
+  unsigned long now = millis();
+
+  if (!rfidReaderReady) {
+    if (now - lastRfidInitAttemptMs >= RFID_REINIT_MS) {
+      initRfid();
+    }
+    return;
+  }
+
+  if (now - lastRfidHealthcheckMs >= RFID_HEALTHCHECK_MS) {
+    lastRfidHealthcheckMs = now;
+    byte version = rfid.PCD_ReadRegister(MFRC522::VersionReg);
+    if (version == 0x00 || version == 0xFF) {
+      publishJson("{\"event\":\"rfid_reader\",\"status\":\"lost\"}");
+      Serial.println("RFID:READER:LOST");
+      rfidReaderReady = false;
+      lastRfidInitAttemptMs = now;   // 잠시 쉰 뒤 재초기화
+      return;
+    }
+    activeRfidVersion = version;
+  }
+
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) {
+    if (lastRfidUid.length() > 0 && now - lastRfidSeenMs >= RFID_TAG_HOLD_MS) {
+      clearRfidTag();
+    }
+    return;
+  }
+
+  String uid = uidToString(rfid.uid);
+  MFRC522::PICC_Type cardType = rfid.PICC_GetType(rfid.uid.sak);
+  String cardTypeName = String(rfid.PICC_GetTypeName(cardType));
+
+  lastRfidSeenMs = now;
+  if (uid != lastRfidUid) {
+    lastRfidUid = uid;
+    lastRfidType = cardTypeName;
+    publishJson(
+      String("{\"event\":\"rfid_tag\",\"uid\":\"") + uid
+      + "\",\"type\":\"" + cardTypeName + "\"}"
+    );
+    Serial.print("RFID_UID:");
+    Serial.println(uid);
+  }
+
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
 }
 
 // === Sensor Reading (v4.0 anti-crosstalk 포함) ===
@@ -271,6 +407,10 @@ void handleCommand(const String& cmd, const String& source) {
     motorOff();
     setState(ST_IDLE);
   }
+  else if (cmd == "RFID_SCAN" || cmd == "rfid_scan") {
+    initRfid();
+    Serial.println("{\"ack\":\"rfid_scan\"}");
+  }
   else if (cmd == "start") {          // v4 호환 (수동 시작)
     motorOn(); setState(ST_RUNNING);
   }
@@ -321,18 +461,27 @@ void processCmd() {
 
 void sendStatus() {
   bool motorRunning = digitalRead(PIN_MOTOR_IN1) || digitalRead(PIN_MOTOR_IN2);
-  char buf[384];
+  char buf[640];
   snprintf(buf, sizeof(buf),
     "{\"state\":\"%s\",\"elapsed\":%lu,\"motor\":%s,"
     "\"range\":{\"min\":%d,\"max\":%d},"
     "\"tof1\":{\"mm\":%d,\"det\":%s},"
     "\"tof2\":{\"mm\":%d,\"det\":%s},"
+    "\"rfid\":{\"ready\":%s,\"spi\":\"%s\",\"ss\":%u,"
+    "\"rst\":%u,\"uid\":\"%s\",\"type\":\"%s\",\"version\":\"0x%02X\"},"
     "\"count\":%d}",
     ST_NAME[state], millis() - stateStart,
     motorRunning ? "true" : "false",
     DETECT_MIN_MM, DETECT_MAX_MM,
     dist1, det1 ? "true" : "false",
     dist2, det2 ? "true" : "false",
+    rfidReaderReady ? "true" : "false",
+    RFID_SPI_NAME,
+    PIN_RFID_SS,
+    PIN_RFID_RST,
+    lastRfidUid.c_str(),
+    lastRfidType.c_str(),
+    activeRfidVersion,
     objCount
   );
   Serial.println(buf);
@@ -355,10 +504,13 @@ void setup() {
 
   delay(500);
   Serial.println();
-  Serial.println("BOOT:conveyor_v5_serial 1.1.0");
+  Serial.println("BOOT:conveyor_v5_serial 1.3.0");
   publishJson("{\"boot\":\"conveyor_v5.0\",\"tof1\":16,\"tof2\":17,"
-              "\"tof_baud\":9600,\"proto\":\"serial_only\"}");
+              "\"tof_baud\":9600,\"proto\":\"serial_only\","
+              "\"rfid\":{\"spi\":\"VSPI\",\"sck\":18,\"miso\":19,"
+              "\"mosi\":23,\"ss\":5,\"rst\":22}}");
   setState(ST_IDLE);
+  initRfid();
 
 #if ENABLE_WIFI_MQTT
   // v4.0 스타일 WiFi/MQTT 는 필요 시 이 블록 활성화
@@ -369,6 +521,7 @@ void loop() {
   readSensors();
   update();
   processCmd();
+  pollRfid();
 
   if (millis() - lastReport >= REPORT_MS) {
     lastReport = millis();

@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>Conveyor Controller Wiring Diagram v3 (FINAL)</title>
+<title>Conveyor Controller Wiring Diagram v5.0 (Serial Bridge + RFID)</title>
 <style>
   body { margin: 0; padding: 20px; background: #1a1a2e; font-family: 'Segoe UI', sans-serif; color: #eee; }
   h1 { text-align: center; color: #e94560; margin-bottom: 5px; }
@@ -38,8 +38,8 @@
 <body>
 
 <h1>Conveyor Belt Controller - Final Wiring Diagram</h1>
-<h2>ESP32 DevKitC V4 + L298N + TOF250 (ASCII UART) x2 + JGB37-555 Motor</h2>
-<div class="verified">✓ Verified Working — 2026-04-06 (firmware v3.0.0)</div>
+<h2>ESP32 DevKitC V4 + L298N + TOF250 x2 + JGB37-555 Motor + RC522 RFID</h2>
+<div class="verified">✓ TOF/Motor verified 2026-04-06 (v3.0.0) &nbsp;|&nbsp; RC522 added 2026-04-17 (v5.0, Serial Bridge)</div>
 
 <div class="container">
 
@@ -266,8 +266,104 @@
   <div class="wire-item"><div class="wire-color" style="background:#888"></div> GND (common)</div>
   <div class="wire-item"><div class="wire-color" style="background:#fff"></div> White — UART TX (★ only active sensor wire)</div>
   <div class="wire-item"><div class="wire-color" style="background:#ff9f43"></div> Motor PWM/DIR</div>
+  <div class="wire-item"><div class="wire-color" style="background:#f39c12"></div> RC522 SPI (fixed VSPI)</div>
   <div class="wire-item"><div class="wire-color" style="background:#555"></div> NC (disconnected)</div>
 </div>
+
+<!-- ==================== RFID-RC522 Sub-Diagram (v5.0 addition) ==================== -->
+<svg width="960" height="320" viewBox="0 0 960 320" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="320" rx="12" fill="#0f3460"/>
+
+  <rect x="30" y="18" width="900" height="44" rx="8" fill="#16213e" opacity="0.85"/>
+  <text x="480" y="38" text-anchor="middle" fill="#f39c12" font-size="12" font-weight="bold">
+    RFID-RC522 Extension (2026-04-17 · firmware v5.0 / conveyor_v5_serial 1.3.0)
+  </text>
+  <text x="480" y="54" text-anchor="middle" fill="#2ecc71" font-size="10">
+    VSPI fixed wiring · ss=GP5 · sck=GP18 · mosi=GP23 · miso=GP19 · rst=GP22 · power 3.3 V
+  </text>
+
+  <!-- ESP32 SPI Pin bank (left) -->
+  <rect x="60" y="95" width="290" height="200" rx="10" fill="#1a1a2e" stroke="#4ecdc4" stroke-width="2"/>
+  <text x="205" y="120" text-anchor="middle" fill="#4ecdc4" font-size="13" font-weight="bold">ESP32 DevKitC V4 (VSPI)</text>
+  <text x="205" y="136" text-anchor="middle" fill="#888" font-size="10">Conveyor firmware reuses these pins for RC522 only</text>
+
+  <!-- ESP32 pin labels -->
+  <text x="80" y="170" fill="#ff6b6b" font-size="11" font-family="monospace">3V3</text>
+  <text x="80" y="190" fill="#aaa"    font-size="11" font-family="monospace">GND</text>
+  <text x="80" y="210" fill="#f39c12" font-size="11" font-family="monospace">GP5</text>
+  <text x="80" y="230" fill="#f39c12" font-size="11" font-family="monospace">GP18</text>
+  <text x="80" y="250" fill="#f39c12" font-size="11" font-family="monospace">GP23</text>
+  <text x="80" y="270" fill="#f39c12" font-size="11" font-family="monospace">GP19</text>
+  <text x="80" y="290" fill="#f39c12" font-size="11" font-family="monospace">GP22</text>
+
+  <text x="140" y="170" fill="#888" font-size="10">→ 3.3 V rail</text>
+  <text x="140" y="190" fill="#888" font-size="10">→ common ground</text>
+  <text x="140" y="210" fill="#888" font-size="10">→ SDA / SS (CS)</text>
+  <text x="140" y="230" fill="#888" font-size="10">→ SCK</text>
+  <text x="140" y="250" fill="#888" font-size="10">→ MOSI</text>
+  <text x="140" y="270" fill="#888" font-size="10">→ MISO</text>
+  <text x="140" y="290" fill="#888" font-size="10">→ RST</text>
+
+  <!-- ESP32 pin dots -->
+  <circle cx="350" cy="166" r="4" fill="#ff6b6b"/>
+  <circle cx="350" cy="186" r="4" fill="#aaa"/>
+  <circle cx="350" cy="206" r="4" fill="#f39c12"/>
+  <circle cx="350" cy="226" r="4" fill="#f39c12"/>
+  <circle cx="350" cy="246" r="4" fill="#f39c12"/>
+  <circle cx="350" cy="266" r="4" fill="#f39c12"/>
+  <circle cx="350" cy="286" r="4" fill="#f39c12"/>
+
+  <!-- RC522 module (right) -->
+  <rect x="670" y="95" width="250" height="200" rx="10" fill="#1a1a2e" stroke="#f39c12" stroke-width="2"/>
+  <text x="795" y="120" text-anchor="middle" fill="#f39c12" font-size="13" font-weight="bold">RFID-RC522</text>
+  <text x="795" y="136" text-anchor="middle" fill="#f39c12" font-size="10">MFRC522 · 13.56 MHz · SPI</text>
+
+  <!-- RC522 pin labels -->
+  <text x="690" y="170" fill="#ff6b6b" font-size="11" font-family="monospace">3.3V</text>
+  <text x="690" y="190" fill="#aaa"    font-size="11" font-family="monospace">GND</text>
+  <text x="690" y="210" fill="#f39c12" font-size="11" font-family="monospace">SDA</text>
+  <text x="690" y="230" fill="#f39c12" font-size="11" font-family="monospace">SCK</text>
+  <text x="690" y="250" fill="#f39c12" font-size="11" font-family="monospace">MOSI</text>
+  <text x="690" y="270" fill="#f39c12" font-size="11" font-family="monospace">MISO</text>
+  <text x="690" y="290" fill="#f39c12" font-size="11" font-family="monospace">RST</text>
+
+  <text x="740" y="170" fill="#888" font-size="9">Power</text>
+  <text x="740" y="190" fill="#888" font-size="9">Ground</text>
+  <text x="740" y="210" fill="#888" font-size="9">Slave Select (CS)</text>
+  <text x="740" y="230" fill="#888" font-size="9">SPI clock</text>
+  <text x="740" y="250" fill="#888" font-size="9">Master→Slave data</text>
+  <text x="740" y="270" fill="#888" font-size="9">Slave→Master data</text>
+  <text x="740" y="290" fill="#888" font-size="9">Active-low reset</text>
+
+  <!-- RC522 pin dots (left side of module) -->
+  <circle cx="670" cy="166" r="4" fill="#ff6b6b"/>
+  <circle cx="670" cy="186" r="4" fill="#aaa"/>
+  <circle cx="670" cy="206" r="4" fill="#f39c12"/>
+  <circle cx="670" cy="226" r="4" fill="#f39c12"/>
+  <circle cx="670" cy="246" r="4" fill="#f39c12"/>
+  <circle cx="670" cy="266" r="4" fill="#f39c12"/>
+  <circle cx="670" cy="286" r="4" fill="#f39c12"/>
+
+  <!-- IRQ note (unused) -->
+  <text x="795" y="314" text-anchor="middle" fill="#555" font-size="10" text-decoration="line-through">IRQ (not connected)</text>
+
+  <!-- Wires: ESP32 → RC522 -->
+  <line x1="350" y1="166" x2="670" y2="166" stroke="#ff6b6b" stroke-width="2"/>
+  <line x1="350" y1="186" x2="670" y2="186" stroke="#888"    stroke-width="2"/>
+  <line x1="350" y1="206" x2="670" y2="206" stroke="#f39c12" stroke-width="2.5"/>
+  <line x1="350" y1="226" x2="670" y2="226" stroke="#f39c12" stroke-width="2.5"/>
+  <line x1="350" y1="246" x2="670" y2="246" stroke="#f39c12" stroke-width="2.5"/>
+  <line x1="350" y1="266" x2="670" y2="266" stroke="#f39c12" stroke-width="2.5"/>
+  <line x1="350" y1="286" x2="670" y2="286" stroke="#f39c12" stroke-width="2.5"/>
+
+  <text x="490" y="158" text-anchor="middle" fill="#ff6b6b" font-size="9">3.3 V</text>
+  <text x="490" y="178" text-anchor="middle" fill="#888"    font-size="9">GND</text>
+  <text x="490" y="198" text-anchor="middle" fill="#f39c12" font-size="9">SS</text>
+  <text x="490" y="218" text-anchor="middle" fill="#f39c12" font-size="9">SCK</text>
+  <text x="490" y="238" text-anchor="middle" fill="#f39c12" font-size="9">MOSI</text>
+  <text x="490" y="258" text-anchor="middle" fill="#f39c12" font-size="9">MISO</text>
+  <text x="490" y="278" text-anchor="middle" fill="#f39c12" font-size="9">RST</text>
+</svg>
 
 <!-- Wiring Tables -->
 <div class="table-section">
@@ -304,6 +400,21 @@
   <tr><td class="pin">DC 12V (-)</td><td class="pin">L298N GND ⟷ ESP32 GND</td><td>Common ground for all devices</td></tr>
   <tr><td class="pin">USB</td><td>ESP32</td><td>USB from PC/RPi5 powers ESP32 + sensors</td></tr>
 </table>
+
+<br>
+
+<h3 style="color:#f39c12; margin-bottom:8px;">RFID-RC522 Wiring (VSPI fixed · added 2026-04-17)</h3>
+<table>
+  <tr><th>RC522 Pin</th><th>ESP32 Pin</th><th>Function</th><th>Notes</th></tr>
+  <tr><td class="pin red">3.3V</td><td class="pin red">3V3</td><td>Power</td><td>Do <strong>NOT</strong> connect to 5V — RC522 is 3.3 V logic</td></tr>
+  <tr><td class="pin">GND</td><td class="pin">GND</td><td>Ground</td><td>Share common ground with ESP32/L298N</td></tr>
+  <tr><td class="pin yellow">SDA / SS</td><td class="pin yellow">GP5</td><td>SPI Slave Select (CS)</td><td>Driven LOW per transfer by MFRC522 lib</td></tr>
+  <tr><td class="pin yellow">SCK</td><td class="pin yellow">GP18</td><td>SPI Clock</td><td>VSPI default clock</td></tr>
+  <tr><td class="pin yellow">MOSI</td><td class="pin yellow">GP23</td><td>Master Out, Slave In</td><td>VSPI default data out</td></tr>
+  <tr><td class="pin yellow">MISO</td><td class="pin yellow">GP19</td><td>Master In, Slave Out</td><td>VSPI default data in</td></tr>
+  <tr><td class="pin yellow">RST</td><td class="pin yellow">GP22</td><td>Hard reset (active low)</td><td>Toggled by <code>PCD_Init()</code> during boot</td></tr>
+  <tr><td class="nc">IRQ</td><td class="nc">— (NC)</td><td class="nc">Interrupt</td><td>Not wired; firmware uses polling</td></tr>
+</table>
 </div>
 
 <div class="note success">
@@ -315,11 +426,18 @@
 </div>
 
 <div class="note">
-  <strong>Conveyor State Machine (firmware v3.0.0):</strong><br>
-  <code>IDLE</code> → (TOF1 detects object 5-80mm) → <code>RUNNING</code> (motor ON) → (TOF2 detects) → <code>STOPPED</code> (motor OFF, 5s wait for camera inspection) → <code>POST_RUN</code> (motor ON 2s) → <code>CLEARING</code> (motor stays ON until TOF2 clears, 5s safety timeout) → <code>IDLE</code>
+  <strong>Conveyor State Machine (firmware v5.0 · conveyor_v5_serial 1.3.0):</strong><br>
+  <code>IDLE</code> → (TOF1 detects 1-30mm) → <code>RUNNING</code> (motor ON, MIN_RUN 1s) → (TOF2 detects) → <code>STOPPED</code> (motor OFF, <em>wait indefinitely</em> for Jetson <code>RUN</code>/<code>camera_ok</code>/<code>inspect_done</code>) → <code>POST_RUN</code> (motor ON for POST_RUN_MS=4s) → <code>CLEARING</code> (until TOF2 clears, 5s safety timeout) → <code>IDLE</code>
   <br><br>
-  <strong>Debounce:</strong> 500ms on both sensors (must stay detected continuously).<br>
-  <strong>Detection range:</strong> Fixed 5-80mm (anything closer or farther = ignored).
+  <strong>Debounce:</strong> 500ms on both TOF sensors · <strong>Detection range:</strong> 1-30mm.<br>
+  <strong>RFID polling:</strong> RC522 healthcheck every 2s, tag hold 700ms, reinit on <code>VersionReg = 0x00 / 0xFF</code>.
+</div>
+
+<div class="note success">
+  <strong>★ RFID-RC522 Integration (v5.0, 2026-04-17):</strong><br>
+  Fixed VSPI wiring (auto-scan removed). Init order: <code>SPI.begin(18,19,23,5)</code> → <code>PCD_Init(5,22)</code> → read <code>VersionReg</code>.<br>
+  Serial tokens unchanged (<code>BOOT</code>/<code>STOPPED</code>/<code>STARTED</code>/<code>DONE</code>). RFID events publish as JSON: <code>{"event":"rfid_tag","uid":"...","type":"..."}</code> and <code>{"event":"rfid_clear","uid":"..."}</code> after <code>RFID_TAG_HOLD_MS</code>.<br>
+  Manual commands (USB Serial): <code>RFID_SCAN</code> — force reader reinit; <code>STATUS</code> — include RFID block (<code>ready</code>, <code>spi</code>, <code>ss</code>, <code>rst</code>, <code>uid</code>, <code>type</code>, <code>version</code>).
 </div>
 
 <div class="note warn">
@@ -331,7 +449,11 @@
   <br>
   <strong>② TOF250 UART (Sensor → ESP32): 9600 baud</strong><br>
   센서에서 ESP32로 거리값 전송 (ASCII 형식: <code>"NNN\r\n"</code>)<br>
-  TOF1 → GPIO 16, TOF2 → GPIO 17 (White wire only)
+  TOF1 → GPIO 16, TOF2 → GPIO 17 (White wire only)<br>
+  <br>
+  <strong>③ RC522 SPI (ESP32 ↔ RFID, VSPI bus)</strong><br>
+  SS=GP5, SCK=GP18, MOSI=GP23, MISO=GP19, RST=GP22 · 3.3 V power · IRQ NC.<br>
+  Serial 115200 채널과 충돌하지 않음 (SPI 버스는 별도).
 </div>
 
 <div class="note success">
