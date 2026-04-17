@@ -38,8 +38,8 @@
 <body>
 
 <h1>Conveyor Belt Controller - Final Wiring Diagram</h1>
-<h2>ESP32 DevKitC V4 + L298N + TOF250 x2 + JGB37-555 Motor + RC522 RFID</h2>
-<div class="verified">✓ TOF/Motor verified 2026-04-06 (v3.0.0) &nbsp;|&nbsp; RC522 added 2026-04-17 (v5.0, Serial Bridge)</div>
+<h2>ESP32 DevKitC V4 + L298N + TOF250 x2 + JGB37-555 Motor + RC522 RFID + Handoff ACK Button</h2>
+<div class="verified">✓ TOF/Motor verified 2026-04-06 (v3.0.0) &nbsp;|&nbsp; RC522 + GP33 Button added 2026-04-17 (v5.0 → v1.4.0, SPEC-AMR-001)</div>
 
 <div class="container">
 
@@ -365,6 +365,63 @@
   <text x="490" y="278" text-anchor="middle" fill="#f39c12" font-size="9">RST</text>
 </svg>
 
+<!-- ==================== Handoff ACK Button Sub-Diagram (SPEC-AMR-001) ==================== -->
+<svg width="960" height="260" viewBox="0 0 960 260" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="260" rx="12" fill="#0f3460"/>
+
+  <rect x="30" y="18" width="900" height="44" rx="8" fill="#16213e" opacity="0.85"/>
+  <text x="480" y="38" text-anchor="middle" fill="#2ecc71" font-size="12" font-weight="bold">
+    후처리존 핸드오프 ACK 버튼 (SPEC-AMR-001, 2026-04-17 · firmware v1.4.0)
+  </text>
+  <text x="480" y="54" text-anchor="middle" fill="#ffd93d" font-size="10">
+    GP33 INPUT_PULLUP · 디바운스 50 ms · 연타 병합 500 ms · rising edge (release) 시 HANDOFF_ACK 토큰 + JSON 발행
+  </text>
+
+  <!-- ESP32 pin bank -->
+  <rect x="60" y="90" width="270" height="140" rx="10" fill="#1a1a2e" stroke="#4ecdc4" stroke-width="2"/>
+  <text x="195" y="115" text-anchor="middle" fill="#4ecdc4" font-size="13" font-weight="bold">ESP32 (GPIO)</text>
+
+  <text x="80" y="150" fill="#2ecc71" font-size="12" font-family="monospace">GP33</text>
+  <text x="80" y="168" fill="#888" font-size="9" font-family="monospace">(INPUT_PULLUP)</text>
+  <text x="80" y="200" fill="#aaa" font-size="12" font-family="monospace">GND</text>
+
+  <text x="170" y="150" fill="#888" font-size="10">→ 버튼 단자 A</text>
+  <text x="170" y="168" fill="#888" font-size="9">평시 HIGH, 눌림 LOW</text>
+  <text x="170" y="200" fill="#888" font-size="10">→ 버튼 단자 B</text>
+
+  <circle cx="330" cy="146" r="4" fill="#2ecc71"/>
+  <circle cx="330" cy="196" r="4" fill="#aaa"/>
+
+  <!-- Push button -->
+  <rect x="670" y="100" width="200" height="120" rx="10" fill="#1a1a2e" stroke="#e94560" stroke-width="2"/>
+  <text x="770" y="126" text-anchor="middle" fill="#e94560" font-size="13" font-weight="bold">A접점 푸시 버튼</text>
+  <text x="770" y="142" text-anchor="middle" fill="#888" font-size="10">Normally Open</text>
+
+  <!-- Button body symbol -->
+  <circle cx="770" cy="175" r="22" fill="none" stroke="#e94560" stroke-width="2"/>
+  <circle cx="770" cy="175" r="14" fill="#e94560" opacity="0.3"/>
+  <text x="770" y="179" text-anchor="middle" fill="#e94560" font-size="16" font-weight="bold">●</text>
+  <line x1="720" y1="175" x2="748" y2="175" stroke="#e94560" stroke-width="2"/>
+  <line x1="792" y1="175" x2="820" y2="175" stroke="#e94560" stroke-width="2"/>
+  <circle cx="720" cy="175" r="4" fill="#e94560"/>
+  <circle cx="820" cy="175" r="4" fill="#e94560"/>
+
+  <text x="702" y="210" text-anchor="middle" fill="#888" font-size="9">단자 A</text>
+  <text x="838" y="210" text-anchor="middle" fill="#888" font-size="9">단자 B</text>
+
+  <!-- Wires -->
+  <line x1="330" y1="146" x2="500" y2="146" stroke="#2ecc71" stroke-width="2.5"/>
+  <line x1="500" y1="146" x2="500" y2="175" stroke="#2ecc71" stroke-width="2.5"/>
+  <line x1="500" y1="175" x2="720" y2="175" stroke="#2ecc71" stroke-width="2.5"/>
+  <text x="500" y="138" text-anchor="middle" fill="#2ecc71" font-size="10">Signal (GP33)</text>
+
+  <line x1="330" y1="196" x2="620" y2="196" stroke="#aaa" stroke-width="2.5"/>
+  <line x1="620" y1="196" x2="620" y2="220" stroke="#aaa" stroke-width="2.5"/>
+  <line x1="620" y1="220" x2="820" y2="220" stroke="#aaa" stroke-width="2.5"/>
+  <line x1="820" y1="220" x2="820" y2="175" stroke="#aaa" stroke-width="2.5"/>
+  <text x="500" y="212" text-anchor="middle" fill="#aaa" font-size="10">Return (GND)</text>
+</svg>
+
 <!-- Wiring Tables -->
 <div class="table-section">
 
@@ -400,6 +457,18 @@
   <tr><td class="pin">DC 12V (-)</td><td class="pin">L298N GND ⟷ ESP32 GND</td><td>Common ground for all devices</td></tr>
   <tr><td class="pin">USB</td><td>ESP32</td><td>USB from PC/RPi5 powers ESP32 + sensors</td></tr>
 </table>
+
+<br>
+
+<h3 style="color:#2ecc71; margin-bottom:8px;">Handoff ACK Push Button (SPEC-AMR-001 · added 2026-04-17)</h3>
+<table>
+  <tr><th>버튼 단자</th><th>ESP32 핀</th><th>기능</th><th>비고</th></tr>
+  <tr><td class="pin green">A</td><td class="pin green">GP33</td><td>Signal (INPUT_PULLUP)</td><td>RTC GPIO, strapping-safe. 평시 HIGH, 눌림 LOW</td></tr>
+  <tr><td class="pin">B</td><td class="pin">GND</td><td>Return</td><td>컨베이어 ESP32 GND 공통</td></tr>
+</table>
+<div class="note success" style="margin-top:8px;">
+  <strong>★ 동작:</strong> 버튼 press→release 시 rising edge 에서 Serial 토큰 <code>HANDOFF_ACK</code> + JSON 이벤트 <code>{"event":"handoff_ack","zone":"postprocessing",...}</code> 발행. 디바운스 50 ms, 연속 이벤트 최소 간격 500 ms. 컨베이어 TOF/모터 상태 머신과 완전 독립. HW 없이 테스트하려면 Serial Monitor 에서 <code>sim_ack</code> 입력.
+</div>
 
 <br>
 

@@ -56,6 +56,13 @@ static const uint8_t PIN_RFID_MOSI = 23;
 static const uint8_t PIN_RFID_SS   = 5;
 static const uint8_t PIN_RFID_RST  = 22;
 
+// === Handoff ACK Push Button (SPEC-AMR-001, 2026-04-17) ===
+// 후처리존 A접점 푸시 버튼. 버튼 한쪽→GP33, 다른쪽→GND. INPUT_PULLUP 사용.
+// 평시 HIGH, 눌림 LOW. release edge(LOW→HIGH) 에서 1회 이벤트 발행.
+static const int PIN_HANDOFF_BUTTON = 33;
+static const unsigned long HANDOFF_DEBOUNCE_MS = 50;   // 물리 디바운스
+static const unsigned long HANDOFF_MIN_GAP_MS  = 500;  // 연타 병합 (동일 이벤트 처리)
+
 // === Config (v4.0 동일) ===
 static const long TOF_BAUD = 9600;
 static const int  DETECT_MIN_MM = 1;
@@ -107,6 +114,13 @@ unsigned long lastRfidSeenMs = 0;
 String lastRfidUid = "";
 String lastRfidType = "";
 
+// Handoff button state
+int  handoffLastRaw = HIGH;              // INPUT_PULLUP: 평시 HIGH
+int  handoffStableLevel = HIGH;
+unsigned long handoffLastChangeMs = 0;
+unsigned long handoffLastEmitMs = 0;
+unsigned long handoffPressCount = 0;
+
 // === Forward decls ===
 void publishJson(const String& json);
 void publishToken(const char* token);
@@ -114,6 +128,8 @@ void sendStatus();
 void handleCommand(const String& cmd, const String& source);
 bool initRfid();
 void pollRfid();
+void pollHandoffButton();
+void emitHandoffAck(const char* reason);
 
 // === Motor Control ===
 void motorOn() {
@@ -253,6 +269,49 @@ void pollRfid() {
 
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
+}
+
+// === Handoff ACK Button (SPEC-AMR-001) ===
+// Token line: HANDOFF_ACK + JSON event. Jetson bridge 가 파싱해 Mgmt gRPC 로 전달.
+// 연타/채터링 방지: 디바운스 50 ms + 연속 이벤트 500 ms 최소 간격.
+void emitHandoffAck(const char* reason) {
+  unsigned long now = millis();
+  handoffPressCount++;
+  handoffLastEmitMs = now;
+
+  publishToken("HANDOFF_ACK");   // ★ Jetson bridge 가 주로 이 토큰 사용
+  String json = String("{\"event\":\"handoff_ack\",\"zone\":\"postprocessing\"")
+              + ",\"ts\":" + String(now)
+              + ",\"count\":" + String(handoffPressCount)
+              + ",\"reason\":\"" + reason + "\""
+              + (strcmp(reason, "sim") == 0 ? ",\"sim\":true" : "")
+              + "}";
+  publishJson(json);
+}
+
+void pollHandoffButton() {
+  unsigned long now = millis();
+  int raw = digitalRead(PIN_HANDOFF_BUTTON);
+
+  if (raw != handoffLastRaw) {
+    handoffLastRaw = raw;
+    handoffLastChangeMs = now;
+    return;  // 아직 디바운스 대기
+  }
+
+  // 디바운스 기간 유지된 값 → stable 로 승격
+  if (now - handoffLastChangeMs < HANDOFF_DEBOUNCE_MS) return;
+  if (raw == handoffStableLevel) return;  // 상태 변화 없음
+
+  int prev = handoffStableLevel;
+  handoffStableLevel = raw;
+
+  // rising edge: 눌렀다 뗀 순간 (LOW → HIGH)
+  if (prev == LOW && raw == HIGH) {
+    if (now - handoffLastEmitMs >= HANDOFF_MIN_GAP_MS) {
+      emitHandoffAck("button");
+    }
+  }
 }
 
 // === Sensor Reading (v4.0 anti-crosstalk 포함) ===
@@ -411,6 +470,11 @@ void handleCommand(const String& cmd, const String& source) {
     initRfid();
     Serial.println("{\"ack\":\"rfid_scan\"}");
   }
+  else if (cmd == "sim_ack" || cmd == "SIM_ACK") {
+    // SPEC-AMR-001 FR-AMR-01-07: HW 없이도 실제 버튼과 동일한 이벤트 발행
+    emitHandoffAck("sim");
+    Serial.println("{\"ack\":\"sim_ack\"}");
+  }
   else if (cmd == "start") {          // v4 호환 (수동 시작)
     motorOn(); setState(ST_RUNNING);
   }
@@ -502,13 +566,20 @@ void setup() {
   ledcAttach(PIN_MOTOR_ENA, 1000, 8);
   ledcWrite(PIN_MOTOR_ENA, 0);
 
+  // SPEC-AMR-001: 후처리존 핸드오프 버튼 (INPUT_PULLUP)
+  pinMode(PIN_HANDOFF_BUTTON, INPUT_PULLUP);
+  handoffLastRaw = digitalRead(PIN_HANDOFF_BUTTON);
+  handoffStableLevel = handoffLastRaw;
+
   delay(500);
   Serial.println();
-  Serial.println("BOOT:conveyor_v5_serial 1.3.0");
+  Serial.println("BOOT:conveyor_v5_serial 1.4.0");
   publishJson("{\"boot\":\"conveyor_v5.0\",\"tof1\":16,\"tof2\":17,"
               "\"tof_baud\":9600,\"proto\":\"serial_only\","
               "\"rfid\":{\"spi\":\"VSPI\",\"sck\":18,\"miso\":19,"
-              "\"mosi\":23,\"ss\":5,\"rst\":22}}");
+              "\"mosi\":23,\"ss\":5,\"rst\":22},"
+              "\"handoff\":{\"pin\":33,\"pull\":\"up\","
+              "\"debounce_ms\":50,\"min_gap_ms\":500}}");
   setState(ST_IDLE);
   initRfid();
 
@@ -522,6 +593,7 @@ void loop() {
   update();
   processCmd();
   pollRfid();
+  pollHandoffButton();
 
   if (millis() - lastReport >= REPORT_MS) {
     lastReport = millis();
