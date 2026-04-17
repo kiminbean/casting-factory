@@ -372,11 +372,36 @@ class MainWindow(QMainWindow):
             )
 
     def _on_ws_message(self, payload: dict[str, Any]) -> None:
+        # SPEC-AMR-001: handoff.ack 메시지는 페이지 무관 전역 처리 (토스트 + 상태바)
+        if payload.get("type") == "handoff.ack":
+            self._on_handoff_ack(payload)
+
         # 현재 보이는 페이지에만 전달 (보이지 않는 페이지가 HTTP 재조회로 메인 스레드 막는 것 방지).
         # 비가시 페이지의 데이터는 나중에 사용자가 해당 탭으로 이동할 때 타이머/초기 refresh 로 갱신됨.
         page = self._stack.currentWidget()
         if page is not None and hasattr(page, "handle_ws_message"):
             page.handle_ws_message(payload)
+
+    def _on_handoff_ack(self, payload: dict[str, Any]) -> None:
+        """후처리존 인수인계 ACK 이벤트 — 상태바 메시지 + 로그.
+
+        SPEC-AMR-001 FR-AMR-01-06: WebSocket `handoff.ack` 수신 시 Factory
+        Operator 에게 AMR 해제 사실을 즉시 알린다.
+        """
+        task_id = payload.get("task_id") or "-"
+        amr_id = payload.get("amr_id") or "-"
+        zone = payload.get("zone") or "postprocessing"
+        orphan = bool(payload.get("orphan"))
+        source = payload.get("source") or "unknown"
+
+        if orphan:
+            msg = f"⚠ handoff.ack (orphan) — zone={zone} source={source}"
+        else:
+            msg = f"✓ handoff.ack — {zone}: task={task_id} amr={amr_id} (source={source})"
+
+        logger.info("WS handoff.ack: %s", msg)
+        if hasattr(self, "statusBar"):
+            self.statusBar().showMessage(msg, 8000)  # 8초 노출
 
     # ---------- MQTT ----------
     def _start_mqtt(self) -> None:
