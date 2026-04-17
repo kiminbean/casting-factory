@@ -1,6 +1,14 @@
 /*
  * Conveyor Belt Controller v5.0 — Serial Bridge (V6 Architecture)
+ * Firmware tag: 1.5.0 (2026-04-17 NDEF Text 파서 추가)
  * Base: conveyor_controller v4.0.0 (성숙한 TOF 센서 로직·anti-crosstalk 재사용)
+ *
+ * 1.5.0 추가사항:
+ *   - RFID-RC522 가 UID 외에 NDEF Text 레코드도 파싱하여 JSON 이벤트에 포함.
+ *     페이지 4~15 (48 바이트) 에서 Text Record 감지 → UTF-8 텍스트 추출.
+ *     논블로킹 (delay 사용 X), 실패해도 UID 이벤트는 항상 발행.
+ *     예: {"event":"rfid_tag","uid":"AA:BB:CC:DD","type":"NTAG213","text":"AMR-001"}
+ *   - JSON escape helper 로 따옴표/백슬래시/제어문자 안전 처리.
  *
  * v4.0 → v5.0 주요 변경점:
  *   1) WiFi/MQTT 기본 비활성 (#define ENABLE_WIFI_MQTT 0).
@@ -121,6 +129,11 @@ unsigned long handoffLastChangeMs = 0;
 unsigned long handoffLastEmitMs = 0;
 unsigned long handoffPressCount = 0;
 
+// NDEF Text payload (2026-04-17 추가)
+#define RFID_TEXT_MAX_LEN 64
+char lastRfidText[RFID_TEXT_MAX_LEN] = "";
+int  lastRfidTextLen = 0;
+
 // === Forward decls ===
 void publishJson(const String& json);
 void publishToken(const char* token);
@@ -172,12 +185,92 @@ String uidToString(const MFRC522::Uid& uid) {
   return out;
 }
 
+// === NDEF Text Record 파서 (NTAG213/215/216 MIFARE Ultralight 계열) ===
+// 동작: 페이지 4~15(48 바이트) 에서 NDEF 메시지를 찾아 Text 레코드 페이로드만 추출.
+// 설계 원칙: 블로킹 delay 금지, 버퍼 범위 엄격 검증, 실패 시 0 반환.
+// 시그니처: out 버퍼는 null 종단됨. maxLen 은 '\0' 포함 크기.
+static int parseNdefText(const byte *data, int dataLen, char *out, size_t maxLen) {
+  if (maxLen == 0) return 0;
+  out[0] = '\0';
+
+  // NDEF TLV: 0x03 [len] 0xD1 [type_len=01] [payload_len] 'T' [status] [lang..] [text..]
+  for (int i = 0; i < dataLen - 2; i++) {
+    if (data[i] != 0x03 || data[i + 2] != 0xD1) continue;
+
+    int idx = i + 2;                 // 0xD1 위치
+    if (idx + 3 >= dataLen) break;
+    idx++;                           // header(0xD1) 건너뜀
+    idx++;                           // type_length 건너뜀 (보통 1)
+    byte payloadLen = data[idx++];
+    char type = (char)data[idx++];
+    if (type != 'T') return 0;       // Text 레코드만 지원
+
+    if (idx >= dataLen) return 0;
+    byte status = data[idx++];
+    byte langLen = status & 0x3F;    // 언어 코드 길이
+    idx += langLen;                  // 언어 코드 건너뜀
+
+    int textLen = (int)payloadLen - (int)langLen - 1;
+    if (textLen <= 0 || idx + textLen > dataLen) return 0;
+    if ((size_t)textLen >= maxLen) textLen = (int)maxLen - 1;
+
+    for (int j = 0; j < textLen; j++) {
+      out[j] = (char)data[idx + j];
+    }
+    out[textLen] = '\0';
+    return textLen;
+  }
+  return 0;
+}
+
+// === 감지된 카드에서 NDEF Text 페이로드 읽기 ===
+// 전제: PICC_IsNewCardPresent + PICC_ReadCardSerial 이 방금 성공해 세션이 열려 있음.
+// MIFARE_Read 는 16 바이트씩(= 4 페이지) 반환. 3회 호출로 48 바이트 수집.
+// 실패 시 지금까지 수집된 바이트만으로 파싱 시도 (짧은 NDEF 는 페이지 4~7 로 충분).
+static int readNdefFromCard(char *out, size_t maxLen) {
+  byte buffer[18];
+  byte fullData[48];
+  int offset = 0;
+
+  for (byte page = 4; page < 16; page += 4) {
+    byte bufSize = sizeof(buffer);
+    MFRC522::StatusCode st = rfid.MIFARE_Read(page, buffer, &bufSize);
+    if (st != MFRC522::STATUS_OK) break;
+    for (int i = 0; i < 16 && offset < (int)sizeof(fullData); i++) {
+      fullData[offset++] = buffer[i];
+    }
+  }
+  return parseNdefText(fullData, offset, out, maxLen);
+}
+
+// === JSON 문자열 이스케이프 ===
+// NDEF Text 가 따옴표나 백슬래시를 포함할 수 있으므로 publishJson 전에 적용.
+// 제어 문자는 드롭 (CR/LF/TAB 만 escape sequence 유지).
+static String jsonEscape(const char *s) {
+  String r;
+  if (s == nullptr) return r;
+  size_t n = strlen(s);
+  r.reserve(n + 4);
+  for (size_t i = 0; i < n; ++i) {
+    char c = s[i];
+    if (c == '"' || c == '\\')      { r += '\\'; r += c; }
+    else if (c == '\n')             r += "\\n";
+    else if (c == '\r')             r += "\\r";
+    else if (c == '\t')             r += "\\t";
+    else if ((unsigned char)c < 0x20) { /* drop */ }
+    else                            r += c;
+  }
+  return r;
+}
+
 void clearRfidTag() {
   if (lastRfidUid.length() == 0) return;
 
   publishJson(String("{\"event\":\"rfid_clear\",\"uid\":\"") + lastRfidUid + "\"}");
   lastRfidUid = "";
   lastRfidType = "";
+  lastRfidText[0] = '\0';
+  lastRfidTextLen = 0;
 }
 
 // RC522 를 VSPI 고정 배선으로 1회 초기화. 실패 시 false 반환 (주기적 재시도).
@@ -259,12 +352,27 @@ void pollRfid() {
   if (uid != lastRfidUid) {
     lastRfidUid = uid;
     lastRfidType = cardTypeName;
-    publishJson(
-      String("{\"event\":\"rfid_tag\",\"uid\":\"") + uid
-      + "\",\"type\":\"" + cardTypeName + "\"}"
-    );
+
+    // NDEF Text 읽기 (실패해도 UID 이벤트는 항상 발행)
+    char textBuf[RFID_TEXT_MAX_LEN];
+    lastRfidTextLen = readNdefFromCard(textBuf, sizeof(textBuf));
+    strncpy(lastRfidText, textBuf, sizeof(lastRfidText) - 1);
+    lastRfidText[sizeof(lastRfidText) - 1] = '\0';
+
+    String json = String("{\"event\":\"rfid_tag\",\"uid\":\"") + uid
+                + "\",\"type\":\"" + cardTypeName + "\"";
+    if (lastRfidTextLen > 0) {
+      json += ",\"text\":\"" + jsonEscape(lastRfidText) + "\"";
+    }
+    json += "}";
+    publishJson(json);
+
     Serial.print("RFID_UID:");
     Serial.println(uid);
+    if (lastRfidTextLen > 0) {
+      Serial.print("RFID_TEXT:");
+      Serial.println(lastRfidText);
+    }
   }
 
   rfid.PICC_HaltA();
@@ -532,7 +640,7 @@ void sendStatus() {
     "\"tof1\":{\"mm\":%d,\"det\":%s},"
     "\"tof2\":{\"mm\":%d,\"det\":%s},"
     "\"rfid\":{\"ready\":%s,\"spi\":\"%s\",\"ss\":%u,"
-    "\"rst\":%u,\"uid\":\"%s\",\"type\":\"%s\",\"version\":\"0x%02X\"},"
+    "\"rst\":%u,\"uid\":\"%s\",\"type\":\"%s\",\"text\":\"%s\",\"version\":\"0x%02X\"},"
     "\"count\":%d}",
     ST_NAME[state], millis() - stateStart,
     motorRunning ? "true" : "false",
@@ -545,6 +653,7 @@ void sendStatus() {
     PIN_RFID_RST,
     lastRfidUid.c_str(),
     lastRfidType.c_str(),
+    lastRfidText,    // NDEF Text (비어 있으면 빈 문자열)
     activeRfidVersion,
     objCount
   );
@@ -573,11 +682,11 @@ void setup() {
 
   delay(500);
   Serial.println();
-  Serial.println("BOOT:conveyor_v5_serial 1.4.0");
+  Serial.println("BOOT:conveyor_v5_serial 1.5.0");
   publishJson("{\"boot\":\"conveyor_v5.0\",\"tof1\":16,\"tof2\":17,"
               "\"tof_baud\":9600,\"proto\":\"serial_only\","
               "\"rfid\":{\"spi\":\"VSPI\",\"sck\":18,\"miso\":19,"
-              "\"mosi\":23,\"ss\":5,\"rst\":22},"
+              "\"mosi\":23,\"ss\":5,\"rst\":22,\"ndef\":\"text\"},"
               "\"handoff\":{\"pin\":33,\"pull\":\"up\","
               "\"debounce_ms\":50,\"min_gap_ms\":500}}");
   setState(ST_IDLE);
