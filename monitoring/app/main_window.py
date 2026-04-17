@@ -32,7 +32,7 @@ from app.pages.quality import QualityPage
 from app.pages.schedule import SchedulePage
 from app.widgets.alert_widgets import ToastNotification, _normalize_level
 from app.ws_worker import WebSocketWorker
-from config import APP_NAME, APP_VERSION, REFRESH_INTERVAL_MS
+from config import APP_NAME, APP_VERSION, AMR_POLL_INTERVAL, REFRESH_INTERVAL_MS
 
 
 NAV_ITEMS: list[tuple[str, str]] = [
@@ -51,16 +51,20 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
+        self.setMinimumSize(800, 600)
+        self.setMaximumSize(16777215, 16777215)  # QWIDGETSIZE_MAX
         self.resize(1400, 900)
 
         self._api = ApiClient()
         self._mqtt_worker: MqttWorker | None = None
         self._mqtt_thread: MqttThread | None = None
+        self._amr_thread = None
 
         self._build_ui()
         self._start_refresh_timer()
         self._start_websocket()
         self._start_mqtt()
+        self._start_amr_status()
 
     # ---------- UI ----------
     def _build_ui(self) -> None:
@@ -414,6 +418,24 @@ class MainWindow(QMainWindow):
             if hasattr(page, "handle_mqtt_message"):
                 page.handle_mqtt_message(topic, payload)
 
+    # ---------- AMR 실시간 배터리 (gRPC → Management Service) ----------
+    def _start_amr_status(self) -> None:
+        try:
+            from app.workers.amr_status_worker import (
+                AmrStatusThread,
+                AmrStatusWorker,
+            )
+        except ImportError:
+            return
+        self._amr_worker = AmrStatusWorker(poll_interval=AMR_POLL_INTERVAL)
+        self._amr_worker.status_updated.connect(self._on_amr_status)
+        self._amr_thread = AmrStatusThread(self._amr_worker)
+        self._amr_thread.start()
+
+    def _on_amr_status(self, amr_list: list) -> None:
+        """AMR 실시간 데이터를 logistics 페이지에 직접 반영."""
+        self._logistics.update_amr_live(amr_list)
+
     # ---------- 종료 ----------
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
         try:
@@ -425,6 +447,11 @@ class MainWindow(QMainWindow):
         if self._mqtt_thread is not None:
             try:
                 self._mqtt_thread.shutdown()
+            except Exception:  # noqa: BLE001
+                pass
+        if self._amr_thread is not None:
+            try:
+                self._amr_thread.shutdown()
             except Exception:  # noqa: BLE001
                 pass
         super().closeEvent(event)

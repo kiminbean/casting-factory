@@ -31,3 +31,7 @@ APP_NAME: str = "주물공장 모니터링"
 APP_VERSION: str = "1.0.0"
 
 REFRESH_INTERVAL_MS: int = 8000
+
+# AMR 상태 폴링 간격 (PyQt → gRPC → Management Service)
+# SSH 접속 설정은 backend/.env.local 의 MGMT_AMR_*_HOST 참조
+AMR_POLL_INTERVAL: float = float(os.environ.get("AMR_POLL_INTERVAL", "10"))

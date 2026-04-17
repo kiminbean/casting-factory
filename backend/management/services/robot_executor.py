@@ -12,6 +12,7 @@ V6 통신 행렬 (2026-04-14):
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from .adapters import select_adapter
 from .adapters.mqtt_adapter import MqttAdapter
@@ -23,9 +24,10 @@ logger = logging.getLogger(__name__)
 class RobotExecutor:
     """robot_id 별 어댑터 라우팅. 어댑터는 1회 초기화 후 재사용."""
 
-    def __init__(self) -> None:
+    def __init__(self, state_machine: Any = None) -> None:
         self._ros2 = Ros2Adapter()
         self._mqtt = MqttAdapter()
+        self._state_machine = state_machine
 
     def dispatch(
         self,
@@ -36,7 +38,10 @@ class RobotExecutor:
     ) -> tuple[bool, str]:
         adapter_name = select_adapter(robot_id)
         if adapter_name == "ros2":
-            return self._ros2.dispatch(item_id, robot_id, command, payload)
+            return self._ros2.dispatch(
+                item_id, robot_id, command, payload,
+                state_machine=self._state_machine,
+            )
         if adapter_name == "mqtt":
             return self._mqtt.dispatch(item_id, robot_id, command, payload)
         return (

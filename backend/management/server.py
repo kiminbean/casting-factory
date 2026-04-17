@@ -47,6 +47,8 @@ from services.execution_monitor import ExecutionMonitor  # noqa: E402
 from services.image_sink import sink as image_sink  # noqa: E402
 from services.image_forwarder import ForwarderConfig, ImageForwarder  # noqa: E402
 from services.ai_client import AIServerConfig, AIUploader  # noqa: E402
+from services.amr_battery import AmrBatteryService  # noqa: E402
+from services.amr_state_machine import AmrStateMachine  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -64,12 +66,20 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
         self.task_manager = TaskManager()
         self.task_allocator = TaskAllocator()
         self.traffic_manager = TrafficManager()
-        self.robot_executor = RobotExecutor()
         # V6 AI 학습 데이터 브리지: Jetson → image_sink → forwarder → AI Server SSH 업로드
         self.image_forwarder = _build_image_forwarder()
         self.execution_monitor = ExecutionMonitor(
             image_forwarder=self.image_forwarder,
         )
+        # AMR 배터리 폴링 (SSH → pinkylib)
+        self.amr_battery = AmrBatteryService()
+        self.amr_battery.start()
+        # AMR 운송 상태 머신
+        self.amr_state_machine = AmrStateMachine()
+        for s in self.amr_battery.get_all():
+            self.amr_state_machine.register(s.id)
+        # RobotExecutor 에 state_machine 주입
+        self.robot_executor = RobotExecutor(state_machine=self.amr_state_machine)
 
     # ---------- Task Manager ----------
     def StartProduction(self, request, context):
@@ -152,6 +162,52 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
             if context.is_active() is False:
                 break
             yield event
+
+    # ---------- Robot Status ----------
+    def GetRobotStatus(self, request, context):
+        entries = []
+        for s in self.amr_battery.get_all():
+            ctx = self.amr_state_machine.get(s.id)
+            entries.append(management_pb2.RobotStatusEntry(
+                id=s.id,
+                type=management_pb2.ROBOT_TYPE_AMR,
+                host=s.host,
+                status=s.status,
+                battery=s.battery,
+                voltage=s.voltage,
+                location=s.location,
+                task_state=ctx.state.value,
+                task_id=ctx.task_id,
+                loaded_item=ctx.loaded_item,
+            ))
+        return management_pb2.GetRobotStatusResponse(robots=entries)
+
+    # ---------- AMR State Transition ----------
+    def TransitionAmrState(self, request, context):
+        from services.amr_state_machine import TaskState
+        try:
+            new_state = TaskState(request.new_state)
+        except ValueError:
+            return management_pb2.TransitionAmrStateResponse(
+                accepted=False,
+                reason=f"invalid_state: {request.new_state}",
+            )
+        ok = self.amr_state_machine.transition(
+            robot_id=request.robot_id,
+            new_state=new_state,
+            task_id=request.task_id or None,
+            loaded_item=request.loaded_item or None,
+        )
+        if ok:
+            return management_pb2.TransitionAmrStateResponse(
+                accepted=True,
+                reason=f"{request.robot_id} → {new_state.name}",
+            )
+        ctx = self.amr_state_machine.get(request.robot_id)
+        return management_pb2.TransitionAmrStateResponse(
+            accepted=False,
+            reason=f"invalid_transition: {ctx.state.name} → {new_state.name}",
+        )
 
     # ---------- Health ----------
     def Health(self, request, context):

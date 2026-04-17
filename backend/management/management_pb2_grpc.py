@@ -73,6 +73,16 @@ class ManagementServiceStub(object):
                 request_serializer=management__pb2.WatchAlertsRequest.SerializeToString,
                 response_deserializer=management__pb2.AlertEvent.FromString,
                 _registered_method=True)
+        self.GetRobotStatus = channel.unary_unary(
+                '/casting.management.v1.ManagementService/GetRobotStatus',
+                request_serializer=management__pb2.GetRobotStatusRequest.SerializeToString,
+                response_deserializer=management__pb2.GetRobotStatusResponse.FromString,
+                _registered_method=True)
+        self.TransitionAmrState = channel.unary_unary(
+                '/casting.management.v1.ManagementService/TransitionAmrState',
+                request_serializer=management__pb2.TransitionAmrStateRequest.SerializeToString,
+                response_deserializer=management__pb2.TransitionAmrStateResponse.FromString,
+                _registered_method=True)
         self.Health = channel.unary_unary(
                 '/casting.management.v1.ManagementService/Health',
                 request_serializer=management__pb2.Empty.SerializeToString,
@@ -139,6 +149,20 @@ class ManagementServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetRobotStatus(self, request, context):
+        """Robot Status
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TransitionAmrState(self, request, context):
+        """AMR State Machine — 외부 상태 전이
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Health(self, request, context):
         """Health
         """
@@ -190,6 +214,16 @@ def add_ManagementServiceServicer_to_server(servicer, server):
                     servicer.WatchAlerts,
                     request_deserializer=management__pb2.WatchAlertsRequest.FromString,
                     response_serializer=management__pb2.AlertEvent.SerializeToString,
+            ),
+            'GetRobotStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRobotStatus,
+                    request_deserializer=management__pb2.GetRobotStatusRequest.FromString,
+                    response_serializer=management__pb2.GetRobotStatusResponse.SerializeToString,
+            ),
+            'TransitionAmrState': grpc.unary_unary_rpc_method_handler(
+                    servicer.TransitionAmrState,
+                    request_deserializer=management__pb2.TransitionAmrStateRequest.FromString,
+                    response_serializer=management__pb2.TransitionAmrStateResponse.SerializeToString,
             ),
             'Health': grpc.unary_unary_rpc_method_handler(
                     servicer.Health,
@@ -395,6 +429,60 @@ class ManagementService(object):
             '/casting.management.v1.ManagementService/WatchAlerts',
             management__pb2.WatchAlertsRequest.SerializeToString,
             management__pb2.AlertEvent.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetRobotStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/casting.management.v1.ManagementService/GetRobotStatus',
+            management__pb2.GetRobotStatusRequest.SerializeToString,
+            management__pb2.GetRobotStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TransitionAmrState(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/casting.management.v1.ManagementService/TransitionAmrState',
+            management__pb2.TransitionAmrStateRequest.SerializeToString,
+            management__pb2.TransitionAmrStateResponse.FromString,
             options,
             channel_credentials,
             insecure,

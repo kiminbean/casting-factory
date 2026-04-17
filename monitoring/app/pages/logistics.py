@@ -10,18 +10,23 @@ from __future__ import annotations
 
 from typing import Any
 
+import logging
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QMessageBox,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 from app.api_client import ApiClient
 from app.pages.dashboard import KpiCard
@@ -50,6 +55,7 @@ class LogisticsPage(QWidget):
         self._api = api
         self._amr_cards: dict[str, AmrStatusCard] = {}
         self._kpi_cards: dict[str, KpiCard] = {}
+        self._amr_live: list[dict[str, Any]] | None = None  # 실시간 데이터 수신 시 mock 대체
         self._build_ui()
         self.refresh()
 
@@ -145,8 +151,8 @@ class LogisticsPage(QWidget):
         layout.addWidget(self._outbound_table)
 
     def refresh(self) -> None:
-        # AMR 카드 갱신
-        amrs = self._api.get_amr_status() or []
+        # AMR: 실시간 데이터가 있으면 그것을 사용, 없으면 API/mock 폴백
+        amrs = self._amr_live if self._amr_live is not None else (self._api.get_amr_status() or [])
         self._update_amr_cards(amrs)
 
         # 이송 작업 테이블
@@ -197,6 +203,7 @@ class LogisticsPage(QWidget):
             card = self._amr_cards.get(amr_id)
             if card is None:
                 card = AmrStatusCard(amr_id)
+                card.transition_requested.connect(self._on_amr_transition)
                 self._amr_cards[amr_id] = card
                 self._amr_row.addWidget(card, stretch=1)
             card.update_from_dict(amr)
@@ -270,6 +277,27 @@ class LogisticsPage(QWidget):
             status_item = QTableWidgetItem(STATUS_TEXT.get(status, status))
             status_item.setTextAlignment(Qt.AlignCenter)
             self._outbound_table.setItem(row, 5, status_item)
+
+    def _on_amr_transition(self, robot_id: str, new_state: int) -> None:
+        """AMR 카드 버튼 클릭 → gRPC TransitionAmrState 호출."""
+        try:
+            from app.management_client import ManagementClient
+            client = ManagementClient()
+            accepted, reason = client.transition_amr_state(robot_id, new_state)
+            client.close()
+            if accepted:
+                logger.info("AMR 전이 성공: %s → state=%d (%s)", robot_id, new_state, reason)
+            else:
+                logger.warning("AMR 전이 거부: %s → state=%d (%s)", robot_id, new_state, reason)
+                QMessageBox.warning(self, "전이 거부", f"{robot_id}: {reason}")
+        except Exception as exc:
+            logger.exception("AMR 전이 실패: %s", exc)
+            QMessageBox.critical(self, "오류", f"전이 요청 실패: {exc}")
+
+    def update_amr_live(self, amr_list: list[dict[str, Any]]) -> None:
+        """AMR 실시간 데이터(배터리 등) 수신 — 이후 refresh()에서도 이 데이터를 사용."""
+        self._amr_live = amr_list
+        self._update_amr_cards(amr_list)
 
     def handle_ws_message(self, payload: dict[str, Any]) -> None:
         msg_type = payload.get("type", "")
