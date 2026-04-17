@@ -208,6 +208,28 @@ message HandoffAckResponse {
 7. **Monitoring WebSocket event + PyQt dashboard** (`monitoring/app/`): `handoff.ack` 메시지 타입 핸들러 추가, 대기 AMR 목록 업데이트 + 토스트 알림 컴포넌트 연결.
 8. **Simulation affordances** (cross-layer): Backend FastAPI에 `POST /api/debug/handoff-ack` dev-only 라우터 추가 (`backend/app/routes/debug.py` 신규, `APP_ENV=development` gated). Next.js 대시보드 `src/components/` 에 DEV 전용 "SIM Handoff ACK" 버튼 추가 (`process.env.NODE_ENV==='development'` 조건 렌더).
 
+## Implementation Status (2026-04-17)
+
+**✓ COMPLETE** — 4 waves 모두 merge 됨 (main 브랜치 로컬, push 대기).
+
+| Wave | Commit | 대상 | 상태 |
+|------|--------|------|------|
+| 1 | `4cda33e` | DB 마이그레이션, HandoffAck 모델, debug REST 엔드포인트, WebSocket notify | ✓ |
+| 2 | `692b547` | management.proto + ReportHandoffAck RPC, FSM shortcut 전이, idempotency | ✓ |
+| 3 | `05f980f` | ESP32 GP33 버튼 + sim_ack (v1.4.0), Jetson esp_bridge 큐 + gRPC 클라이언트 | ✓ |
+| 4 | `ac50e02` | Next.js DEV SIM 버튼, PyQt handoff.ack 상태바 토스트 | ✓ |
+
+**주요 구현 결정 (SPEC 대비)**:
+- FSM 상태 추가 대신 `AT_DESTINATION → UNLOAD_COMPLETED` shortcut 전이로 해결 (proto/PyQt 호환성 유지).
+- TimescaleDB 확장 미설치 발견 → 일반 PostgreSQL 테이블 + 3개 인덱스로 fallback.
+- Mgmt gRPC → FastAPI WebSocket 브릿지는 `/api/debug/_notify/handoff-ack` HTTP IPC 사용 (Redis/pub-sub 없이 MVP).
+
+**미완 (별도 작업)**:
+- 실제 HW 플래시 + 현장 E2E 검증 (ESP32 `arduino-cli upload` + Jetson 배포).
+- TimescaleDB 설치 및 hypertable 전환 (`migrate_handoff_acks.sql` 의 조건부 블록 활성화).
+- `operator_id` auth 연동.
+
 ## Changelog
+- v1.2 (2026-04-17): 구현 완료 — 4 waves merge. FSM shortcut 전이로 신규 상태 추가 회피. TSDB 미설치에 따른 plain table fallback.
 - v1.1 (2026-04-17): FR-AMR-01-07 Simulation Affordances 추가 (ESP32 sim_ack / Backend debug endpoint / UI dev button), Implementation Plan 경로 교정 (alembic→scripts, handlers/fsm→services), 8번째 step 추가
 - v1.0 (2026-04-17): 초기 작성 — EARS 6개 FR, handoff_acks hypertable, gRPC ReportHandoffAck, 7단계 구현 계획

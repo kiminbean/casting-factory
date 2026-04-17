@@ -1,6 +1,6 @@
 # 데이터 흐름
 
-> **Last updated**: 2026-04-14 (V6 Management Service gRPC 흐름 추가)
+> **Last updated**: 2026-04-17 (SPEC-AMR-001 후처리존 핸드오프 ACK 흐름 추가)
 
 ## 0. V6 핵심 흐름: Factory PC PyQt → Management Service gRPC
 
@@ -212,6 +212,45 @@ flowchart LR
     G --> H[Order.status → shipping_ready<br>shipped_at 자동 기록]
 ```
 
+## 6.1 후처리존 인수인계 ACK (SPEC-AMR-001, 2026-04-17)
+
+AMR 이 postproc zone 에 도착한 후, 작업자가 주물을 하역하고 컨베이어 ESP32 의
+A접점 푸시 버튼을 누르기 전까지 AMR 은 다음 TASK 로 진행하지 않는다. 버튼
+이벤트는 다음 체인으로 전파되어 DB 에 영구 기록된다.
+
+```mermaid
+sequenceDiagram
+    actor W as 후처리 작업자
+    participant BTN as A접점 푸시 버튼<br>(GP33 INPUT_PULLUP)
+    participant ESP as ESP32 conveyor v1.4.0
+    participant JP as Jetson esp_bridge<br>(pyserial + grpc)
+    participant MS as Management Service<br>(gRPC :50051)
+    participant DB as PostgreSQL<br>handoff_acks
+    participant FSM as AMR FSM<br>(in-memory)
+    participant FA as FastAPI<br>(WS broker)
+    participant UI as Next.js / PyQt5
+
+    W->>BTN: 주물 하역 후 버튼 press
+    BTN->>ESP: LOW (INPUT_PULLUP)
+    ESP->>ESP: 디바운스 50ms + rising edge
+    ESP->>JP: Serial: "HANDOFF_ACK\n" + JSON
+    JP->>JP: 큐 적재 (deque maxlen=32)
+    JP->>MS: gRPC ReportHandoffAck
+    MS->>FSM: find_waiting_amr_at_zone("postprocessing")
+    MS->>DB: INSERT handoff_acks (idempotency_key)
+    MS->>DB: UPDATE transport_tasks SET status='handoff_complete'
+    MS->>FSM: confirm_handoff<br>AT_DESTINATION → UNLOAD_COMPLETED
+    MS->>FA: HTTP POST /api/debug/_notify/handoff-ack
+    FA->>UI: WebSocket {type:"handoff.ack"}
+    MS-->>JP: HandoffAckResponse(task_id, amr_id, reason)
+    UI->>W: 상태바 토스트 / 대시보드 갱신
+```
+
+**시뮬레이션 경로 (HW 없이 테스트)**:
+- **ESP32**: Serial Monitor 에서 `sim_ack` → 실제 버튼과 동일 이벤트
+- **Backend**: `curl -X POST /api/debug/handoff-ack` → DB + WS 직접 트리거
+- **Next.js DEV**: 우하단 "🔴 SIM Handoff ACK" 버튼 (`NODE_ENV=development` 전용)
+
 ## 7. 데이터 소유권 매트릭스
 
 | 도메인 | 생성(Write) | 조회(Read) |
@@ -227,3 +266,4 @@ flowchart LR
 | 출고 (outbound_orders) | 시드 / 관리자 | 관리자 웹 (`/logistics`) |
 | 생산 작업 (production_jobs) | 스케줄러 | 관리자 웹 (`/orders`), PyQt5 |
 | 생산 통계 (production_metrics) | 시드 / 집계 | 관리자 웹 (`/production`) |
+| 핸드오프 ACK (handoff_acks) | ESP32 버튼 / Mgmt gRPC / debug REST | 관리자 웹 (/api/debug/handoff-acks/recent), PyQt5 (WS) |
