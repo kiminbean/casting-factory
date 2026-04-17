@@ -79,3 +79,4 @@ backend/management/certs/
 # MQTT 인증 (V6 S-002)
 backend/management/mosquitto/passwd
 backend/management/mosquitto/passwd.bak
+firmware/**/build/

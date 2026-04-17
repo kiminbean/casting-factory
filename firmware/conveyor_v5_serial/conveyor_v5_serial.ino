@@ -96,7 +96,7 @@ const char* ST_NAME[] = {"IDLE", "RUNNING", "STOPPED", "POST_RUN", "CLEARING"};
 // === Globals ===
 HardwareSerial tof1(1);
 HardwareSerial tof2(2);
-MFRC522 rfid;
+MFRC522 rfid(PIN_RFID_SS, PIN_RFID_RST);  // v1.5.1: 생성자에서 핀 설정 (독립 스니펫과 동일)
 
 State state = ST_IDLE;
 unsigned long stateStart = 0;
@@ -273,19 +273,16 @@ void clearRfidTag() {
   lastRfidTextLen = 0;
 }
 
-// RC522 를 VSPI 고정 배선으로 1회 초기화. 실패 시 false 반환 (주기적 재시도).
+// RC522 를 VSPI 배선으로 1회 초기화. 실패 시 false 반환 (주기적 재시도).
+// v1.5.1: 독립 스니펫과 동일하게 SPI.begin() 기본값 사용, PCD_Init 무인자 호출.
 bool initRfid() {
   clearRfidTag();
   rfidReaderReady = false;
   activeRfidVersion = 0;
   lastRfidInitAttemptMs = millis();
 
-  SPI.end();
-  delay(10);
-  SPI.begin(PIN_RFID_SCK, PIN_RFID_MISO, PIN_RFID_MOSI, PIN_RFID_SS);
-  delay(10);
-
-  rfid.PCD_Init(PIN_RFID_SS, PIN_RFID_RST);
+  SPI.begin();     // ESP32 기본 VSPI: SCK=18, MISO=19, MOSI=23, SS=5 (고정 배선과 동일)
+  rfid.PCD_Init(); // 생성자에 전달한 SS/RST 핀 사용
   delay(50);
 
   byte version = rfid.PCD_ReadRegister(MFRC522::VersionReg);
@@ -324,18 +321,9 @@ void pollRfid() {
     return;
   }
 
-  if (now - lastRfidHealthcheckMs >= RFID_HEALTHCHECK_MS) {
-    lastRfidHealthcheckMs = now;
-    byte version = rfid.PCD_ReadRegister(MFRC522::VersionReg);
-    if (version == 0x00 || version == 0xFF) {
-      publishJson("{\"event\":\"rfid_reader\",\"status\":\"lost\"}");
-      Serial.println("RFID:READER:LOST");
-      rfidReaderReady = false;
-      lastRfidInitAttemptMs = now;   // 잠시 쉰 뒤 재초기화
-      return;
-    }
-    activeRfidVersion = version;
-  }
+  // v1.5.1: 주기 VersionReg healthcheck 제거 (카드 감지 간섭 의심).
+  // RC522 가 PICC_IsNewCardPresent 자체로 상태 확인되므로 별도 헬스체크 불필요.
+  // 필요 시 에러 누적 후 재초기화 로직 추후 추가.
 
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) {
     if (lastRfidUid.length() > 0 && now - lastRfidSeenMs >= RFID_TAG_HOLD_MS) {
@@ -682,7 +670,7 @@ void setup() {
 
   delay(500);
   Serial.println();
-  Serial.println("BOOT:conveyor_v5_serial 1.5.0");
+  Serial.println("BOOT:conveyor_v5_serial 1.5.1");
   publishJson("{\"boot\":\"conveyor_v5.0\",\"tof1\":16,\"tof2\":17,"
               "\"tof_baud\":9600,\"proto\":\"serial_only\","
               "\"rfid\":{\"spi\":\"VSPI\",\"sck\":18,\"miso\":19,"
