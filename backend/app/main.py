@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -49,6 +50,13 @@ app.include_router(schedule.router)
 
 # WebSocket router
 app.include_router(websocket.router)
+
+# Dev-only debug router (SPEC-AMR-001 FR-AMR-01-07)
+# APP_ENV=development 이 아니면 등록하지 않음 → production 에서 404 반환
+if os.environ.get("APP_ENV", "development").lower() == "development":
+    from app.routes import debug  # noqa: E402  지연 import: dev 환경에서만 로드
+
+    app.include_router(debug.router)
 
 
 @app.get("/health")

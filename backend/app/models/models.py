@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Column,
     DateTime,
@@ -11,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from app.database import Base
 
 
@@ -263,6 +265,30 @@ class TransportTask(Base):
     assigned_robot_id = Column(String, nullable=True, default="")
     requested_at = Column(String, nullable=False)
     completed_at = Column(String, nullable=True)
+
+
+class HandoffAck(Base):
+    """후처리존 인수인계 확인 이벤트 (SPEC-AMR-001).
+
+    TimescaleDB hypertable. 버튼 이벤트 1건 = 1 row.
+    @MX:ANCHOR: 핸드오프 감사 추적의 단일 진실 공급원. task_id=NULL 이면 orphan.
+    @MX:REASON: Management Service 가 AMR FSM 전이와 함께 insert 하므로 누락 시 이력 손실.
+    """
+
+    __tablename__ = "handoff_acks"
+
+    # TimescaleDB 요구: PK 에 시간 컬럼 포함 → (id, ack_at) 복합 PK
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    ack_at = Column(DateTime(timezone=True), primary_key=True, nullable=False, default=_utc_now)
+    task_id = Column(String, ForeignKey("transport_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    zone = Column(String, nullable=False, index=True)
+    amr_id = Column(String, nullable=True)
+    ack_source = Column(String, nullable=False)              # 'esp32_button' | 'debug_endpoint' | 'gui_override'
+    operator_id = Column(String, nullable=True)
+    button_device_id = Column(String, nullable=True)
+    orphan_ack = Column(Boolean, nullable=False, default=False)
+    idempotency_key = Column(String, nullable=True)
+    extra = Column("metadata", JSONB, nullable=True)         # SQLAlchemy 의 metadata 충돌 회피
 
 
 class WarehouseRack(Base):

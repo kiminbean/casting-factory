@@ -1,6 +1,7 @@
 from app.models.models import (
     Alert,
     Equipment,
+    HandoffAck,
     InspectionRecord,
     InspectionStandard,
     Order,
@@ -17,6 +18,7 @@ from app.models.models import (
 __all__ = [
     "Alert",
     "Equipment",
+    "HandoffAck",
     "InspectionRecord",
     "InspectionStandard",
     "Order",
