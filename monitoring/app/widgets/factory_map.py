@@ -352,24 +352,7 @@ class FactoryMapScene(QGraphicsScene):
         station.setZValue(5)
         self.addItem(station)
 
-        # AMR 3대 (노란 사각형)
-        amr_w, amr_h = 95, 75
-        amr_y = 490
-        for i, ax in enumerate([515, 625, 735]):
-            amr_rect = QGraphicsRectItem(ax, amr_y, amr_w, amr_h)
-            amr_rect.setBrush(QBrush(QColor(AMR_COLOR)))
-            amr_rect.setPen(QPen(QColor("#b8a000"), 1))
-            amr_rect.setZValue(10)
-            self.addItem(amr_rect)
-            font = QFont("Sans", 11, QFont.Bold)
-            txt = QGraphicsSimpleTextItem("Amr")
-            txt.setFont(font)
-            txt.setBrush(QBrush(QColor("#000000")))
-            tr = txt.boundingRect()
-            txt.setPos(ax + (amr_w - tr.width()) / 2,
-                       amr_y + (amr_h - tr.height()) / 2)
-            txt.setZValue(11)
-            self.addItem(txt)
+        # AMR 3대는 _SimAMR(AMR-001/002/003)이 시뮬레이션에서 관리
 
     # ------------------------------------------------------------------
     # 5) Casting zone (우측, 세로)
@@ -672,9 +655,9 @@ class _SimController:
         self._blink_counter = 0
 
         # 시뮬레이션 전용 AMR 3대
-        self._amr1 = _SimAMR(scene, "AMR-1", *_POS["amr1_home"])
-        self._amr2 = _SimAMR(scene, "AMR-2", *_POS["amr2_home"])
-        self._amr3 = _SimAMR(scene, "AMR-3", *_POS["amr3_home"])
+        self._amr1 = _SimAMR(scene, "AMR-001", *_POS["amr1_home"])
+        self._amr2 = _SimAMR(scene, "AMR-002", *_POS["amr2_home"])
+        self._amr3 = _SimAMR(scene, "AMR-003", *_POS["amr3_home"])
 
         # 주물 목록
         self._castings: list[_CastingItem] = []
