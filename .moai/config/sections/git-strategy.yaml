@@ -1,0 +1,3 @@
+git_strategy:
+    mode: team
+    provider: github
