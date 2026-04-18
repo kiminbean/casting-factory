@@ -2,7 +2,7 @@
 
 > **addinedute(addinedu_team_2)** space 주요 설계/기술 문서의 팩트 체크 정리본
 > 원본 페이지 변경 시 이 파일을 업데이트해야 함
-> **마지막 업데이트**: 2026-04-16 (cron sync: 5건)
+> **마지막 업데이트**: 2026-04-18 (cron sync: 1건)
 > **READ-ONLY**: 이 문서는 로컬 참조용이며 Confluence 원본은 수정하지 않음
 
 ## 사용 원칙
@@ -1613,47 +1613,85 @@ VDA 5050는 독일 자동차 산업 연합(VDA)이 정의한 Fleet Management In
 ### Terminology (3407906)
 
 **Confluence URL**: https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/3407906
-**최종 수정**: v25 (2026-04-16 sync)
+**최종 수정**: v36 (2026-04-18 sync)
 
 통일된 언어 사용 지향을 위해 용어 정리해놓았습니다. 문서 작성시에 이 페이지에 정리된 용어 사용 부탁드립니다!
 
 ****
 ****
 ****
-| 한글 | 영어 | 설명 - 프로젝트 기준 |
-|---|---|---|
 ****
-| 관제 | FMS | 다수의 로봇의 작업 할당 및 경로를 제어하는 시스템 |
-| 자율주행로봇 | AMR |   |
-| 로봇팔 | Robotic Arm |   |
-| 컨베이어 벨트 | Conveyor |   |
-| 로딩 | Loading | 컨베이어벨트에 반입 |
-| 언로딩 | Unloading | 컨베이어벨트에 반출 |
-| 포토 센서 | Photo Sensor | 맨홀 감지 역할 |
+| 한글 | 영어 | 약어 | 설명 - 프로젝트 기준 |
+|---|---|---|---|
 ****
-| 생산      (process) |   | 주조부터 검사까지 모든 과정 |
-| 주조 | Casting / cast | 금속을 녹여 주형에 부어 형상을 만드는 공정 |
-| 주형제작 | Mold Making | 맨홀을 만들기 위한 틀을 제작하는 과정 |
-| 주탕 | Pouring | 용탕을 주형에 붓는 과정 |
-| 패턴 | Pattern | 주형을 만들기 위한 원형 모델 |
-| 냉각 | Cooling | 용탕이 식으면서 고체로 변하는 과정 |
-| 탈형 | Demolding | 냉각된 맨홀에서 주형을 제거하는 과정 |
-| 후처리 | PostProcessing | 맨홀의 표면을 다듬고 불필요한 부분을 제거하는 과정 |
-| 검사 | Inspection | 제품의 품질을 확인하는 과정 |
+| 관제 | FMS |   | 다수의 로봇의 작업 할당 및 경로를 제어하는 시스템 |
+| 자율주행로봇 | AMR | AMR |   |
+| 로봇팔 | Robot Arm | RA |   |
+| 컨베이어 벨트 | Conveyor |   |   |
+| 로딩 | Loading |   | 컨베이어벨트에 반입 |
+| 언로딩 | Unloading |   | 컨베이어벨트에 반출 |
+| 포토 센서 | Photo Sensor |   | 맨홀 감지 역할 |
+| 고유번호 | Identifier |   |   |
+| 이름 | Name |   |   |
+| 상태 | Status |   |   |
+| 메시지 |   |   |   |
+| 요청 |   |   |   |
+| 주문 |   |   |   |
+| 현재 |   |   |   |
+| 목적지 |   |   |   |
+| 출발지 |   |   |   |
+| 시간 |   |   |   |
+| 작업자 |   |   |   |
+| 자원 |   |   |   |
 ****
-| 이송      (process) |   | AMR이 물건을 가지고 이동하는 모든 과정 |
-| 상차 | Loading / load | AMR 위에 맨홀을 올리는 행위 |
-| 하차 | Unloading / unload | AMR 위에서 맨홀을 내리는 행위 |
+| 생산      (process) | Manufacture |   | 주조부터 검사까지 모든 과정 |
+| 주조 | Casting / cast |   | 금속을 녹여 주형에 부어 형상을 만드는 공정 |
+| 주형제작 | Mold Making |   | 맨홀을 만들기 위한 틀을 제작하는 과정 |
+| 주탕 | Pouring |   | 용탕을 주형에 붓는 과정 |
+| 패턴 | Pattern |   | 주형을 만들기 위한 원형 모델 |
+| 냉각 | Cooling |   | 용탕이 식으면서 고체로 변하는 과정 |
+| 탈형 | Demolding | DM | 냉각된 맨홀에서 주형을 제거하는 과정 |
+| 후처리 | PostProcessing |   | 맨홀의 표면을 다듬고 불필요한 부분을 제거하는 과정 |
+| 검사 | Inspection | INSP | 제품의 품질을 확인하는 과정 |
+| 작업중 |   |   |   |
+| 검사 |   |   |   |
+| 후처리 |   |   |   |
+| 재질 |   |   |   |
+| 백분율 |   |   |   |
+| 설비 |   |   |   |
 ****
-| 적재       (process) |   | 적치와 출고과정을 통칭함 |
-| 적치 | Putaway | ​적치하는 process / 맨홀을 보관 랙에 넣는 행위 |
-| ​출고 | Shipping | 출고하는 process |
-| 파지 | Picking | 로봇arm이 무언가를 집는 행위 |
-| 보관 랙 | Storage Rack | 맨홀을 보관하는 랙 |
-| 슬롯형 보관함 | Slotted storage | AMR 위에 있는 보관함 |
-| 주물 |
-| 양품 | good product |   |
-| 불량품 | defect (n) / defective (adj) |   |
+| 이송      (process) | Transport |   | AMR이 물건을 가지고 이동하는 모든 과정 |
+| 상차 | Loading / load | LD | 로봇팔이 AMR위에 맨홀을 올리는 행위 |
+| 하차 | Unloading / unload | DLD | 로봇팔/사람이 AMR위에서 맨홀을 내리는 행위 |
+| 이송 |   |   |   |
+| 배터리 |   |   |   |
+|   |   |   |   |
+****
+| 적재       (process) | Stacking |   | 적치와 출고과정을 통칭함 |
+| 적치 | Putaway | PUT | ​적치하는 process / 맨홀을 보관 랙에 넣는 행위 |
+| 출하용으로 꺼내는 작업 |   | PICK | Putaway의 반대말로, WMS 표준으로 보관 위치에서 출하용으로 꺼내는 작업을 의미 |
+| 보관 |   |   |   |
+| 임시 대기 |   |   | 다음 공정(여기선 출하)을 위해 임시로 모아두는 구역 |
+| ​출고 | Shipping | SHIP | 출고하는 process |
+| 파지 |   |   | 로봇arm이 무언가를 집는 행위 |
+| 보관 선반 | Storage Rack |   | 맨홀을 보관하는 랙 |
+| 슬롯형 보관함 | Slotted storage |   | AMR 위에 있는 보관함 |
+| 수량 | Quantity |   |   |
+****
+| 주물 | Casting Product |   |   |
+| 양품 | Good product |   |   |
+| 불량품 | defect (n) / defective (adj) product |   |   |
+| 제품 |   |   |   |
+| 패턴 |   |   |   |
+| 기타 (공통/범용) |   |   |   |
+| 코드 | code |   |   |
+| 카테고리 |   |   |   |
+| 옵션 |   |   |   |
+| 주문 |
+|   | Purchase Order | PO | 고객의 입장에서 고객 발주 ERP 표준 |
+| (발주를) 수주 (제조사 입장), |   | SO, RCVD | 제조사가 수주, ERD entity는 SO, 상태표현시에는 RCVD |
+| 발주 (행위) | Order Placement |   |   |
+|   |   |   |   |
 
 # 주조 (Casting) 
 “주조 공정은 용탕을 주형에 주탕한 뒤 냉각·탈형을 거쳐 제품을 만드는 과정이며, 특히 주탕과 물류 과정은 자동화가 가장 필요한 핵심 구간입니다.”
