@@ -6,7 +6,7 @@ created: 2026-04-18
 updated: 2026-04-18
 author: kisoo
 priority: medium
-issue_number: 0
+issue_number: 1
 ---
 
 # SPEC-RC522-001: RC522 Stability Regression Test Suite
