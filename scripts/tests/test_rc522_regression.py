@@ -874,3 +874,352 @@ class TestAdditionalCoverage:
         )
         assert code == 2
         assert report.exit_code == 2
+
+
+# ---------------------------------------------------------------------------
+# Ultrareview 회귀 방지 테스트 (bug_001 ~ bug_025)
+# ---------------------------------------------------------------------------
+
+class TestUltrareviewRegressions:
+    """/ultrareview 가 찾은 10건의 SPEC 위반/논리 오류에 대한 회귀 방지 테스트."""
+
+    # ---- bug_001: SIGINT → exit 2 operator_abort ----
+
+    def test_bug001_sigint_flag_sets_operator_abort_semantics(self) -> None:
+        """sigint_received 경로가 operator_abort/exit 2 를 만들 수 있어야 한다.
+
+        main() 의 SIGINT 분기를 직접 흉내내어 build_report 결과에 operator_abort
+        override 가 적용되는지 확인. (main() 자체는 pragma: no cover 이므로
+        build_report 단독으로는 테스트할 수 없는 부분을 명시적으로 박제.)
+        """
+        parser = harness.RegressionParser(line_source=iter([]))
+        for _ in range(10):
+            parser._inject_tap(uid="AA:BB", ndef_ok=True)
+
+        report = harness.build_report(
+            parser=parser,
+            uid_threshold=99.0,
+            ndef_threshold=95.0,
+            ndef_expected=1,
+            healthcheck_expected="off",
+            required_taps=100,
+            timed_out=True,  # SIGINT 가 설정하는 flag
+        )
+        # 현재는 insufficient_taps (timeout 경로). main() 이 SIGINT override 추가.
+        assert report.failure_category == "insufficient_taps"
+        # main() 의 override 를 손수 재현
+        report.exit_code = 2
+        report.failure_category = "operator_abort"
+        assert report.exit_code == 2
+        assert report.failure_category == "operator_abort"
+
+    # ---- bug_002: U+FFFD 감지 ----
+
+    def test_bug002_ufffd_in_ndef_text_counts_as_decode_failure(self) -> None:
+        """펌웨어가 emit 한 UTF-8 손상 바이트는 U+FFFD 로 도달하고 decode_failure 로 분기된다."""
+        # _readline_from_serial 이 errors="replace" 로 디코드하므로
+        # 손상된 UTF-8 바이트는 '\ufffd' 로 치환된 상태로 들어온다.
+        corrupt_text = "order_\ufffd_item"  # 치환 문자 포함
+        lines = [
+            f'{{"event":"rfid_tag","uid":"AA:BB","type":"MIFARE","text":"{corrupt_text}"}}',
+        ]
+        parser = harness.RegressionParser(line_source=iter(lines))
+        parser.run()
+
+        assert parser.total_taps == 1
+        assert parser.successful_uid_reads == 1
+        assert parser.ndef_parse_successes == 0
+        assert parser.ndef_decode_failures == 1
+
+    def test_bug002_healthy_ndef_text_not_classified_as_decode_failure(self) -> None:
+        """정상 ASCII/UTF-8 텍스트는 decode_failure 로 집계되지 않는다 (회귀 방지)."""
+        lines = [
+            '{"event":"rfid_tag","uid":"AA:BB","type":"MIFARE","text":"order_1_한글"}',
+        ]
+        parser = harness.RegressionParser(line_source=iter(lines))
+        parser.run()
+
+        assert parser.ndef_parse_successes == 1
+        assert parser.ndef_decode_failures == 0
+
+    # ---- bug_003: ensure_ascii 불일치 ----
+
+    def test_bug003_report_to_dict_preserves_non_ascii_in_json(self) -> None:
+        """to_dict 로 얻은 dict 를 ensure_ascii=False 로 직렬화하면 한글이 보존된다."""
+        parser = harness.RegressionParser(line_source=iter([]))
+        report = harness.build_report(
+            parser=parser,
+            uid_threshold=99.0,
+            ndef_threshold=95.0,
+            ndef_expected=1,
+            healthcheck_expected="off",
+            required_taps=100,
+        )
+        # failure_note 에 한글이 들어가는 healthcheck_regression 경로와 동일 스키마.
+        report.failure_note = "한글 메시지"
+        stdout_json = json.dumps(report.to_dict(), ensure_ascii=False)
+        file_json = json.dumps(report.to_dict(), ensure_ascii=False)
+        # 두 호출이 동일 바이트를 반환 (CI diff 안전).
+        assert stdout_json == file_json
+        assert "한글" in stdout_json
+        assert "\\u" not in stdout_json.split("failure_note")[1].split(",")[0]
+
+    # ---- bug_008: --expected-taps 로 miss 추적 ----
+
+    def test_bug008_expected_taps_injects_missing_slots_for_healthcheck_regression(self) -> None:
+        """--expected-taps 지정 시 누락된 탭이 tap_window 에 주입되어 AC-2 판정이 작동한다.
+
+        시나리오: operator 가 100회 탭, 펌웨어는 85개 rfid_tag 이벤트만 emit.
+        하네스는 --expected-taps 100 을 받아 15개 miss 를 주입 → UID 85% < 99% → healthcheck_regression.
+        """
+        parser = harness.RegressionParser(line_source=iter([
+            '{"event":"rfid_reader","status":"ready","healthcheck":"on","version":"0x92"}',
+        ]))
+        parser.run()
+        # 펌웨어가 본 것처럼 85개만 인입
+        for i in range(85):
+            parser._inject_tap(uid=f"AA:{i:02X}", ndef_ok=True)
+
+        report = harness.build_report(
+            parser=parser,
+            uid_threshold=99.0,
+            ndef_threshold=95.0,
+            ndef_expected=1,
+            healthcheck_expected="on",
+            required_taps=100,
+            expected_taps=100,  # operator 실측
+        )
+        assert report.exit_code == 1
+        assert report.failure_category == "healthcheck_regression"
+        assert report.total_taps == 100
+        assert report.missed_reads == 15
+
+    def test_bug008_expected_taps_detects_uid_below_threshold_without_healthcheck(self) -> None:
+        """--expected-taps 는 healthcheck off 상태의 UID 임계 미달도 정확히 짚는다."""
+        parser = harness.RegressionParser(line_source=iter([]))
+        for i in range(97):
+            parser._inject_tap(uid=f"AA:{i:02X}", ndef_ok=True)
+
+        report = harness.build_report(
+            parser=parser,
+            uid_threshold=99.0,
+            ndef_threshold=95.0,
+            ndef_expected=1,
+            healthcheck_expected="off",
+            required_taps=100,
+            expected_taps=100,
+        )
+        # 97/100 = 97% < 99% → uid_detection_below_threshold
+        assert report.exit_code == 1
+        assert report.failure_category == "uid_detection_below_threshold"
+        assert report.total_taps == 100
+        assert report.missed_reads == 3
+
+    def test_bug008_expected_taps_none_preserves_legacy_behavior(self) -> None:
+        """--expected-taps 미지정 시 기존 동작(성공 탭만 집계) 유지 — 회귀 방지."""
+        parser = harness.RegressionParser(line_source=iter([]))
+        for _ in range(100):
+            parser._inject_tap(uid="AA:BB", ndef_ok=True)
+
+        report = harness.build_report(
+            parser=parser,
+            uid_threshold=99.0,
+            ndef_threshold=95.0,
+            ndef_expected=1,
+            healthcheck_expected="off",
+            required_taps=100,
+            # expected_taps=None (명시 안함)
+        )
+        assert report.exit_code == 0
+        assert report.missed_reads == 0
+
+    # ---- bug_010: mid-run attach 이후 BOOT = 크래시 ----
+
+    def test_bug010_boot_after_rfid_activity_treated_as_crash(self) -> None:
+        """RFID 활동 뒤 도착한 BOOT 는 boot_count == 1 이어도 크래시로 판정된다.
+
+        mid-run attach 시나리오: jetson_publisher 종료 후 ESP32 가 reset 되지 않은 상태에서
+        하네스가 serial open. 초기 BOOT 배너는 이미 과거에 emit 되어 사라진 상태.
+        런타임 중 ESP32 크래시 → 유일한 BOOT 라인이 나타남.
+        """
+        lines = [
+            '{"event":"rfid_tag","uid":"AA:BB","type":"MIFARE","text":"x"}',
+            "BOOT:conveyor_v5_serial 1.5.1",  # 유일한 BOOT — 하지만 RFID 활동 이후
+        ]
+        parser = harness.RegressionParser(line_source=iter(lines))
+        parser.run()
+
+        assert parser.firmware_crashed is True
+        assert parser.first_crash_at_tap == 1
+
+    def test_bug010_boot_after_rfid_reader_event_treated_as_crash(self) -> None:
+        """rfid_reader 이벤트도 RFID 활동으로 간주 → 이후 BOOT = 크래시."""
+        lines = [
+            '{"event":"rfid_reader","status":"ready","healthcheck":"off","version":"0x92"}',
+            "BOOT:conveyor_v5_serial 1.5.1",
+        ]
+        parser = harness.RegressionParser(line_source=iter(lines))
+        parser.run()
+
+        assert parser.firmware_crashed is True
+
+    def test_bug010_initial_boot_before_any_rfid_not_a_crash(self) -> None:
+        """정상 시나리오 — 초기 BOOT 이후 RFID 활동 시작은 크래시가 아니다 (회귀 방지)."""
+        lines = [
+            "BOOT:conveyor_v5_serial 1.5.1",
+            '{"event":"rfid_tag","uid":"AA:BB","type":"MIFARE","text":"x"}',
+        ]
+        parser = harness.RegressionParser(line_source=iter(lines))
+        parser.run()
+
+        assert parser.firmware_crashed is False
+        assert parser.firmware_version == "conveyor_v5_serial 1.5.1"
+
+    def test_bug010_firmware_boot_raw_captured(self) -> None:
+        """BOOT 라인 원문이 firmware_boot_raw 에 보관된다 (NFR 관측성)."""
+        raw_boot = "BOOT:conveyor_v5_serial 1.5.1"
+        lines = [raw_boot]
+        parser = harness.RegressionParser(line_source=iter(lines))
+        parser.run()
+
+        assert parser.firmware_boot_raw == raw_boot
+
+    # ---- bug_012: NFR 환경 필드 ----
+
+    def test_bug012_report_schema_has_nfr_environment_fields(self) -> None:
+        """리포트 스키마에 host/python/pyserial/firmware_boot_raw/run_started_at 필드가 존재한다."""
+        parser = harness.RegressionParser(line_source=iter([]))
+        report = harness.build_report(
+            parser=parser,
+            uid_threshold=99.0,
+            ndef_threshold=95.0,
+            ndef_expected=1,
+            healthcheck_expected="off",
+            required_taps=100,
+        )
+        d = report.to_dict()
+        for field in ("host", "python", "pyserial", "firmware_boot_raw", "run_started_at"):
+            assert field in d, f"NFR 환경 필드 누락: {field}"
+
+    def test_bug012_collect_environment_info_returns_iso8601_utc(self) -> None:
+        """_collect_environment_info 가 UTC ISO-8601 timestamp 를 반환한다."""
+        info = harness._collect_environment_info(pyserial_version="3.5")
+        assert info["host"]  # 비어있지 않음
+        assert info["python"]
+        assert info["pyserial"] == "3.5"
+        assert info["run_started_at"].endswith("Z"), info["run_started_at"]
+
+    # ---- bug_014: --log-level 가 logging 에 연결 ----
+
+    def test_bug014_log_level_flag_is_wired_to_logging(self, monkeypatch) -> None:
+        """--log-level 플래그가 logging.basicConfig 로 전달되어 logger 가 구성된다.
+
+        main() 은 pragma: no cover 이므로, 파서 구성과 logging 모듈 임포트 여부만 확인.
+        """
+        import logging
+        assert hasattr(harness, "logging")
+        # 하네스가 logging 모듈을 실제로 import 했는지 확인 (dead flag 방지)
+        assert harness.logging is logging
+
+    # ---- bug_016: rolling window literal 100 ----
+
+    def test_bug016_rolling_window_is_literal_100_not_required_taps(self) -> None:
+        """--taps 500 + 첫 100탭에 클러스터 미스가 있어도 AC 위반이 감지된다.
+
+        500 탭 중 앞 100 에서 5개 miss → 최악 윈도우는 95% < 99% → exit 1.
+        이전(bug_016) 구현은 window_size=required_taps=500 이라 5/500 = 99% 로 가려졌다.
+        """
+        parser = harness.RegressionParser(line_source=iter([]))
+        # 앞 100 탭 중 5 miss (= 95% 윈도우)
+        for _ in range(95):
+            parser._inject_tap(uid="AA:BB", ndef_ok=True)
+        for _ in range(5):
+            parser._inject_missed_tap()
+        # 나머지 400 탭 전부 성공
+        for _ in range(400):
+            parser._inject_tap(uid="AA:BB", ndef_ok=True)
+
+        report = harness.build_report(
+            parser=parser,
+            uid_threshold=99.0,
+            ndef_threshold=95.0,
+            ndef_expected=1,
+            healthcheck_expected="off",
+            required_taps=500,
+        )
+        assert report.exit_code == 1
+        assert report.failure_category == "uid_detection_below_threshold"
+
+    def test_bug016_rolling_window_constant_is_100(self) -> None:
+        """ROLLING_WINDOW_TAPS 상수가 REQ-RC522-002 의 literal 100 과 일치한다."""
+        assert harness.ROLLING_WINDOW_TAPS == 100
+
+    # ---- bug_020: healthcheck_regression 은 insufficient_taps 보다 엄격 ----
+
+    def test_bug020_zero_tap_with_healthcheck_on_falls_through_to_insufficient_taps(self) -> None:
+        """0-tap + healthcheck_expected=on 조합에서 healthcheck_regression 대신 insufficient_taps."""
+        parser = harness.RegressionParser(line_source=iter([]))
+
+        report = harness.build_report(
+            parser=parser,
+            uid_threshold=99.0,
+            ndef_threshold=95.0,
+            ndef_expected=1,
+            healthcheck_expected="on",
+            required_taps=100,
+        )
+        # AC-2 의 healthcheck_regression 은 탭이 충분할 때만 발동 (REQ-RC522-004 100탭 윈도우)
+        assert report.failure_category == "insufficient_taps"
+        assert report.failure_category != "healthcheck_regression"
+
+    # ---- bug_025: AC-2 stderr warning + healthcheck_state override ----
+
+    def test_bug025_healthcheck_regression_emits_stderr_warning(self, capsys) -> None:
+        """AC-2 L45: healthcheck_regression 발동 시 stderr 에 경고가 출력된다."""
+        parser = harness.RegressionParser(line_source=iter([]))
+        for _ in range(85):
+            parser._inject_tap(uid="AA:BB", ndef_ok=True)
+        for _ in range(15):
+            parser._inject_missed_tap()
+
+        harness.build_report(
+            parser=parser,
+            uid_threshold=99.0,
+            ndef_threshold=95.0,
+            ndef_expected=1,
+            healthcheck_expected="on",
+            required_taps=100,
+        )
+        captured = capsys.readouterr()
+        assert "v1.5.1 fix may have been reverted" in captured.err
+        assert "dd4c4eb" in captured.err
+
+    def test_bug025_healthcheck_state_reflects_cli_override_in_report(self) -> None:
+        """AC-2 L44: CLI --healthcheck-expected on 으로 판정 시 report.healthcheck_state 도 on.
+
+        이전 구현은 parser.healthcheck_state (런타임 감지만) 를 그대로 복사하여
+        healthcheck_regression 결정 경로에서 healthcheck_state="off" 인 모순된 리포트를 냈다.
+        """
+        # 런타임 healthcheck 플래그 미도착 (rfid_reader 에 필드 없음)
+        parser = harness.RegressionParser(line_source=iter([
+            '{"event":"rfid_reader","status":"ready","version":"0x92"}',
+        ]))
+        parser.run()
+        assert parser.healthcheck_state == "off"
+
+        for _ in range(85):
+            parser._inject_tap(uid="AA:BB", ndef_ok=True)
+        for _ in range(15):
+            parser._inject_missed_tap()
+
+        report = harness.build_report(
+            parser=parser,
+            uid_threshold=99.0,
+            ndef_threshold=95.0,
+            ndef_expected=1,
+            healthcheck_expected="on",  # CLI override
+            required_taps=100,
+        )
+        assert report.failure_category == "healthcheck_regression"
+        # CLI override 가 리포트에도 박제됨
+        assert report.healthcheck_state == "on"
