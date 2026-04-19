@@ -3,6 +3,14 @@
 > **2026-04-14 갱신 노트**: 본 SPEC 의 "DB: SQLite" 기재는 v3.0 시점(2026-03-31)의 사실이며,
 > 2026-04-09 PostgreSQL 16 + TimescaleDB 로 이관, 2026-04-14 SQLite 폴백을 완전 제거함.
 > 현재 정식 DB 는 PostgreSQL 단독 (`100.107.120.14:5432 / smartcast_robotics`).
+>
+> **📌 Schema Migration Note (2026-04-19)**: 본 대시보드의 데이터 모델은 이후
+> **smartcast schema** (Confluence 32342045 v59) 로 이관됨. 페이지·차트 명세는
+> 유지하되 백엔드 데이터 출처가 `ord` / `item` / `equip_task_txn` 등 신규 27 테이블
+> 로 변경됨. legacy compat endpoint (`/api/dashboard/stats`, `/api/production/equipment`,
+> `/api/quality/stats` 등) 는 백엔드가 derive. 자세한 매핑은
+> [SPEC-DB-V2-MIGRATION](SPEC-DB-V2-MIGRATION/spec.md) 참조. TimescaleDB 는
+> 이관 과정에서 OS 패키지 제거 — 재설치 가이드는 `backend/scripts/timescale_install_guide.md`.
 
 ## Overview
 Casting factory production monitoring dashboard with real-time process tracking, order management, quality inspection, logistics control, and factory floor map visualization.

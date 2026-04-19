@@ -1,5 +1,11 @@
 # SPEC-CTL-001: 생산 스케줄링 모듈 (SR-CTL-04 + SR-CTL-05)
 
+> **📌 Schema Migration Note (2026-04-19)**: smartcast schema 적용 후 본 SPEC 의
+> 데이터 모델은 변경됨. `production_jobs` 는 `equip_task_txn` 으로, `priority_change_logs`
+> 는 별도 테이블 없음 (필요 시 ord_log 활용). FMS 자동 시퀀서 도입으로 일부 수동
+> 우선순위 조정은 `equip_task_txn.req_at` 순서 (FIFO) 로 단순화됨.
+> 매핑 표 / endpoint 호환은 [SPEC-DB-V2-MIGRATION](../SPEC-DB-V2-MIGRATION/spec.md) 참조.
+
 ## Overview
 관리자가 승인된 주문 중 생산 가능한 항목을 선택하여 우선순위를 자동 계산하고, 수동 조정 후 실제 공정에 할당하여 생산을 개시하는 모듈.
 
