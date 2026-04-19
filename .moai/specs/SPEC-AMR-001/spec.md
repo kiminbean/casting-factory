@@ -1,5 +1,19 @@
 # SPEC-AMR-001: 후처리존 주물 인수인계 확인 버튼 (SR-AMR-01 + SR-AMR-02)
 
+> **📌 Schema Migration Note (2026-04-19)**: 본 SPEC 의 `handoff_acks` / `transport_tasks`
+> 테이블 이름은 **smartcast schema** (Confluence 32342045 v59) 적용 이후 변경됨.
+> 새 참조는 아래 매핑을 따를 것.
+>
+> | 기존 (public schema) | 신규 (smartcast schema) |
+> |---|---|
+> | `handoff_acks` | `trans_task_txn` (task_type='ToPP', txn_stat 전이 기록) |
+> | `transport_tasks` | `trans_task_txn` |
+> | `orders` | `ord` + `ord_detail` |
+> | `items` | `item` |
+>
+> 본 SPEC 의 DDL/쿼리 예시는 원래 구현 시점의 이력 기록으로 보존. 후속 구현은
+> [SPEC-DB-V2-MIGRATION](../SPEC-DB-V2-MIGRATION/spec.md) 를 참조할 것.
+
 ## Overview
 AMR이 주물을 후처리존에 물리적으로 도착시킨 후, 후처리 작업자가 주물을 하역하고 컨베이어 패널의 A접점 푸시 버튼을 눌러 "인수인계 완료"를 명시적으로 신호하기 전까지 AMR을 대기시켜 작업자-로봇 간 안전한 핸드오프를 보장한다. 버튼 입력은 ESP32 → Jetson → Management Service(gRPC) → DB 체인을 따라 전파되고 AMR FSM이 다음 작업으로 전환된다. 작업자가 실제로 수령했음을 시스템이 알 수 있어야 하며, 센서 오인식이나 타임아웃이 아닌 인간 확인을 완료 신호로 사용한다.
 
