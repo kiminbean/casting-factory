@@ -89,6 +89,77 @@ def _build_summaries(db: Session, ord_id: Optional[int]) -> List[InspectionSumma
     return out
 
 
+# -------------------------------------------------------------------------
+# Legacy compat endpoints
+# -------------------------------------------------------------------------
+
+@router.get("/stats")
+def quality_stats_summary(db: Session = Depends(get_db)) -> dict:
+    """legacy /api/quality/stats — 전체 검사 누적 합계."""
+    inspected = (
+        db.query(func.count(InspTaskTxn.txn_id)).filter(InspTaskTxn.result.isnot(None)).scalar() or 0
+    )
+    good = (
+        db.query(func.count(InspTaskTxn.txn_id)).filter(InspTaskTxn.result.is_(True)).scalar() or 0
+    )
+    defective = (
+        db.query(func.count(InspTaskTxn.txn_id)).filter(InspTaskTxn.result.is_(False)).scalar() or 0
+    )
+    pending = (
+        db.query(func.count(InspTaskTxn.txn_id)).filter(InspTaskTxn.result.is_(None)).scalar() or 0
+    )
+    rate = (good / inspected * 100.0) if inspected else 0.0
+    return {
+        "inspected": inspected,
+        "good": good,
+        "defective": defective,
+        "pending": pending,
+        "good_rate_pct": round(rate, 2),
+    }
+
+
+@router.get("/standards")
+def list_standards() -> list[dict]:
+    """legacy 검사 기준 — 별도 테이블 없음, 빈 배열."""
+    return []
+
+
+@router.get("/sorter-logs")
+def list_sorter_logs() -> list[dict]:
+    """legacy sorter — equip_task_txn(task_type='ToINSP') 로 통합됨, 빈 배열."""
+    return []
+
+
+@router.get("/sorter")
+def get_sorter_state() -> dict:
+    """legacy sorter 상태 — 미연동, 정적 응답."""
+    return {"status": "idle", "items_processed": 0, "last_action_at": None}
+
+
+@router.get("/trend")
+def quality_trend() -> list[dict]:
+    """legacy 불량률 트렌드 — TimescaleDB 미설치, 빈 배열."""
+    return []
+
+
+@router.get("/defect-types")
+def quality_defect_types() -> list[dict]:
+    """legacy 불량 유형 분포 — 미분류 카테고리, 빈 배열."""
+    return []
+
+
+@router.get("/vs-defects")
+def quality_vs_defects() -> list[dict]:
+    """legacy 생산 vs 불량 — 빈 배열."""
+    return []
+
+
+@router.get("/vision-feed")
+def quality_vision_feed() -> dict:
+    """legacy 비전 카메라 피드 — Jetson 미연동, 빈 응답."""
+    return {"frames": [], "status": "disconnected"}
+
+
 @router.post("/inspections/{txn_id}/result", response_model=InspTaskTxnOut)
 def update_inspection_result(
     txn_id: int,

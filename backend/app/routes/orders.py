@@ -52,7 +52,7 @@ load_classes_router = APIRouter(prefix="/api", tags=["load-classes"])
 # -------------------------------------------------------------------------
 
 def _to_full(db: Session, ord_obj: Ord) -> OrdFull:
-    """Ord ORM → OrdFull (detail + pp_options + latest_stat)."""
+    """Ord ORM → OrdFull (detail + pp_options + latest_stat + user denormalized)."""
     pp_options = (
         db.query(PpOption)
         .join(OrdPpMap, OrdPpMap.pp_id == PpOption.pp_id)
@@ -65,6 +65,7 @@ def _to_full(db: Session, ord_obj: Ord) -> OrdFull:
         .order_by(desc(OrdStat.updated_at))
         .first()
     )
+    user = db.get(UserAccount, ord_obj.user_id)
     return OrdFull(
         ord_id=ord_obj.ord_id,
         user_id=ord_obj.user_id,
@@ -72,6 +73,10 @@ def _to_full(db: Session, ord_obj: Ord) -> OrdFull:
         detail=ord_obj.detail,
         pp_options=[PpOptionOut.model_validate(p) for p in pp_options],
         latest_stat=latest_stat.ord_stat if latest_stat else "RCVD",
+        user_co_nm=user.co_nm if user else None,
+        user_nm=user.user_nm if user else None,
+        user_phone=user.phone if user else None,
+        user_email=user.email if user else None,
     )
 
 

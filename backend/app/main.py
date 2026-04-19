@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, SessionLocal, engine
-from app.routes import alerts, logistics, orders, production, quality, schedule, websocket
+from app.routes import alerts, dashboard, logistics, orders, production, quality, schedule, websocket
 from app.seed import seed_database
 
 
@@ -49,6 +49,7 @@ app.include_router(quality.router)
 app.include_router(logistics.router)
 app.include_router(alerts.router)
 app.include_router(schedule.router)
+app.include_router(dashboard.router)
 
 # WebSocket router
 app.include_router(websocket.router)
