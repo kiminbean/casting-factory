@@ -55,6 +55,8 @@ def dashboard_stats(db: Session = Depends(get_db)) -> dict:
 
     active_resources = db.query(func.count(Res.res_id)).scalar() or 0
 
+    from app.services.timescale import has_timescaledb
+
     return {
         "total_orders": total_orders,
         "orders_in_production": in_production,
@@ -67,4 +69,5 @@ def dashboard_stats(db: Session = Depends(get_db)) -> dict:
         "alerts_today": err_today + trans_err_today,
         "active_resources": active_resources,
         "snapshot_at": datetime.utcnow().isoformat() + "Z",
+        "timescaledb_enabled": has_timescaledb(),  # 시계열 차트가 hypertable 사용 가능한지
     }
