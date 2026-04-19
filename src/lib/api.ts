@@ -76,9 +76,11 @@ export function fetchOrders(): Promise<Order[]> {
   return apiFetch<Order[]>("/api/orders");
 }
 
-/** 특정 이메일로 접수된 주문만 반환. /customer/lookup 흐름에서 사용. */
+/** 특정 이메일로 접수된 주문만 반환. /customer/lookup 흐름에서 사용.
+ *  smartcast schema: GET /api/orders/lookup?email=... — 결과 없으면 빈 배열.
+ */
 export function fetchOrdersByEmail(email: string): Promise<Order[]> {
-  return apiFetch<Order[]>(`/api/orders?email=${encodeURIComponent(email)}`);
+  return apiFetch<Order[]>(`/api/orders/lookup?email=${encodeURIComponent(email)}`);
 }
 
 export function fetchProductionMetrics(): Promise<ProductionMetric[]> {

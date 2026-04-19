@@ -11,7 +11,9 @@ from app.seed import seed_database
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # PostgreSQL 단독: 스키마/데이터를 보존하고 create_all + idempotent seed 만 실행.
+    # smartcast schema (Confluence 32342045 v59) 정착.
+    # DDL 은 backend/scripts/create_tables_v2.sql 로 사전 적용됨 — create_all 은 보조.
+    # search_path=smartcast,public 옵션이 DATABASE_URL 에 포함되어 있어 ORM 이 자동 사용.
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:

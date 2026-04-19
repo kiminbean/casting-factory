@@ -1,417 +1,546 @@
-import json
-from datetime import datetime, timezone
+"""SQLAlchemy ORM 모델 — schema 'smartcast' (Confluence page 32342045 v59 기준).
+
+설계 참조:
+- https://dayelee313.atlassian.net/wiki/spaces/addinedute/pages/32342045
+- 27 테이블 (이다예 owner, 2026-04-18 v59)
+- 책임 분리 패턴: master + transaction (txn) + state (stat) + log
+
+주요 변경점 (legacy → v2):
+- orders        → ord  (master) + ord_detail (1:1)
+- products      → product
+- items         → item
+- equipment     → res (마스터) + equip (생산 설비) + trans (이송 설비)
+- transport_tasks → trans_task_txn + trans_stat + trans_err_log
+- inspection_records → insp_task_txn
+
+@MX:ANCHOR: smartcast schema 모델 — 외부 API 계약의 출처. 추가/제거 시 acceptance.md 동기 필요.
+@MX:REASON: ord/item/res 분리 구조는 설계 회의(Confluence 32342045 v59 + 인라인 코멘트 8건)에서 결정됨.
+"""
+
+from __future__ import annotations
 
 from sqlalchemy import (
-    BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
+    Date,
     DateTime,
-    Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
-    Text,
+    func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
+
 from app.database import Base
 
+# 모든 신규 테이블이 사용할 schema
+SCHEMA = "smartcast"
 
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
+# =====================
+# USER
+# =====================
 
-# ────────────────────────────────────────
-# 1. 주문 관리 (Order Management)
-# ────────────────────────────────────────
-
-class Order(Base):
-    """주문 정보 — types.ts Order 대응"""
-
-    __tablename__ = "orders"
-
-    id = Column(String, primary_key=True, index=True)
-    customer_id = Column(String, nullable=False)
-    customer_name = Column(String, nullable=False)
-    company_name = Column(String, nullable=False)
-    contact = Column(String, nullable=True, default="")
-    # 고객 이메일 — /customer/lookup 의 이메일 기반 주문 조회에 사용 (2026-04-09 추가)
-    email = Column(String, nullable=True, default="", index=True)
-    shipping_address = Column(String, nullable=True, default="")
-    total_amount = Column(Integer, nullable=False, default=0)
-    # 주문 상태 (파이프라인):
-    #   pending              접수 (고객 발주 직후)
-    #   approved             승인 (관리자 승인)
-    #   in_production        생산 (ProductionJob 생성 후)
-    #   production_completed 생산 완료 (PyQt5 공정 시스템이 DB 에 기록)
-    #   shipping_ready       출고 (관리자 '출고 처리' 클릭, shipped_at 자동 기록)
-    #   completed            완료 (고객 수령)
-    #   rejected             반려 (예외 분기)
-    status = Column(String, nullable=False, default="pending")
-    requested_delivery = Column(String, nullable=True)
-    confirmed_delivery = Column(String, nullable=True, default="")
-    created_at = Column(
-        String, nullable=False,
-        default=lambda: datetime.now(timezone.utc).isoformat(),
+class UserAccount(Base):
+    """사용자 정보 (customer/admin/operator/fms)."""
+    __tablename__ = "user_account"
+    __table_args__ = (
+        CheckConstraint("role IN ('customer', 'admin', 'operator', 'fms')", name="chk_user_role"),
+        {"schema": SCHEMA},
     )
-    updated_at = Column(
-        String, nullable=False,
-        default=lambda: datetime.now(timezone.utc).isoformat(),
-        onupdate=lambda: datetime.now(timezone.utc).isoformat(),
+
+    user_id = Column(Integer, primary_key=True, autoincrement=True)
+    co_nm = Column(String, nullable=False)
+    user_nm = Column(String, nullable=False)
+    role = Column(String)
+    phone = Column(String)
+    email = Column(String, nullable=False, unique=True)
+    password = Column(String)
+
+
+# =====================
+# ORDER
+# =====================
+
+class Ord(Base):
+    """발주 마스터 (1:1 ord_detail)."""
+    __tablename__ = "ord"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    ord_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey(f"{SCHEMA}.user_account.user_id"), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("UserAccount")
+    detail = relationship("OrdDetail", uselist=False, back_populates="ord", cascade="all, delete-orphan")
+    pp_maps = relationship("OrdPpMap", back_populates="ord", cascade="all, delete-orphan")
+    txns = relationship("OrdTxn", back_populates="ord", cascade="all, delete-orphan")
+    stats = relationship("OrdStat", back_populates="ord", cascade="all, delete-orphan")
+    items = relationship("Item", back_populates="ord", cascade="all, delete-orphan")
+
+
+class OrdDetail(Base):
+    """발주 상세 (1:1 with ord)."""
+    __tablename__ = "ord_detail"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    ord_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord.ord_id"), primary_key=True)
+    prod_id = Column(Integer, ForeignKey(f"{SCHEMA}.product.prod_id"))
+    diameter = Column(Numeric)
+    thickness = Column(Numeric)
+    material = Column(String(30))
+    load_class = Column(String(20))
+    qty = Column(Integer)
+    final_price = Column(Numeric)
+    due_date = Column(Date)
+    ship_addr = Column(String)
+
+    ord = relationship("Ord", back_populates="detail")
+    product = relationship("Product")
+
+
+class OrdPpMap(Base):
+    """발주↔후처리 N:M 매핑."""
+    __tablename__ = "ord_pp_map"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    map_id = Column(Integer, primary_key=True, autoincrement=True)
+    ord_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord.ord_id"), nullable=False)
+    pp_id = Column(Integer, ForeignKey(f"{SCHEMA}.pp_options.pp_id"), nullable=False)
+
+    ord = relationship("Ord", back_populates="pp_maps")
+    pp_option = relationship("PpOption")
+
+
+class OrdTxn(Base):
+    """발주 비즈니스 트랜잭션 (RCVD/APPR/CNCL/REJT)."""
+    __tablename__ = "ord_txn"
+    __table_args__ = (
+        CheckConstraint("txn_type IN ('RCVD', 'APPR', 'CNCL', 'REJT')", name="chk_ord_txn_type"),
+        {"schema": SCHEMA},
     )
-    # 출고 처리 시점 (shipping_ready 또는 completed 전환 시 자동 기록)
-    shipped_at = Column(String, nullable=True, default="")
+
+    txn_id = Column(Integer, primary_key=True, autoincrement=True)
+    ord_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord.ord_id"), nullable=False)
+    txn_type = Column(String, server_default="RCVD")
+    txn_at = Column(DateTime, server_default=func.now())
+
+    ord = relationship("Ord", back_populates="txns")
 
 
-class OrderDetail(Base):
-    """주문 상세 품목 — types.ts OrderDetail 대응"""
+class OrdStat(Base):
+    """발주 상태 (RCVD→APPR→MFG→DONE→SHIP→COMP, 또는 REJT/CNCL)."""
+    __tablename__ = "ord_stat"
+    __table_args__ = (
+        CheckConstraint(
+            "ord_stat IN ('RCVD','APPR','MFG','DONE','SHIP','COMP','REJT','CNCL')",
+            name="chk_ord_stat_value",
+        ),
+        {"schema": SCHEMA},
+    )
 
-    __tablename__ = "order_details"
+    stat_id = Column(Integer, primary_key=True, autoincrement=True)
+    ord_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord.ord_id"), nullable=False)
+    user_id = Column(Integer, ForeignKey(f"{SCHEMA}.user_account.user_id"))
+    ord_stat = Column(String)
+    updated_at = Column(DateTime, server_default=func.now())
 
-    id = Column(String, primary_key=True, index=True)
-    order_id = Column(String, ForeignKey("orders.id"), nullable=False, index=True)
-    product_id = Column(String, nullable=False)
-    product_name = Column(String, nullable=False)
-    quantity = Column(Integer, nullable=False, default=0)
-    spec = Column(String, nullable=True, default="")
-    material = Column(String, nullable=True, default="")
-    post_processing = Column(String, nullable=True, default="")
-    logo_data = Column(String, nullable=True, default="")
-    unit_price = Column(Integer, nullable=False, default=0)
-    subtotal = Column(Integer, nullable=False, default=0)
+    ord = relationship("Ord", back_populates="stats")
+    user = relationship("UserAccount")
+
+
+class OrdLog(Base):
+    """발주 상태 전이 로그."""
+    __tablename__ = "ord_log"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    log_id = Column(Integer, primary_key=True, autoincrement=True)
+    ord_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord.ord_id"), nullable=False)
+    prev_stat = Column(String)
+    new_stat = Column(String)
+    changed_by = Column(Integer, ForeignKey(f"{SCHEMA}.user_account.user_id"))
+    logged_at = Column(DateTime, server_default=func.now())
+
+
+# =====================
+# 표준 제품 마스터
+# =====================
+
+class Category(Base):
+    """제품 카테고리 (CMH/RMH/EMH)."""
+    __tablename__ = "category"
+    __table_args__ = (
+        CheckConstraint("cate_cd IN ('CMH', 'RMH', 'EMH')", name="chk_cate_cd"),
+        {"schema": SCHEMA},
+    )
+
+    cate_cd = Column(String, primary_key=True)
+    cate_nm = Column(String, nullable=False, unique=True)
 
 
 class Product(Base):
-    """제품 마스터 — src/app/customer/page.tsx PRODUCTS 와 1:1 매칭.
-
-    프론트가 source of truth (2026-04-09): 하드코딩된 PRODUCTS 배열의 스키마를
-    그대로 DB 로 옮긴 것. DB 조회 용도 위주이며, 프론트는 여전히 하드코딩을 사용한다.
-    """
-
-    __tablename__ = "products"
-
-    # 도메인 ID (D450, D600, D800, GRATING)
-    id = Column(String, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    # 프론트 category (영문 키): "manhole" | "grating"
-    category = Column(String, nullable=False)
-    # 한글 라벨: "맨홀 뚜껑" | "그레이팅"
-    category_label = Column(String, nullable=False, default="")
-    # 요약 스펙 텍스트: "직경 450mm, KS 규격"
-    spec = Column(String, nullable=False, default="")
-    # 가격 범위 텍스트: "50,000 - 70,000원"
-    price_range = Column(String, nullable=False, default="")
-    base_price = Column(Integer, nullable=False, default=0)
-    # 옵션 배열 (JSON 문자열로 저장, API 응답 시 list[str] 변환)
-    diameter_options_json = Column(Text, nullable=False, default="[]")
-    thickness_options_json = Column(Text, nullable=False, default="[]")
-    materials_json = Column(Text, nullable=False, default="[]")
-    load_class_range = Column(String, nullable=False, default="")
-    # 부가 정보 (프론트에는 없으나 3D 뷰어 등에서 사용 예정)
-    option_pricing_json = Column(Text, nullable=True, default="{}")
-    design_image_url = Column(String, nullable=True, default="")
-    model_3d_path = Column(String, nullable=True, default="")
-
-
-class LoadClass(Base):
-    """EN 124 하중 등급 마스터. products.load_class_range 의 코드 부분을 실제 톤수로 풀어줌."""
-
-    __tablename__ = "load_classes"
-
-    code = Column(String(8), primary_key=True)        # "A15", "B125", "C250", "D400", "E600", "F900"
-    load_tons = Column(Float, nullable=False)         # 1.5, 12.5, 25.0, 40.0, 60.0, 90.0
-    use_case = Column(String(200), nullable=False)    # "보행자 전용 구역" 등 설명
-    display_order = Column(Integer, nullable=False)   # UI 정렬용 1~6
-
-
-# ────────────────────────────────────────
-# 2. 생산 모니터링 (Production Monitoring)
-# ────────────────────────────────────────
-
-class ProcessStage(Base):
-    """공정 단계 상태 — types.ts ProcessStageData 대응"""
-
-    __tablename__ = "process_stages"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    stage = Column(String, nullable=False)
-    label = Column(String, nullable=False)
-    status = Column(String, nullable=False, default="idle")
-    temperature = Column(Float, nullable=True)
-    target_temperature = Column(Float, nullable=True)
-    progress = Column(Integer, nullable=False, default=0)
-    start_time = Column(String, nullable=True)
-    estimated_end = Column(String, nullable=True)
-    equipment_id = Column(String, nullable=True)
-    order_id = Column(String, nullable=True)
-    job_id = Column(String, nullable=True)
-    # 공정별 상세 데이터
-    pressure = Column(Float, nullable=True)
-    pour_angle = Column(Float, nullable=True)
-    heating_power = Column(Float, nullable=True)
-    cooling_progress = Column(Float, nullable=True)
-
-
-# ────────────────────────────────────────
-# 3. 통합 대시보드 (Equipment & Alerts)
-# ────────────────────────────────────────
-
-class Equipment(Base):
-    """설비 정보 — types.ts Equipment 대응"""
-
-    __tablename__ = "equipment"
-
-    id = Column(String, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    type = Column(String, nullable=False)
-    comm_id = Column(String, nullable=True, default="")
-    install_location = Column(String, nullable=True, default="")
-    status = Column(String, nullable=False, default="idle")
-    pos_x = Column(Float, nullable=False, default=0.0)
-    pos_y = Column(Float, nullable=False, default=0.0)
-    pos_z = Column(Float, nullable=False, default=0.0)
-    battery = Column(Integer, nullable=True)
-    speed = Column(Float, nullable=True)
-    last_update = Column(String, nullable=True)
-    last_maintenance = Column(String, nullable=True)
-    operating_hours = Column(Integer, nullable=False, default=0)
-    error_count = Column(Integer, nullable=False, default=0)
-
-
-class Alert(Base):
-    """알림 — types.ts Alert 대응"""
-
-    __tablename__ = "alerts"
-
-    id = Column(String, primary_key=True, index=True)
-    equipment_id = Column(String, nullable=True, default="")
-    type = Column(String, nullable=False)
-    severity = Column(String, nullable=False, default="info")
-    error_code = Column(String, nullable=True, default="")
-    message = Column(String, nullable=False)
-    abnormal_value = Column(String, nullable=True, default="")
-    zone = Column(String, nullable=True)
-    timestamp = Column(String, nullable=False)
-    resolved_at = Column(String, nullable=True)
-    acknowledged = Column(Boolean, nullable=False, default=False)
-
-
-# ────────────────────────────────────────
-# 4. 품질 검사 (Quality Control)
-# ────────────────────────────────────────
-
-class InspectionRecord(Base):
-    """검사 기록 — types.ts InspectionRecord 대응"""
-
-    __tablename__ = "inspection_records"
-
-    id = Column(String, primary_key=True, index=True)
-    product_id = Column(String, nullable=True, default="")
-    casting_id = Column(String, nullable=False)
-    order_id = Column(String, nullable=True)
-    result = Column(String, nullable=False)
-    defect_type_code = Column(String, nullable=True, default="")
-    confidence = Column(Float, nullable=False, default=0.0)
-    inspector_id = Column(String, nullable=True, default="")
-    image_id = Column(String, nullable=True)
-    inspected_at = Column(String, nullable=False)
-    defect_type = Column(String, nullable=True)
-    defect_detail = Column(String, nullable=True)
-
-
-class InspectionStandard(Base):
-    """검사 기준 — types.ts InspectionStandard 대응"""
-
-    __tablename__ = "inspection_standards"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    product_id = Column(String, nullable=False)
-    product_name = Column(String, nullable=False)
-    tolerance_range = Column(String, nullable=False)
-    target_dimension = Column(String, nullable=False)
-    threshold = Column(Float, nullable=False, default=95.0)
-
-
-class SorterLog(Base):
-    """분류기 로그 — types.ts SorterLog 대응"""
-
-    __tablename__ = "sorter_logs"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    inspection_id = Column(String, nullable=False)
-    sort_direction = Column(String, nullable=False)
-    sorter_angle = Column(Float, nullable=False, default=0.0)
-    success = Column(Boolean, nullable=False, default=True)
-
-
-# ────────────────────────────────────────
-# 5. 물류 및 이송 (Logistics & Fleet)
-# ────────────────────────────────────────
-
-class TransportTask(Base):
-    """이송 작업 — types.ts TransportTask 대응 (기존 TransportRequest 대체)"""
+    """표준 주조 제품."""
+    __tablename__ = "product"
+    __table_args__ = ({"schema": SCHEMA},)
 
-    __tablename__ = "transport_tasks"
-
-    id = Column(String, primary_key=True, index=True)
-    from_name = Column(String, nullable=False)
-    from_coord = Column(String, nullable=True, default="")
-    to_name = Column(String, nullable=False)
-    to_coord = Column(String, nullable=True, default="")
-    item_id = Column(String, nullable=True, default="")
-    item_name = Column(String, nullable=True, default="")
-    quantity = Column(Integer, nullable=False, default=1)
-    priority = Column(String, nullable=False, default="medium")
-    status = Column(String, nullable=False, default="unassigned")
-    assigned_robot_id = Column(String, nullable=True, default="")
-    requested_at = Column(String, nullable=False)
-    completed_at = Column(String, nullable=True)
+    prod_id = Column(Integer, primary_key=True, autoincrement=True)
+    cate_cd = Column(String, ForeignKey(f"{SCHEMA}.category.cate_cd"), nullable=False)
+    base_price = Column(Numeric, nullable=False)
+    img_url = Column(String(400))
 
-
-class HandoffAck(Base):
-    """후처리존 인수인계 확인 이벤트 (SPEC-AMR-001).
-
-    TimescaleDB hypertable. 버튼 이벤트 1건 = 1 row.
-    @MX:ANCHOR: 핸드오프 감사 추적의 단일 진실 공급원. task_id=NULL 이면 orphan.
-    @MX:REASON: Management Service 가 AMR FSM 전이와 함께 insert 하므로 누락 시 이력 손실.
-    """
-
-    __tablename__ = "handoff_acks"
-
-    # DB 서버에 TimescaleDB 미설치 → 단순 PK 사용. 추후 hypertable 전환 시 (id, ack_at) 로 변경.
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    ack_at = Column(DateTime(timezone=True), nullable=False, default=_utc_now, index=True)
-    task_id = Column(String, ForeignKey("transport_tasks.id", ondelete="SET NULL"), nullable=True, index=True)
-    zone = Column(String, nullable=False, index=True)
-    amr_id = Column(String, nullable=True)
-    ack_source = Column(String, nullable=False)              # 'esp32_button' | 'debug_endpoint' | 'gui_override'
-    operator_id = Column(String, nullable=True)
-    button_device_id = Column(String, nullable=True)
-    orphan_ack = Column(Boolean, nullable=False, default=False)
-    idempotency_key = Column(String, nullable=True)
-    extra = Column("metadata", JSONB, nullable=True)         # SQLAlchemy 의 metadata 충돌 회피
+    category = relationship("Category")
+    options = relationship("ProductOption", back_populates="product", cascade="all, delete-orphan")
 
-
-class WarehouseRack(Base):
-    """창고 랙 — types.ts WarehouseRack 대응"""
-
-    __tablename__ = "warehouse_racks"
-
-    id = Column(String, primary_key=True, index=True)
-    zone = Column(String, nullable=False)
-    rack_number = Column(String, nullable=False)
-    status = Column(String, nullable=False, default="empty")
-    item_id = Column(String, nullable=True)
-    item_name = Column(String, nullable=True)
-    quantity = Column(Integer, nullable=True)
-    last_inbound_at = Column(String, nullable=True)
-    row = Column(Integer, nullable=False)
-    col = Column(Integer, nullable=False)
-
-
-class OutboundOrder(Base):
-    """출고 주문 — types.ts OutboundOrder 대응"""
-
-    __tablename__ = "outbound_orders"
-
-    id = Column(String, primary_key=True, index=True)
-    product_id = Column(String, nullable=False)
-    product_name = Column(String, nullable=False)
-    quantity = Column(Integer, nullable=False, default=0)
-    destination = Column(String, nullable=False)
-    policy = Column(String, nullable=False, default="FIFO")
-    completed = Column(Boolean, nullable=False, default=False)
-    created_at = Column(String, nullable=False)
-
-
-# ────────────────────────────────────────
-# 차트/통계 (Charts / Statistics)
-# ────────────────────────────────────────
-
-class ProductionMetric(Base):
-    """일별 생산 통계 — types.ts ProductionMetric 대응"""
-
-    __tablename__ = "production_metrics"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    date = Column(String, nullable=False, index=True)
-    production = Column(Integer, nullable=False, default=0)
-    defects = Column(Integer, nullable=False, default=0)
-    defect_rate = Column(Float, nullable=False, default=0.0)
-
-
-# ────────────────────────────────────────
-# 7. 생산 스케줄링 (Production Scheduling)
-# ────────────────────────────────────────
-
-class ProductionJob(Base):
-    """생산 작업 — 주문을 공정에 할당한 작업 단위"""
-
-    __tablename__ = "production_jobs"
-
-    id = Column(String, primary_key=True, index=True)
-    order_id = Column(String, ForeignKey("orders.id"), nullable=False, index=True)
-    priority_score = Column(Float, nullable=False, default=0.0)
-    priority_rank = Column(Integer, nullable=False, default=0)
-    assigned_stage = Column(String, nullable=False, default="melting")
-    status = Column(String, nullable=False, default="queued")  # queued/running/completed/cancelled
-    estimated_completion = Column(String, nullable=True)
-    started_at = Column(String, nullable=True)
-    completed_at = Column(String, nullable=True)
-    created_at = Column(String, nullable=False)
-
-
-class PriorityChangeLog(Base):
-    """우선순위 변경 이력 — 수동 순서 변경 감사 추적"""
-
-    __tablename__ = "priority_change_logs"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    order_id = Column(String, nullable=False, index=True)
-    old_rank = Column(Integer, nullable=False)
-    new_rank = Column(Integer, nullable=False)
-    reason = Column(String, nullable=False)
-    changed_by = Column(String, nullable=False, default="admin")
-    changed_at = Column(String, nullable=False)
-
-
-# ============================================================================
-# V6 아키텍처 (2026-04-14) — Confluence DB v47 공식 스키마 채택
-# ============================================================================
-
-class WorkOrder(Base):
-    """생산 작업지시 — Confluence DB v47 의 work_order 테이블.
-
-    승인된 발주(orders.status='approved')에 한해 생성. ProductionJob 를 대체.
-    @MX:NOTE: status 값은 QUE/PROC/SUCC/FAIL (Confluence work_stat enum).
-    """
-
-    __tablename__ = "work_orders"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)  # work_ord_id
-    order_id = Column(String, ForeignKey("orders.id"), nullable=False, index=True)
-    pattern_id = Column(String, nullable=True)  # FK → order_detail.pattern_id (없으면 NULL)
-    qty = Column(Integer, nullable=False, default=0)
-    status = Column(String, nullable=False, default="QUE")  # QUE/PROC/SUCC/FAIL
-    plan_start = Column(String, nullable=True)  # ISO 8601
-    act_start = Column(String, nullable=True)
-    act_end = Column(String, nullable=True)
 
+class ProductOption(Base):
+    """제품별 옵션 (재질/하중등급)."""
+    __tablename__ = "product_option"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    prod_opt_id = Column(Integer, primary_key=True, autoincrement=True)
+    prod_id = Column(Integer, ForeignKey(f"{SCHEMA}.product.prod_id"))
+    mat_type = Column(String(20))
+    load_class = Column(String(20))
+
+    product = relationship("Product", back_populates="options")
+
+
+class PpOption(Base):
+    """후처리 옵션 마스터."""
+    __tablename__ = "pp_options"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    pp_id = Column(Integer, primary_key=True, autoincrement=True)
+    pp_nm = Column(String, unique=True)
+    extra_cost = Column(Numeric)
+
+
+# =====================
+# OPERATOR (zone, pattern)
+# =====================
+
+class Zone(Base):
+    """공정 6구역 (CAST/PP/INSP/STRG/SHIP/CHG)."""
+    __tablename__ = "zone"
+    __table_args__ = (
+        CheckConstraint(
+            "zone_nm IN ('CAST', 'PP', 'INSP', 'STRG', 'SHIP', 'CHG')",
+            name="chk_zone_nm",
+        ),
+        {"schema": SCHEMA},
+    )
+
+    zone_id = Column(Integer, primary_key=True, autoincrement=True)
+    zone_nm = Column(String, unique=True)
+
+
+class Pattern(Base):
+    """패턴 위치 (1-6번, 발주 1:1)."""
+    __tablename__ = "pattern"
+    __table_args__ = (
+        CheckConstraint("ptn_loc BETWEEN 1 AND 6", name="chk_ptn_loc_range"),
+        {"schema": SCHEMA},
+    )
+
+    ptn_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord.ord_id"), primary_key=True)
+    ptn_loc = Column(Integer)
+
+
+# =====================
+# 설비 마스터 (res, equip, trans)
+# =====================
+
+class Res(Base):
+    """전체 설비 마스터 (RA/CONV/AMR)."""
+    __tablename__ = "res"
+    __table_args__ = (
+        CheckConstraint("res_type IN ('RA', 'CONV', 'AMR')", name="chk_res_type"),
+        {"schema": SCHEMA},
+    )
+
+    res_id = Column(String(10), primary_key=True)
+    res_type = Column(String)
+    model_nm = Column(String, nullable=False)
+
+
+class Equip(Base):
+    """생산 설비 (RA, CONV) — zone에 배치."""
+    __tablename__ = "equip"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    res_id = Column(String(10), ForeignKey(f"{SCHEMA}.res.res_id"), primary_key=True)
+    zone_id = Column(Integer, ForeignKey(f"{SCHEMA}.zone.zone_id"))
+
+    res = relationship("Res")
+    zone = relationship("Zone")
+
+
+class EquipLoadSpec(Base):
+    """하중 등급별 정밀 제어 수치."""
+    __tablename__ = "equip_load_spec"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    load_spec_id = Column(Integer, primary_key=True, autoincrement=True)
+    load_class = Column(String(20))
+    press_f = Column(Numeric(10, 2))
+    press_t = Column(Numeric(5, 2))
+    tol_val = Column(Numeric(5, 2))
+
+
+class Trans(Base):
+    """이송 자원 (AMR)."""
+    __tablename__ = "trans"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    res_id = Column(String(10), ForeignKey(f"{SCHEMA}.res.res_id"), primary_key=True)
+    slot_count = Column(Integer)
+    max_load_kg = Column(Numeric)
+
+    res = relationship("Res")
+
+
+# =====================
+# FMS — Item (재고/공정 stat)
+# =====================
 
 class Item(Base):
-    """개별 제품 1개 단위 실시간 공정 추적 — Confluence DB v47 의 Item 테이블.
+    """생산된 모든 아이템의 실시간 공정 단계 + 불량 여부.
 
-    work_order.qty 만큼 생성. cur_stage 로 위치 추적, insp_id 로 검사 결과 연결.
-    @MX:ANCHOR: V6 아키텍처의 핵심 추적 단위. UI 의 "주문별 제품 실시간 위치" 테이블이 직접 표시.
-    @MX:REASON: 1개 생산되는 과정(생산+검사+적재)을 item_id 단위로 추적 (CASE1 채택).
+    cur_stat: 12개 라벨 (MM/POUR/DM/PP/ToINSP/INSP/PA/PICK/SHIP/ToPP/ToSTRG/ToSHIP)
+    cur_res: 점유 자원 ID (PP 상태 시 NULL)
+    is_defective: NULL=미검사, TRUE=불량, FALSE=양품
     """
+    __tablename__ = "item"
+    __table_args__ = ({"schema": SCHEMA},)
 
-    __tablename__ = "items"
+    item_id = Column(Integer, primary_key=True, autoincrement=True)
+    ord_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord.ord_id"), nullable=False)
+    equip_task_type = Column(String(10))
+    trans_task_type = Column(String(10))
+    cur_stat = Column(String(10))
+    cur_res = Column(String(10), ForeignKey(f"{SCHEMA}.res.res_id"))
+    is_defective = Column(Boolean)
+    updated_at = Column(DateTime, server_default=func.now())
 
-    id = Column(Integer, primary_key=True, autoincrement=True)  # item_id
-    order_id = Column(String, ForeignKey("orders.id"), nullable=False, index=True)
-    work_order_id = Column(Integer, ForeignKey("work_orders.id"), nullable=False, index=True)
-    cur_stage = Column(String(10), nullable=False, default="QUE")
-    # cur_stage 값: QUE / MM / DM / TR_PP / PP / IP / TR_LD / SH
-    curr_res = Column(String(10), nullable=True)  # 현재 점유 자원 (ARM1, AMR1 등)
-    insp_id = Column(Integer, nullable=True)  # FK → inspection_records.id (검사 후)
-    mfg_at = Column(String, nullable=True)  # 공정별 시작 시각 ISO 8601
+    ord = relationship("Ord", back_populates="items")
+    res = relationship("Res")
+
+
+# =====================
+# Location State (chg/strg/ship)
+# =====================
+
+class ChgLocationStat(Base):
+    """충전 구역 (1x3) 위치 상태."""
+    __tablename__ = "chg_location_stat"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('empty', 'occupied', 'reserved')",
+            name="chk_chg_loc_status",
+        ),
+        {"schema": SCHEMA},
+    )
+
+    loc_id = Column(Integer, primary_key=True, autoincrement=True)
+    zone_id = Column(Integer, ForeignKey(f"{SCHEMA}.zone.zone_id"))
+    res_id = Column(String, ForeignKey(f"{SCHEMA}.res.res_id"))
+    loc_row = Column(Integer)
+    loc_col = Column(Integer)
+    status = Column(String)
+    stored_at = Column(DateTime, server_default=func.now())
+
+
+class StrgLocationStat(Base):
+    """적재 구역 (3x6, 18칸) 위치 상태."""
+    __tablename__ = "strg_location_stat"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('empty', 'occupied', 'reserved')",
+            name="chk_strg_loc_status",
+        ),
+        CheckConstraint(
+            "(item_id IS NOT NULL AND status = 'occupied') "
+            "OR (item_id IS NULL AND status IN ('empty', 'reserved'))",
+            name="chk_strg_item_status",
+        ),
+        {"schema": SCHEMA},
+    )
+
+    loc_id = Column(Integer, primary_key=True, autoincrement=True)
+    zone_id = Column(Integer, ForeignKey(f"{SCHEMA}.zone.zone_id"))
+    item_id = Column(Integer, ForeignKey(f"{SCHEMA}.item.item_id"))
+    loc_row = Column(Integer)
+    loc_col = Column(Integer)
+    status = Column(String)
+    stored_at = Column(DateTime, server_default=func.now())
+
+
+class ShipLocationStat(Base):
+    """출고 구역 (1x5) 위치 상태."""
+    __tablename__ = "ship_location_stat"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('empty', 'occupied', 'reserved')",
+            name="chk_ship_loc_status",
+        ),
+        {"schema": SCHEMA},
+    )
+
+    loc_id = Column(Integer, primary_key=True, autoincrement=True)
+    zone_id = Column(Integer, ForeignKey(f"{SCHEMA}.zone.zone_id"))
+    ord_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord.ord_id"))
+    item_id = Column(Integer, ForeignKey(f"{SCHEMA}.item.item_id"))
+    loc_row = Column(Integer)
+    loc_col = Column(Integer)
+    status = Column(String)
+    stored_at = Column(DateTime, server_default=func.now())
+
+
+# =====================
+# OPERATOR — pp_task_txn
+# =====================
+
+class PpTaskTxn(Base):
+    """후처리 작업 트랜잭션."""
+    __tablename__ = "pp_task_txn"
+    __table_args__ = (
+        CheckConstraint("txn_stat IN ('QUE', 'PROC', 'SUCC', 'FAIL')", name="chk_pp_txn_stat"),
+        {"schema": SCHEMA},
+    )
+
+    txn_id = Column(Integer, primary_key=True, autoincrement=True)
+    ord_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord.ord_id"), nullable=False)
+    map_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord_pp_map.map_id"))
+    pp_nm = Column(String)
+    item_id = Column(Integer, ForeignKey(f"{SCHEMA}.item.item_id"))
+    operator_id = Column(Integer, ForeignKey(f"{SCHEMA}.user_account.user_id"))
+    txn_stat = Column(String)
+    req_at = Column(DateTime, server_default=func.now())
+    start_at = Column(DateTime)
+    end_at = Column(DateTime)
+
+
+# =====================
+# 생산 설비 (equip_task_txn / equip_stat / equip_err_log)
+# =====================
+
+class EquipTaskTxn(Base):
+    """생산 설비 작업지시 트랜잭션 (RA/CONV)."""
+    __tablename__ = "equip_task_txn"
+    __table_args__ = (
+        CheckConstraint("txn_stat IN ('QUE', 'PROC', 'SUCC', 'FAIL')", name="chk_equip_txn_stat"),
+        {"schema": SCHEMA},
+    )
+
+    txn_id = Column(Integer, primary_key=True, autoincrement=True)
+    res_id = Column(String(10), ForeignKey(f"{SCHEMA}.res.res_id"))
+    task_type = Column(String)
+    txn_stat = Column(String)
+    item_id = Column(Integer, ForeignKey(f"{SCHEMA}.item.item_id"))
+    strg_loc_id = Column(Integer, ForeignKey(f"{SCHEMA}.strg_location_stat.loc_id"))
+    ship_loc_id = Column(Integer, ForeignKey(f"{SCHEMA}.ship_location_stat.loc_id"))
+    req_at = Column(DateTime, server_default=func.now())
+    start_at = Column(DateTime)
+    end_at = Column(DateTime)
+
+
+class EquipStat(Base):
+    """생산 설비 실시간 상태."""
+    __tablename__ = "equip_stat"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    stat_id = Column(Integer, primary_key=True, autoincrement=True)
+    res_id = Column(String(10), ForeignKey(f"{SCHEMA}.res.res_id"), nullable=False)
+    item_id = Column(Integer, ForeignKey(f"{SCHEMA}.item.item_id"))
+    txn_type = Column(String)
+    cur_stat = Column(String)
+    updated_at = Column(DateTime, server_default=func.now())
+    err_msg = Column(String)
+
+
+class EquipErrLog(Base):
+    """생산 설비 에러 로그."""
+    __tablename__ = "equip_err_log"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    err_id = Column(Integer, primary_key=True, autoincrement=True)
+    res_id = Column(String(10), ForeignKey(f"{SCHEMA}.res.res_id"))
+    task_txn_id = Column(Integer, ForeignKey(f"{SCHEMA}.equip_task_txn.txn_id"))
+    failed_stat = Column(String)
+    err_msg = Column(String)
+    occured_at = Column(DateTime, server_default=func.now())
+
+
+# =====================
+# 이동 설비 (trans_task_txn / trans_stat / trans_err_log)
+# =====================
+
+class TransTaskTxn(Base):
+    """AMR 이송 작업 트랜잭션."""
+    __tablename__ = "trans_task_txn"
+    __table_args__ = (
+        CheckConstraint("txn_stat IN ('QUE', 'PROC', 'SUCC', 'FAIL')", name="chk_trans_txn_stat"),
+        {"schema": SCHEMA},
+    )
+
+    trans_task_txn_id = Column(Integer, primary_key=True, autoincrement=True)
+    trans_id = Column(String, ForeignKey(f"{SCHEMA}.trans.res_id"))
+    task_type = Column(String)
+    txn_stat = Column(String)
+    chg_loc_id = Column(Integer, ForeignKey(f"{SCHEMA}.chg_location_stat.loc_id"))
+    item_id = Column(Integer, ForeignKey(f"{SCHEMA}.item.item_id"))
+    ord_id = Column(Integer, ForeignKey(f"{SCHEMA}.ord.ord_id"))
+    req_at = Column(DateTime, server_default=func.now())
+    start_at = Column(DateTime)
+    end_at = Column(DateTime)
+
+
+class TransStat(Base):
+    """AMR 실시간 상태 (배터리 포함)."""
+    __tablename__ = "trans_stat"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    res_id = Column(String, ForeignKey(f"{SCHEMA}.trans.res_id"), primary_key=True)
+    item_id = Column(Integer, ForeignKey(f"{SCHEMA}.item.item_id"))
+    cur_stat = Column(String)
+    battery_pct = Column(Integer)
+    cur_zone_type = Column(String)
+    updated_at = Column(DateTime, server_default=func.now())
+
+
+class TransErrLog(Base):
+    """AMR 에러 로그 (배터리 포함)."""
+    __tablename__ = "trans_err_log"
+    __table_args__ = ({"schema": SCHEMA},)
+
+    err_id = Column(Integer, primary_key=True, autoincrement=True)
+    res_id = Column(String(10), ForeignKey(f"{SCHEMA}.res.res_id"))
+    task_txn_id = Column(Integer, ForeignKey(f"{SCHEMA}.trans_task_txn.trans_task_txn_id"))
+    failed_stat = Column(String)
+    err_msg = Column(String)
+    battery_pct = Column(Integer)
+    occured_at = Column(DateTime, server_default=func.now())
+
+
+# =====================
+# 품질 검사 (insp_task_txn)
+# =====================
+
+class InspTaskTxn(Base):
+    """품질 검사 작업 트랜잭션 (CONV1 + AI)."""
+    __tablename__ = "insp_task_txn"
+    __table_args__ = (
+        CheckConstraint("txn_stat IN ('QUE', 'PROC', 'SUCC', 'FAIL')", name="chk_insp_txn_stat"),
+        {"schema": SCHEMA},
+    )
+
+    txn_id = Column(Integer, primary_key=True, autoincrement=True)
+    item_id = Column(Integer, ForeignKey(f"{SCHEMA}.item.item_id"))
+    res_id = Column(String(10), ForeignKey(f"{SCHEMA}.res.res_id"))
+    txn_stat = Column(String)
+    result = Column(Boolean)  # NULL=미검사, FALSE=DP, TRUE=GP
+    req_at = Column(DateTime, server_default=func.now())
+    start_at = Column(DateTime)
+    end_at = Column(DateTime)

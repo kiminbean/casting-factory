@@ -1,89 +1,52 @@
-from typing import List
+"""Alerts router — equip_err_log + trans_err_log 통합.
 
-from fastapi import APIRouter, Depends, HTTPException
+레거시 'alerts' 테이블은 신규 schema 에서 두 err_log 로 분리됐다.
+프런트와 PyQt 의 호환성을 위해 동일 엔드포인트 유지하되 두 소스 합쳐 반환.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import Alert, Equipment, Order, ProductionMetric
-from app.schemas.schemas import AlertResponse, DashboardStats
+from app.models import EquipErrLog, TransErrLog
 
-router = APIRouter(prefix="/api", tags=["alerts", "dashboard"])
-
-
-# ---------------------------------------------------------------------------
-# Alerts
-# ---------------------------------------------------------------------------
-
-@router.get("/alerts", response_model=List[AlertResponse])
-async def list_alerts(db: Session = Depends(get_db)):
-    """전체 알람 목록을 시각 역순으로 반환."""
-    alerts = db.query(Alert).order_by(Alert.timestamp.desc()).all()
-    return alerts
+router = APIRouter(prefix="/api/alerts", tags=["alerts"])
 
 
-@router.patch("/alerts/{alert_id}/acknowledge", response_model=AlertResponse)
-async def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
-    """알람을 확인 처리."""
-    alert = db.query(Alert).filter(Alert.id == alert_id).first()
-    if not alert:
-        raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
-    alert.acknowledged = True
-    db.commit()
-    db.refresh(alert)
-    return alert
+@router.get("")
+def list_alerts(limit: int = 100, db: Session = Depends(get_db)) -> List[dict]:
+    """equip + trans err_log 합쳐서 최신순 반환."""
+    out: list[dict] = []
+    for e in db.query(EquipErrLog).order_by(desc(EquipErrLog.occured_at)).limit(limit).all():
+        out.append({
+            "source": "equip",
+            "err_id": e.err_id,
+            "res_id": e.res_id,
+            "task_txn_id": e.task_txn_id,
+            "failed_stat": e.failed_stat,
+            "err_msg": e.err_msg,
+            "occured_at": e.occured_at,
+        })
+    for t in db.query(TransErrLog).order_by(desc(TransErrLog.occured_at)).limit(limit).all():
+        out.append({
+            "source": "trans",
+            "err_id": t.err_id,
+            "res_id": t.res_id,
+            "task_txn_id": t.task_txn_id,
+            "failed_stat": t.failed_stat,
+            "err_msg": t.err_msg,
+            "battery_pct": t.battery_pct,
+            "occured_at": t.occured_at,
+        })
 
+    def _ts(d: dict) -> datetime:
+        v = d.get("occured_at")
+        return v if isinstance(v, datetime) else datetime.min
 
-# ---------------------------------------------------------------------------
-# Dashboard Stats
-# ---------------------------------------------------------------------------
-
-@router.get("/dashboard/stats", response_model=DashboardStats)
-async def get_dashboard_stats(db: Session = Depends(get_db)):
-    """대시보드 통계 — 생산 목표 달성률, 가동 로봇, 미처리 주문 등."""
-    # 미처리 주문 건수
-    pending_statuses = ["pending", "approved"]
-    pending_orders = db.query(Order).filter(Order.status.in_(pending_statuses)).count()
-
-    # 금일 알람 수 (미확인)
-    today_alarms = db.query(Alert).filter(Alert.acknowledged == False).count()  # noqa: E712
-
-    # 설비 가동률 및 로봇 수
-    equipment_total = db.query(Equipment).count()
-    equipment_running = db.query(Equipment).filter(Equipment.status == "running").count()
-    equipment_utilization = (
-        round(equipment_running / equipment_total * 100, 1) if equipment_total > 0 else 0.0
-    )
-
-    # 가동 중 로봇(AMR) 수
-    active_robots = (
-        db.query(Equipment)
-        .filter(Equipment.type == "amr", Equipment.status == "running")
-        .count()
-    )
-
-    # 최신 생산 지표
-    latest_metric = (
-        db.query(ProductionMetric)
-        .order_by(ProductionMetric.date.desc())
-        .first()
-    )
-    today_production = latest_metric.production if latest_metric else 0
-    defect_rate = latest_metric.defect_rate if latest_metric else 0.0
-
-    # 금일 완료 주문
-    completed_today = db.query(Order).filter(Order.status == "completed").count()
-
-    # 생산 목표 달성률 (생산량 / 목표량 * 100, 목표량 100 기준 임시)
-    production_goal = 100
-    production_goal_rate = round(today_production / production_goal * 100, 1) if production_goal > 0 else 0.0
-
-    return DashboardStats(
-        production_goal_rate=production_goal_rate,
-        active_robots=active_robots,
-        pending_orders=pending_orders,
-        today_alarms=today_alarms,
-        today_production=today_production,
-        defect_rate=defect_rate,
-        equipment_utilization=equipment_utilization,
-        completed_today=completed_today,
-    )
+    out.sort(key=_ts, reverse=True)
+    return out[:limit]

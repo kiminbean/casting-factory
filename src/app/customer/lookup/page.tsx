@@ -11,28 +11,43 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Mail, ArrowLeft, Search, AlertCircle } from "lucide-react";
+import { Mail, ArrowLeft, Search, AlertCircle, Loader2 } from "lucide-react";
 import { SmartCastHeader } from "@/components/SmartCastHeader";
+import { fetchOrdersByEmail } from "@/lib/api";
 
 export default function CustomerLookupPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const trimmed = email.trim();
     if (!trimmed) {
       setError("이메일을 입력해 주세요.");
       return;
     }
-    // 최소한의 이메일 형식 검증
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       setError("올바른 이메일 주소 형식이 아닙니다.");
       return;
     }
     setError(null);
-    router.push(`/customer/orders?email=${encodeURIComponent(trimmed)}`);
+    setLoading(true);
+    try {
+      // 핑크 GUI #1: 발주가 없으면 다음 페이지로 넘어가지 않음.
+      // 빈 배열이면 "발주 기록 없음" 표시 후 lookup 페이지에 머무른다.
+      const orders = await fetchOrdersByEmail(trimmed);
+      if (orders.length === 0) {
+        setError(`해당 이메일(${trimmed})로 접수된 발주 기록이 없습니다.`);
+        return;
+      }
+      router.push(`/customer/orders?email=${encodeURIComponent(trimmed)}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "조회 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -92,9 +107,17 @@ export default function CustomerLookupPage() {
 
               <button
                 type="submit"
-                className="w-full rounded-lg bg-gradient-to-r from-amber-500 to-yellow-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-yellow-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                조회
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    조회 중...
+                  </>
+                ) : (
+                  "조회"
+                )}
               </button>
             </form>
 

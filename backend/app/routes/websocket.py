@@ -1,215 +1,105 @@
+"""WebSocket router — smartcast schema (간소화).
+
+연결: ws://host/ws/dashboard
+브로드캐스트:
+  - equip_stat 업데이트 (5초 간격 polling)
+  - trans_stat 업데이트 (5초 간격 polling)
+  - 새 ord_stat / err_log 발생 (5초 polling)
+
+레거시의 random mock 데이터 제거; 실제 DB 폴링으로 교체.
+"""
+from __future__ import annotations
+
 import asyncio
 import json
-import random
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.database import SessionLocal
-from app.models.models import Alert, Equipment, Order, ProcessStage, ProductionMetric, TransportTask
+from app.models import EquipStat, OrdStat, TransStat
 
-router = APIRouter(tags=["websocket"])
+router = APIRouter()
 
 
-class ConnectionManager:
-    """활성 WebSocket 연결 관리 및 브로드캐스트."""
+class _Pool:
+    """간단한 connection pool."""
+    def __init__(self) -> None:
+        self.conns: List[WebSocket] = []
 
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
+    async def join(self, ws: WebSocket) -> None:
+        await ws.accept()
+        self.conns.append(ws)
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+    def leave(self, ws: WebSocket) -> None:
+        if ws in self.conns:
+            self.conns.remove(ws)
 
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-
-    async def send_personal(self, message: dict, websocket: WebSocket):
-        try:
-            await websocket.send_text(json.dumps(message, default=str))
-        except Exception:
-            self.disconnect(websocket)
-
-    async def broadcast(self, message: dict):
-        disconnected = []
-        for connection in self.active_connections:
+    async def broadcast(self, payload: dict) -> None:
+        msg = json.dumps(payload, default=str)
+        for ws in list(self.conns):
             try:
-                await connection.send_text(json.dumps(message, default=str))
+                await ws.send_text(msg)
             except Exception:
-                disconnected.append(connection)
-        for conn in disconnected:
-            self.disconnect(conn)
+                self.leave(ws)
 
 
-manager = ConnectionManager()
+_pool = _Pool()
 
 
-def _get_dashboard_stats() -> dict:
-    """DB 조회 후 대시보드 통계 페이로드 생성."""
+def _snapshot() -> dict:
+    """현재 시점 상태 스냅샷 (DB 폴링)."""
     db = SessionLocal()
     try:
-        pending_statuses = ["pending", "approved"]
-        pending_orders = db.query(Order).filter(Order.status.in_(pending_statuses)).count()
-
-        equipment_total = db.query(Equipment).count()
-        equipment_running = db.query(Equipment).filter(Equipment.status == "running").count()
-        equipment_utilization = (
-            round(equipment_running / equipment_total * 100, 1) if equipment_total > 0 else 0.0
-        )
-
-        active_robots = (
-            db.query(Equipment)
-            .filter(Equipment.type == "amr", Equipment.status == "running")
-            .count()
-        )
-
-        today_alarms = db.query(Alert).filter(Alert.acknowledged == False).count()  # noqa: E712
-
-        latest_metric = (
-            db.query(ProductionMetric)
-            .order_by(ProductionMetric.date.desc())
-            .first()
-        )
-        today_production = latest_metric.production if latest_metric else 0
-        defect_rate = latest_metric.defect_rate if latest_metric else 0.0
-
-        completed_today = db.query(Order).filter(Order.status == "completed").count()
-
-        production_goal = 100
-        production_goal_rate = (
-            round(today_production / production_goal * 100, 1) if production_goal > 0 else 0.0
-        )
-
-        return {
-            "type": "dashboard_stats",
-            "data": {
-                "production_goal_rate": production_goal_rate,
-                "active_robots": active_robots,
-                "pending_orders": pending_orders,
-                "today_alarms": today_alarms,
-                "today_production": today_production,
-                "defect_rate": defect_rate,
-                "equipment_utilization": equipment_utilization,
-                "completed_today": completed_today,
-            },
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-    finally:
-        db.close()
-
-
-def _get_production_update() -> dict:
-    """공정 단계 진행 시뮬레이션 페이로드 생성."""
-    db = SessionLocal()
-    try:
-        stages = db.query(ProcessStage).order_by(ProcessStage.id).all()
-        stage_data = []
-        for stage in stages:
-            # running 상태에서 미세 진행률 변동 시뮬레이션
-            if stage.status == "running" and stage.progress < 100:
-                stage.progress = min(stage.progress + random.randint(0, 3), 100)
-                if stage.temperature is not None and stage.target_temperature is not None:
-                    delta = (stage.target_temperature - stage.temperature) * 0.05
-                    stage.temperature = round(stage.temperature + delta + random.uniform(-5, 5), 1)
-            stage_data.append({
-                "id": stage.id,
-                "stage": stage.stage,
-                "label": stage.label,
-                "status": stage.status,
-                "temperature": stage.temperature,
-                "target_temperature": stage.target_temperature,
-                "progress": stage.progress,
-                "start_time": stage.start_time,
-                "estimated_end": stage.estimated_end,
-                "equipment_id": stage.equipment_id,
-                "order_id": stage.order_id,
-                "job_id": stage.job_id,
-                "pressure": stage.pressure,
-                "pour_angle": stage.pour_angle,
-                "heating_power": stage.heating_power,
-                "cooling_progress": stage.cooling_progress,
-            })
-        db.commit()
-        return {
-            "type": "production_update",
-            "data": stage_data,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-    finally:
-        db.close()
-
-
-def _get_alert_update() -> dict:
-    """미확인 알람 페이로드 생성."""
-    db = SessionLocal()
-    try:
-        unacked = (
-            db.query(Alert)
-            .filter(Alert.acknowledged == False)  # noqa: E712
-            .order_by(Alert.timestamp.desc())
-            .all()
-        )
-        alert_data = [
+        equip_stats = [
             {
-                "id": a.id,
-                "equipment_id": a.equipment_id,
-                "type": a.type,
-                "severity": a.severity,
-                "error_code": a.error_code,
-                "message": a.message,
-                "abnormal_value": a.abnormal_value,
-                "zone": a.zone,
-                "timestamp": a.timestamp if a.timestamp else None,
-                "acknowledged": a.acknowledged,
+                "res_id": s.res_id,
+                "cur_stat": s.cur_stat,
+                "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+                "err_msg": s.err_msg,
             }
-            for a in unacked
+            for s in db.query(EquipStat).all()
         ]
-        return {
-            "type": "alert_update",
-            "data": alert_data,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
+        trans_stats = [
+            {
+                "res_id": s.res_id,
+                "cur_stat": s.cur_stat,
+                "battery_pct": s.battery_pct,
+                "cur_zone_type": s.cur_zone_type,
+                "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+            }
+            for s in db.query(TransStat).all()
+        ]
+        latest_ord_stats = [
+            {
+                "ord_id": s.ord_id,
+                "ord_stat": s.ord_stat,
+                "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+            }
+            for s in db.query(OrdStat).order_by(OrdStat.updated_at.desc()).limit(20).all()
+        ]
     finally:
         db.close()
+    return {
+        "ts": datetime.utcnow().isoformat() + "Z",
+        "equip": equip_stats,
+        "trans": trans_stats,
+        "ord_stats_recent": latest_ord_stats,
+    }
 
 
 @router.websocket("/ws/dashboard")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-
-    # 연결 직후 초기 데이터 전송
+async def ws_dashboard(ws: WebSocket) -> None:
+    await _pool.join(ws)
     try:
-        initial_stats = _get_dashboard_stats()
-        await manager.send_personal(initial_stats, websocket)
-
-        alert_update = _get_alert_update()
-        await manager.send_personal(alert_update, websocket)
-    except Exception:
-        pass
-
-    tick = 0
-    try:
+        # 첫 스냅샷 즉시 전송
+        await ws.send_text(json.dumps(_snapshot(), default=str))
+        # 5초 polling broadcast loop
         while True:
             await asyncio.sleep(5)
-            tick += 1
-
-            # 5초마다 공정 진행 업데이트 브로드캐스트
-            production_msg = _get_production_update()
-            await manager.broadcast(production_msg)
-
-            # 10초마다 대시보드 통계 브로드캐스트
-            if tick % 2 == 0:
-                stats_msg = _get_dashboard_stats()
-                await manager.broadcast(stats_msg)
-
-            # 15초마다 알람 업데이트 브로드캐스트
-            if tick % 3 == 0:
-                alert_msg = _get_alert_update()
-                await manager.broadcast(alert_msg)
-
+            await ws.send_text(json.dumps(_snapshot(), default=str))
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        _pool.leave(ws)
     except Exception:
-        manager.disconnect(websocket)
+        _pool.leave(ws)

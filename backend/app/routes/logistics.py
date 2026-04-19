@@ -1,104 +1,89 @@
-from typing import List
+"""Logistics router — smartcast schema.
 
-from fastapi import APIRouter, Depends, HTTPException
+엔드포인트:
+  GET  /api/logistics/trans-tasks       trans_task_txn 목록
+  GET  /api/logistics/trans-stats       AMR 별 최신 상태 (배터리 포함)
+  GET  /api/logistics/locations         3개 location stat (chg/strg/ship)
+"""
+from __future__ import annotations
+
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import OutboundOrder, TransportTask, WarehouseRack
-from app.schemas.schemas import (
-    OutboundOrderResponse,
-    TransportStatusUpdate,
-    TransportTaskCreate,
-    TransportTaskResponse,
-    WarehouseRackResponse,
+from app.models import (
+    ChgLocationStat,
+    ShipLocationStat,
+    StrgLocationStat,
+    Trans,
+    TransStat,
+    TransTaskTxn,
 )
+from app.schemas.schemas import TransStatOut, TransTaskTxnOut
 
 router = APIRouter(prefix="/api/logistics", tags=["logistics"])
 
 
-# ---------------------------------------------------------------------------
-# Transport Tasks (이송 작업)
-# ---------------------------------------------------------------------------
-
-@router.get("/tasks", response_model=List[TransportTaskResponse])
-async def list_transport_tasks(db: Session = Depends(get_db)):
-    """전체 이송 작업 목록을 요청 시각 역순으로 반환."""
-    tasks = (
-        db.query(TransportTask)
-        .order_by(TransportTask.requested_at.desc())
-        .all()
-    )
-    return tasks
+@router.get("/trans-tasks", response_model=List[TransTaskTxnOut])
+def list_trans_tasks(
+    trans_id: Optional[str] = None, db: Session = Depends(get_db)
+) -> List[TransTaskTxnOut]:
+    q = db.query(TransTaskTxn)
+    if trans_id:
+        q = q.filter(TransTaskTxn.trans_id == trans_id)
+    return [
+        TransTaskTxnOut.model_validate(t)
+        for t in q.order_by(desc(TransTaskTxn.req_at)).limit(100).all()
+    ]
 
 
-@router.post("/tasks", response_model=TransportTaskResponse, status_code=201)
-async def create_transport_task(
-    payload: TransportTaskCreate, db: Session = Depends(get_db)
-):
-    """새 이송 작업 생성."""
-    existing = db.query(TransportTask).filter(TransportTask.id == payload.id).first()
-    if existing:
-        raise HTTPException(status_code=409, detail=f"TransportTask {payload.id} already exists")
-    task = TransportTask(**payload.model_dump())
-    db.add(task)
-    db.commit()
-    db.refresh(task)
-    return task
+@router.get("/trans-stats", response_model=List[TransStatOut])
+def list_trans_stats(db: Session = Depends(get_db)) -> List[TransStatOut]:
+    """모든 AMR 의 최신 상태."""
+    out: List[TransStatOut] = []
+    for t in db.query(Trans).all():
+        s = db.get(TransStat, t.res_id)
+        if s:
+            out.append(TransStatOut.model_validate(s))
+    return out
 
 
-@router.patch("/tasks/{task_id}/status", response_model=TransportTaskResponse)
-async def update_transport_task_status(
-    task_id: str,
-    payload: TransportStatusUpdate,
-    db: Session = Depends(get_db),
-):
-    """이송 작업 상태 변경 및 배정 로봇 업데이트."""
-    task = db.query(TransportTask).filter(TransportTask.id == task_id).first()
-    if not task:
-        raise HTTPException(status_code=404, detail=f"TransportTask {task_id} not found")
-
-    task.status = payload.status
-    if payload.assigned_robot_id is not None:
-        task.assigned_robot_id = payload.assigned_robot_id
-
-    db.commit()
-    db.refresh(task)
-    return task
-
-
-# ---------------------------------------------------------------------------
-# Warehouse (창고 랙)
-# ---------------------------------------------------------------------------
-
-@router.get("/warehouse", response_model=List[WarehouseRackResponse])
-async def list_warehouse_racks(db: Session = Depends(get_db)):
-    """전체 창고 랙 목록 반환."""
-    racks = db.query(WarehouseRack).order_by(WarehouseRack.zone, WarehouseRack.rack_number).all()
-    return racks
-
-
-# ---------------------------------------------------------------------------
-# Outbound Orders (출고 지시)
-# ---------------------------------------------------------------------------
-
-@router.get("/outbound-orders", response_model=List[OutboundOrderResponse])
-async def list_outbound_orders(db: Session = Depends(get_db)):
-    """전체 출고 지시서 목록을 생성일 역순으로 반환."""
-    orders = (
-        db.query(OutboundOrder)
-        .order_by(OutboundOrder.created_at.desc())
-        .all()
-    )
-    return orders
-
-
-@router.patch("/outbound-orders/{order_id}/complete", response_model=OutboundOrderResponse)
-async def complete_outbound_order(order_id: str, db: Session = Depends(get_db)):
-    """출고 지시서를 완료 처리."""
-    order = db.query(OutboundOrder).filter(OutboundOrder.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail=f"OutboundOrder {order_id} not found")
-    order.completed = True
-    db.commit()
-    db.refresh(order)
-    return order
+@router.get("/locations")
+def list_locations(db: Session = Depends(get_db)) -> dict:
+    """3개 location stat 통합 응답 (chg / strg / ship)."""
+    return {
+        "chg": [
+            {
+                "loc_id": r.loc_id,
+                "row": r.loc_row,
+                "col": r.loc_col,
+                "status": r.status,
+                "res_id": r.res_id,
+            }
+            for r in db.query(ChgLocationStat).order_by(ChgLocationStat.loc_row, ChgLocationStat.loc_col).all()
+        ],
+        "strg": [
+            {
+                "loc_id": r.loc_id,
+                "row": r.loc_row,
+                "col": r.loc_col,
+                "status": r.status,
+                "item_id": r.item_id,
+            }
+            for r in db.query(StrgLocationStat).order_by(StrgLocationStat.loc_row, StrgLocationStat.loc_col).all()
+        ],
+        "ship": [
+            {
+                "loc_id": r.loc_id,
+                "row": r.loc_row,
+                "col": r.loc_col,
+                "status": r.status,
+                "ord_id": r.ord_id,
+                "item_id": r.item_id,
+            }
+            for r in db.query(ShipLocationStat).order_by(ShipLocationStat.loc_row, ShipLocationStat.loc_col).all()
+        ],
+    }

@@ -1,81 +1,110 @@
-from typing import List
+"""Quality router — smartcast schema.
 
-from fastapi import APIRouter, Depends
+엔드포인트:
+  GET  /api/quality/inspections           insp_task_txn 목록 (필터: ord_id, item_id)
+  GET  /api/quality/summary               핑크 GUI #6: 발주별 GP/DP/미검사 요약
+  GET  /api/quality/summary/{ord_id}      특정 발주 요약
+  POST /api/quality/inspections/{txn}/result  검사 결과 업데이트 (AI service 콜백)
+"""
+from __future__ import annotations
+
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.models import InspectionRecord, InspectionStandard, SorterLog
-from app.schemas.schemas import (
-    InspectionRecordResponse,
-    InspectionStandardResponse,
-    QualityStats,
-    SorterLogResponse,
-)
+from app.models import InspTaskTxn, Item, Ord
+from app.schemas.schemas import InspectionSummary, InspTaskTxnOut
 
 router = APIRouter(prefix="/api/quality", tags=["quality"])
 
 
-@router.get("/inspections", response_model=List[InspectionRecordResponse])
-async def list_inspections(db: Session = Depends(get_db)):
-    """전체 검사 기록을 검사 시각 역순으로 반환."""
-    records = (
-        db.query(InspectionRecord)
-        .order_by(InspectionRecord.inspected_at.desc())
-        .all()
+@router.get("/inspections", response_model=List[InspTaskTxnOut])
+def list_inspections(
+    ord_id: Optional[int] = None,
+    item_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+) -> List[InspTaskTxnOut]:
+    q = db.query(InspTaskTxn)
+    if item_id is not None:
+        q = q.filter(InspTaskTxn.item_id == item_id)
+    if ord_id is not None:
+        q = q.join(Item, Item.item_id == InspTaskTxn.item_id).filter(Item.ord_id == ord_id)
+    return [
+        InspTaskTxnOut.model_validate(t)
+        for t in q.order_by(desc(InspTaskTxn.req_at)).limit(200).all()
+    ]
+
+
+@router.get("/summary", response_model=List[InspectionSummary])
+def inspection_summary_all(db: Session = Depends(get_db)) -> List[InspectionSummary]:
+    """Pink GUI #6: 발주별 검사 요약.
+
+    각 ord_id 의 item 총수 / 검사 완료 / 양품(GP) / 불량(DP) / 미검사 카운트.
+    """
+    return _build_summaries(db, ord_id=None)
+
+
+@router.get("/summary/{ord_id}", response_model=InspectionSummary)
+def inspection_summary_one(ord_id: int, db: Session = Depends(get_db)) -> InspectionSummary:
+    rows = _build_summaries(db, ord_id=ord_id)
+    if not rows:
+        if not db.get(Ord, ord_id):
+            raise HTTPException(404, f"ord_id={ord_id} not found")
+        return InspectionSummary(
+            ord_id=ord_id,
+            total_items=0, inspected=0, good_count=0, defective_count=0, pending_count=0,
+        )
+    return rows[0]
+
+
+def _build_summaries(db: Session, ord_id: Optional[int]) -> List[InspectionSummary]:
+    """Item count + inspection result count grouped by ord_id."""
+    base = (
+        db.query(
+            Item.ord_id.label("ord_id"),
+            func.count(Item.item_id).label("total_items"),
+            func.count(InspTaskTxn.txn_id).filter(InspTaskTxn.result.isnot(None)).label("inspected"),
+            func.count(InspTaskTxn.txn_id).filter(InspTaskTxn.result.is_(True)).label("good_count"),
+            func.count(InspTaskTxn.txn_id).filter(InspTaskTxn.result.is_(False)).label("defective_count"),
+        )
+        .outerjoin(InspTaskTxn, InspTaskTxn.item_id == Item.item_id)
+        .group_by(Item.ord_id)
     )
-    return records
+    if ord_id is not None:
+        base = base.filter(Item.ord_id == ord_id)
+    out: List[InspectionSummary] = []
+    for r in base.all():
+        pending = max(0, (r.total_items or 0) - (r.inspected or 0))
+        out.append(InspectionSummary(
+            ord_id=r.ord_id,
+            total_items=r.total_items or 0,
+            inspected=r.inspected or 0,
+            good_count=r.good_count or 0,
+            defective_count=r.defective_count or 0,
+            pending_count=pending,
+        ))
+    return out
 
 
-@router.get("/stats", response_model=QualityStats)
-async def get_quality_stats(db: Session = Depends(get_db)):
-    """품질 통계(합격/불합격, 불량률, 불량 유형별 건수) 반환."""
-    records = db.query(InspectionRecord).all()
-    total = len(records)
-    passed = sum(1 for r in records if r.result == "pass")
-    failed = total - passed
-    defect_rate = round((failed / total * 100), 2) if total > 0 else 0.0
-
-    defect_types: dict = {}
-    defect_type_codes: dict = {}
-    inspector_stats: dict = {}
-
-    for record in records:
-        if record.result == "fail":
-            if record.defect_type:
-                defect_types[record.defect_type] = defect_types.get(record.defect_type, 0) + 1
-            if record.defect_type_code:
-                defect_type_codes[record.defect_type_code] = (
-                    defect_type_codes.get(record.defect_type_code, 0) + 1
-                )
-        if record.inspector_id:
-            if record.inspector_id not in inspector_stats:
-                inspector_stats[record.inspector_id] = {"total": 0, "passed": 0, "failed": 0}
-            inspector_stats[record.inspector_id]["total"] += 1
-            if record.result == "pass":
-                inspector_stats[record.inspector_id]["passed"] += 1
-            else:
-                inspector_stats[record.inspector_id]["failed"] += 1
-
-    return QualityStats(
-        total=total,
-        passed=passed,
-        failed=failed,
-        defect_rate=defect_rate,
-        defect_types=defect_types,
-        defect_type_codes=defect_type_codes,
-        inspector_stats=inspector_stats,
-    )
-
-
-@router.get("/standards", response_model=List[InspectionStandardResponse])
-async def list_inspection_standards(db: Session = Depends(get_db)):
-    """전체 검사 기준 목록 반환."""
-    standards = db.query(InspectionStandard).all()
-    return standards
-
-
-@router.get("/sorter-logs", response_model=List[SorterLogResponse])
-async def list_sorter_logs(db: Session = Depends(get_db)):
-    """전체 분류기 로그 목록 반환."""
-    logs = db.query(SorterLog).order_by(SorterLog.id.desc()).all()
-    return logs
+@router.post("/inspections/{txn_id}/result", response_model=InspTaskTxnOut)
+def update_inspection_result(
+    txn_id: int,
+    result: bool = Query(..., description="True=GP, False=DP"),
+    db: Session = Depends(get_db),
+) -> InspTaskTxnOut:
+    """AI 검사 결과 업데이트. item.is_defective 도 동시 갱신."""
+    txn = db.get(InspTaskTxn, txn_id)
+    if not txn:
+        raise HTTPException(404, f"insp_task_txn={txn_id} not found")
+    txn.result = result
+    txn.txn_stat = "SUCC"
+    if txn.item_id:
+        item = db.get(Item, txn.item_id)
+        if item:
+            item.is_defective = not result  # GP=False (불량 아님), DP=True (불량)
+    db.commit()
+    db.refresh(txn)
+    return InspTaskTxnOut.model_validate(txn)
