@@ -122,6 +122,48 @@ class OperationsPage(QWidget):
 
         root.addLayout(body)
 
+        # ---- 시계열 mini-summary (hourly 생산 + err_log trend) ----
+        ts_box = QGroupBox("최근 24h 시계열 (TimescaleDB 검출 자동 분기)")
+        ts_v = QHBoxLayout(ts_box)
+        self._ts_hourly = QLabel("hourly 생산: -")
+        self._ts_hourly.setStyleSheet("font-size: 12px; color: #1f2937;")
+        ts_v.addWidget(self._ts_hourly, stretch=1)
+        self._ts_err = QLabel("err_log trend: -")
+        self._ts_err.setStyleSheet("font-size: 12px; color: #1f2937;")
+        ts_v.addWidget(self._ts_err, stretch=1)
+        self._ts_badge = QLabel("TS: -")
+        self._ts_badge.setStyleSheet(
+            "font-size: 11px; padding: 2px 8px; border-radius: 4px;"
+            " background: #e5e7eb; color: #374151;"
+        )
+        ts_v.addWidget(self._ts_badge, stretch=0)
+        root.addWidget(ts_box)
+
+        # ---- 하단: SPEC-AMR-001 핸드오프 ACK 패널 ----
+        handoff_box = QGroupBox("SPEC-AMR-001 핸드오프 ACK (운영자 확인)")
+        handoff_v = QHBoxLayout(handoff_box)
+        handoff_info = QLabel(
+            "후처리존(ToPP) 도착 AMR 이 WAIT_HANDOFF 로 정지하면 가장 오래된 1건을 풀어줍니다.\n"
+            "(시퀀서가 활성(FMS_AUTOPLAY=1)일 때만 ToPP 가 자동으로 WAIT_HANDOFF 상태에 도달합니다.)"
+        )
+        handoff_info.setWordWrap(True)
+        handoff_info.setStyleSheet("color: #555; font-size: 12px;")
+        handoff_v.addWidget(handoff_info, stretch=2)
+        self._btn_handoff = QPushButton("🔔 후처리 ACK 발행")
+        self._btn_handoff.setStyleSheet(
+            "QPushButton { background:#dc2626; color:white; padding:8px 16px;"
+            " font-weight:bold; border-radius:6px; }"
+            "QPushButton:hover { background:#b91c1c; }"
+            "QPushButton:disabled { background:#9ca3af; }"
+        )
+        self._btn_handoff.clicked.connect(self._on_handoff_ack)
+        handoff_v.addWidget(self._btn_handoff, stretch=0)
+        self._handoff_result = QLabel("")
+        self._handoff_result.setWordWrap(True)
+        self._handoff_result.setStyleSheet("color: #16a34a; font-size: 12px;")
+        handoff_v.addWidget(self._handoff_result, stretch=2)
+        root.addWidget(handoff_box)
+
         refresh_btn = QPushButton("새로고침")
         refresh_btn.clicked.connect(self.refresh)
         root.addWidget(refresh_btn, alignment=Qt.AlignRight)
@@ -171,6 +213,38 @@ class OperationsPage(QWidget):
                 item = QTableWidgetItem(val)
                 item.setTextAlignment(Qt.AlignCenter)
                 self._summary_table.setItem(row, col, item)
+
+        # 시계열 mini-summary (PyQt 기본 위젯만, 별도 charts lib 없이 텍스트 요약)
+        try:
+            ds = self._api.get_dashboard_stats_v2() or {}
+            ts_enabled = ds.get("timescaledb_enabled", False)
+            self._ts_badge.setText("TimescaleDB: ON" if ts_enabled else "TimescaleDB: OFF (date_trunc 폴백)")
+            self._ts_badge.setStyleSheet(
+                "font-size: 11px; padding: 2px 8px; border-radius: 4px;"
+                + (" background: #16a34a; color: white;" if ts_enabled else " background: #e5e7eb; color: #374151;")
+            )
+        except Exception:
+            self._ts_badge.setText("TS: ?")
+
+        try:
+            hourly = self._api.get_hourly_production_v2(hours=24) or []
+            total_h = sum(int(h.get("produced", 0)) for h in hourly)
+            peak = max((int(h.get("produced", 0)) for h in hourly), default=0)
+            self._ts_hourly.setText(
+                f"hourly 생산 (24h): 합계 {total_h} 개 / 시간대 {len(hourly)}개 / 피크 {peak} 개"
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._ts_hourly.setText(f"hourly 조회 실패: {exc}")
+
+        try:
+            trend = self._api.get_err_log_trend(hours=24) or []
+            equip_total = sum(int(t.get("count", 0)) for t in trend if t.get("source") == "equip")
+            trans_total = sum(int(t.get("count", 0)) for t in trend if t.get("source") == "trans")
+            self._ts_err.setText(
+                f"err_log (24h): equip {equip_total} 건 / trans {trans_total} 건"
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._ts_err.setText(f"err_log 조회 실패: {exc}")
 
     # ------------------------------------------------------------------
     # Slot handlers
@@ -266,3 +340,24 @@ class OperationsPage(QWidget):
         msg = (result or {}).get("message", "Started.")
         QMessageBox.information(self, "생산 시작", f"발주 {ord_id}\n{msg}")
         self.refresh()
+
+    @pyqtSlot()
+    def _on_handoff_ack(self) -> None:
+        """SPEC-AMR-001 핸드오프 ACK — WAIT_HANDOFF AMR 1건 풀기."""
+        try:
+            data = self._api.post_handoff_ack() or {}
+        except Exception as exc:  # noqa: BLE001
+            self._handoff_result.setStyleSheet("color: #dc2626; font-size: 12px;")
+            self._handoff_result.setText(f"❌ 호출 실패: {exc}")
+            return
+        if data.get("released"):
+            self._handoff_result.setStyleSheet("color: #16a34a; font-size: 12px;")
+            self._handoff_result.setText(
+                f"✓ release: task={data.get('task_id')} amr={data.get('amr_id')} "
+                f"item={data.get('item_id')} ord={data.get('ord_id')}"
+            )
+        else:
+            self._handoff_result.setStyleSheet("color: #d97706; font-size: 12px;")
+            self._handoff_result.setText(
+                f"⚠ orphan: {data.get('reason', '대기 중인 핸드오프 없음')}"
+            )
