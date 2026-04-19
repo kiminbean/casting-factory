@@ -40,15 +40,23 @@ export default function DevHandoffAckButton() {
         return;
       }
       const data = await res.json();
-      const badge = data.orphan ? "⚠ orphan" : "✓ released";
-      const task = data.task_id ? ` task=${data.task_id}` : "";
-      const amr = data.amr_id ? ` amr=${data.amr_id}` : "";
-      setLastResult(`${badge}${task}${amr}`);
+      // smartcast schema 응답: released / orphan / task_id / amr_id / item_id / ord_id / reason
+      if (data.released) {
+        const parts = [
+          data.task_id ? `task=${data.task_id}` : "",
+          data.amr_id ? `amr=${data.amr_id}` : "",
+          data.item_id ? `item=${data.item_id}` : "",
+          data.ord_id ? `ord=${data.ord_id}` : "",
+        ].filter(Boolean).join(" ");
+        setLastResult(`✓ released  ${parts}`);
+      } else {
+        setLastResult(`⚠ orphan  ${data.reason || ""}`.trim());
+      }
     } catch (e) {
       setLastResult(`❌ ${String(e)}`);
     } finally {
       setLoading(false);
-      setTimeout(() => setLastResult(null), 4000);
+      setTimeout(() => setLastResult(null), 6000);
     }
   }
 
