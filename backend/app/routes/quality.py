@@ -137,9 +137,11 @@ def get_sorter_state() -> dict:
 
 
 @router.get("/trend")
-def quality_trend() -> list[dict]:
-    """legacy 불량률 트렌드 — TimescaleDB 미설치, 빈 배열."""
-    return []
+def quality_trend(hours: int = 24, db: Session = Depends(get_db)) -> list[dict]:
+    """err_log 시간대별 트렌드 (equip + trans 합계)."""
+    from app.services.timescale import err_log_trend
+
+    return err_log_trend(db, hours=hours)
 
 
 @router.get("/defect-types")
