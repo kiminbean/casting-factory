@@ -104,10 +104,20 @@ class OrdOut(_ORM):
 
 
 class OrdFull(OrdOut):
-    """발주 + 상세 + 후처리 + 최신 상태 — 고객 조회용."""
+    """발주 + 상세 + 후처리 + 최신 상태 — 고객 조회용.
+
+    user_* 필드는 user_account 에서 denormalize. Next.js/PyQt 가 발주 카드에
+    회사명/담당자/연락처/이메일/주소를 바로 표시할 수 있게 한다.
+    """
     detail: Optional[OrdDetailOut] = None
     pp_options: List[PpOptionOut] = Field(default_factory=list)
     latest_stat: Optional[str] = None
+
+    # user_account denormalize (고객 조회·관리자 리스트에서 즉시 표시용)
+    user_co_nm: Optional[str] = None
+    user_nm: Optional[str] = None
+    user_phone: Optional[str] = None
+    user_email: Optional[str] = None
 
 
 class OrdStatOut(_ORM):
