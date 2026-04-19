@@ -131,3 +131,88 @@ IF 신규 schema 적용 중 legacy `public` 스키마의 테이블 데이터가 
 - **ord_stat SHIP 타임스탬프**: 레거시 `shippedAt` 을 legacy Order 어댑터에서 채우려면 별도 쿼리 필요 → 현재는 빈 문자열로 처리, 후속 PR 에서 보완.
 - **RA task → cur_stat 시퀀스**: Confluence open inline comment 에서 언급됨. 하드코딩 상수로 시작하되, 추후 DB 저장 가능성 검토.
 - **TimescaleDB 재설치**: 시계열 집계가 실제 필요해지면 TimescaleDB extension 재설치 + hypertable 변환 SPEC 별도 생성.
+
+## 부록 A — 운영 매뉴얼 (PR #4~#7 누적)
+
+### 환경변수
+
+| 변수 | 기본 | 효과 |
+|---|---|---|
+| `DATABASE_URL` | (필수) | PostgreSQL 연결 (`?options=-csearch_path%3Dsmartcast,public` 옵션 권장) |
+| `FMS_AUTOPLAY` | `0` | `1` 시 백엔드 lifespan 에서 시퀀서 백그라운드 task 가동 (실기 미연동 데모/테스트용) |
+| `FMS_ERROR_RATE` | `0.0` | `0.0~1.0` 범위. task 단계마다 확률적 FAIL → equip/trans_err_log INSERT |
+| `APP_ENV` | `development` | `development` 시 `/api/debug/*` 엔드포인트 노출 |
+
+### 자동 시퀀서 워크플로우
+
+`FMS_AUTOPLAY=1` 가동 시 시퀀서가 다음 체인으로 자동 진행:
+
+```
+ord 생성 → 패턴 등록 → POST /api/production/start
+  → equip_task_txn(MM, QUE) 자동 생성
+시퀀서 polling (2 초):
+  MM (RA): MV_SRC → GRASP → MV_DEST → RELEASE → RETURN → IDLE → SUCC
+  → POUR (RA) 자동 enqueue (워크플로우 체인)
+  → DM (RA)
+  → PP (RA) → ToINSP (CONV) 자동 enqueue
+  ...
+  → SHIP (RA) → IDLE → SUCC + ord_stat=COMP 자동 INSERT
+```
+
+### 핸드오프 ACK (SPEC-AMR-001)
+
+`trans_task_txn(task_type='ToPP')` 가 PROC 진입 → MV_SRC → WAIT_LD → MV_DEST →
+**WAIT_HANDOFF (정지)**. 운영자 ACK 호출 시 풀림:
+
+```bash
+# CLI 호출
+curl -X POST http://localhost:8000/api/debug/handoff-ack
+# 응답: {released, orphan, task_id, amr_id, item_id, ord_id, reason}
+```
+
+UI 호출 경로:
+- Next.js `DevHandoffAckButton.tsx` (좌하단 fixed 버튼, dev mode 만)
+- PyQt `OperationsPage` 의 "🔔 후처리 ACK 발행" 버튼
+
+### TimescaleDB 자동 분기
+
+백엔드는 부팅 시 `pg_extension` 검사. extension 존재 시 hypertable 쿼리, 없으면
+`date_trunc` 폴백. 사용자는 별도 설정 불필요. 설치/제거 시 backend 재시작 필요.
+
+영향 endpoint:
+- `/api/dashboard/stats` 응답 필드 `timescaledb_enabled: bool`
+- `/api/production/hourly?hours=N`
+- `/api/production/weekly?weeks=N`
+- `/api/quality/trend?hours=N`
+
+설치 가이드: `backend/scripts/timescale_install_guide.md`
+
+### 데모 시나리오 (전체 워크플로우 검증)
+
+```bash
+# 1. backend 시퀀서 가동 (오류 5% 주입)
+export FMS_AUTOPLAY=1 FMS_ERROR_RATE=0.05
+backend/venv/bin/uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000
+
+# 2. 신규 발주 생성
+curl -X POST http://localhost:8000/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":1,"detail":{"qty":10,"final_price":1200000,"due_date":"2026-05-31"},"pp_ids":[1,2]}'
+
+# 3. 패턴 등록 (생성된 ord_id 사용)
+curl -X POST http://localhost:8000/api/production/patterns \
+  -H "Content-Type: application/json" -d '{"ptn_id":1,"ptn_loc":3}'
+
+# 4. 생산 시작
+curl -X POST http://localhost:8000/api/production/start \
+  -H "Content-Type: application/json" -d '{"ord_id":1}'
+
+# 5. 진행 모니터링 (10~30초마다)
+curl -s http://localhost:8000/api/production/items?ord_id=1 | jq
+
+# 6. ToPP 도착 시 핸드오프 ACK
+curl -X POST http://localhost:8000/api/debug/handoff-ack
+
+# 7. 최종 검사 요약
+curl -s http://localhost:8000/api/quality/summary | jq
+```
