@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -27,17 +28,21 @@ from sqlalchemy.orm import Session
 
 from app.constants import next_state
 from app.constants.workflow import (
+    ERROR_RATE_DEFAULT,
+    HANDOFF_WAIT_TASK_TYPES,
     POLL_INTERVAL_SECONDS,
     RA_NEXT_TASK,
     STEP_DELAY_SECONDS,
 )
 from app.database import SessionLocal
 from app.models import (
+    EquipErrLog,
     EquipStat,
     EquipTaskTxn,
     Item,
     OrdStat,
     Res,
+    TransErrLog,
     TransStat,
     TransTaskTxn,
 )
@@ -57,6 +62,35 @@ TASK_TO_RES_TYPE: dict[str, str] = {
 def is_enabled() -> bool:
     """env FMS_AUTOPLAY=1 일 때만 시퀀서 가동."""
     return os.environ.get("FMS_AUTOPLAY", "0").strip() in ("1", "true", "True")
+
+
+def _error_rate() -> float:
+    """env FMS_ERROR_RATE 으로 0.0~1.0 사이 확률 설정. 기본 0.0 (오류 없음)."""
+    raw = os.environ.get("FMS_ERROR_RATE", str(ERROR_RATE_DEFAULT)).strip()
+    try:
+        rate = float(raw)
+    except ValueError:
+        return ERROR_RATE_DEFAULT
+    return max(0.0, min(1.0, rate))
+
+
+def _maybe_inject_error() -> Optional[str]:
+    """확률 기반으로 에러 메시지 반환. None 이면 정상 진행."""
+    rate = _error_rate()
+    if rate <= 0.0:
+        return None
+    if random.random() < rate:
+        # 임의 에러 메시지 (실기에서는 ROS2/펌웨어 메시지가 들어옴)
+        msgs = [
+            "GRIPPER_TIMEOUT: gripper close 명령에 대한 ACK 없음",
+            "MOTION_PLAN_FAIL: 목표 위치 inverse kinematics 해 없음",
+            "FORCE_OVER_LIMIT: 가압 힘이 안전 임계값을 초과",
+            "JOINT_LIMIT_EXCEEDED: 관절각 한계 도달",
+            "VISION_NO_TARGET: 카메라 타겟 인식 실패",
+            "BATTERY_LOW: 배터리 < 15%",
+        ]
+        return random.choice(msgs)
+    return None
 
 
 # -----------------------------------------------------------------------
@@ -192,6 +226,28 @@ def _process_equip_tasks(db: Session) -> None:
             nxt = next_state(t.task_type or "", cur)
         if nxt is None:
             continue
+
+        # 오류 시뮬: 단계 전환 직전 확률적으로 FAIL 처리
+        err_msg = _maybe_inject_error()
+        if err_msg is not None:
+            print(f"[FMS] task {t.txn_id} ({t.task_type}) FAIL @ {cur or 'START'}: {err_msg}", flush=True)
+            db.add(EquipStat(
+                res_id=t.res_id,
+                item_id=t.item_id,
+                txn_type=t.task_type,
+                cur_stat="ERR",
+                err_msg=err_msg,
+            ))
+            db.add(EquipErrLog(
+                res_id=t.res_id,
+                task_txn_id=t.txn_id,
+                failed_stat=cur or "START",
+                err_msg=err_msg,
+            ))
+            t.txn_stat = "FAIL"
+            t.end_at = datetime.now()
+            continue
+
         print(f"[FMS] task {t.txn_id} ({t.task_type}) {cur or 'START'} -> {nxt}", flush=True)
         db.add(EquipStat(
             res_id=t.res_id,
@@ -212,7 +268,11 @@ def _process_equip_tasks(db: Session) -> None:
 
 
 def _process_trans_tasks(db: Session) -> None:
-    """trans_task_txn 단순 진행 (QUE → PROC → SUCC, 단계 simulation 1초 후)."""
+    """trans_task_txn 진행 (QUE → PROC → SUCC, 단계 simulation 1초 후).
+
+    HANDOFF_WAIT_TASK_TYPES (예: ToPP) 는 MV_DEST 도달 시 WAIT_HANDOFF 정지.
+    /api/debug/handoff-ack 호출 시 cur_stat 이 WAIT_DLD 로 풀리면 진행 재개.
+    """
     for t in db.query(TransTaskTxn).filter(TransTaskTxn.txn_stat == "QUE").all():
         if not t.trans_id:
             rid = _pick_res(db, "AMR")
@@ -236,7 +296,29 @@ def _process_trans_tasks(db: Session) -> None:
         age = (datetime.now() - stat.updated_at).total_seconds()
         if age < STEP_DELAY_SECONDS:
             continue
-        # 단순 시퀀스: MV_SRC → WAIT_LD → MV_DEST → WAIT_DLD → SUCC
+
+        # HANDOFF_WAIT 단계는 자동 진행 안 함 (사람 ACK 대기)
+        if stat.cur_stat == "WAIT_HANDOFF":
+            continue
+
+        # 오류 주입
+        err_msg = _maybe_inject_error()
+        if err_msg is not None:
+            print(f"[FMS] trans task {t.trans_task_txn_id} ({t.task_type}) FAIL @ {stat.cur_stat}: {err_msg}", flush=True)
+            stat.cur_stat = "FAIL"
+            stat.updated_at = datetime.now()
+            db.add(TransErrLog(
+                res_id=t.trans_id,
+                task_txn_id=t.trans_task_txn_id,
+                failed_stat=stat.cur_stat,
+                err_msg=err_msg,
+                battery_pct=stat.battery_pct,
+            ))
+            t.txn_stat = "FAIL"
+            t.end_at = datetime.now()
+            continue
+
+        # 단순 시퀀스: MV_SRC → WAIT_LD → MV_DEST → (WAIT_HANDOFF? or) WAIT_DLD → SUCC
         seq = ["MV_SRC", "WAIT_LD", "MV_DEST", "WAIT_DLD", "SUCC"]
         cur = stat.cur_stat or "MV_SRC"
         try:
@@ -244,7 +326,12 @@ def _process_trans_tasks(db: Session) -> None:
         except ValueError:
             idx = 0
         if idx + 1 < len(seq):
-            stat.cur_stat = seq[idx + 1]
+            nxt = seq[idx + 1]
+            # ToPP 는 MV_DEST 도달 후 WAIT_DLD 대신 WAIT_HANDOFF 로 정지
+            if cur == "MV_DEST" and t.task_type in HANDOFF_WAIT_TASK_TYPES:
+                nxt = "WAIT_HANDOFF"
+                print(f"[FMS] trans task {t.trans_task_txn_id} ({t.task_type}) -> WAIT_HANDOFF (사람 ACK 대기)", flush=True)
+            stat.cur_stat = nxt
             stat.updated_at = datetime.now()
         if stat.cur_stat == "SUCC":
             t.txn_stat = "SUCC"
