@@ -170,12 +170,20 @@ def create_customer_order(payload: CustomerOrderCreate, db: Session = Depends(ge
         raise HTTPException(400, "details 가 비어있습니다.")
     d0 = payload.details[0]
 
-    # diameter/thickness 가 "600mm" / "50mm" 같은 문자열이면 숫자만 추출
+    # 폼의 diameter/thickness 는 다양한 형식:
+    #   "600mm"      → 600.0 (원형맨홀)
+    #   "450x450mm"  → 450.0 (사각맨홀 — 첫 값만)
+    #   "450x300mm"  → 450.0 (타원맨홀 — 첫 값만)
+    #   "50"         → 50.0
+    # 첫 번째 숫자군만 추출하여 DECIMAL 에 저장.
+    import re
+    _NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+
     def _strip_unit(v: Optional[str]) -> Optional[float]:
         if v is None:
             return None
-        s = "".join(ch for ch in str(v) if ch.isdigit() or ch == ".")
-        return float(s) if s else None
+        m = _NUM_RE.search(str(v))
+        return float(m.group()) if m else None
 
     from datetime import date
     due_date = None
