@@ -80,3 +80,6 @@ backend/management/certs/
 backend/management/mosquitto/passwd
 backend/management/mosquitto/passwd.bak
 firmware/**/build/
+
+# 로컬 DB 백업 — 추적 안 함 (용량 클 수 있음)
+backups/
