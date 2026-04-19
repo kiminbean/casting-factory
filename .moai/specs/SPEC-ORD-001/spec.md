@@ -11,6 +11,12 @@ issue_number: 0
 
 # SPEC-ORD-001: 고객 발주 페이지 개선 (SR-ORD-01-01 ~ 03)
 
+> **📌 Schema Migration Note (2026-04-19)**: 고객 발주 데이터 모델은 smartcast
+> schema 로 이관됨 (`orders` + `order_details` → `ord` + `ord_detail` + `ord_pp_map`).
+> Pink GUI #2 ("발주 시 비고란 제거") 는 본 SPEC 의 후속 요구사항으로 적용됨
+> (`src/app/customer/page.tsx` 발주 폼에 textarea/notes 부재 확인). 자세한 매핑은
+> [SPEC-DB-V2-MIGRATION](../SPEC-DB-V2-MIGRATION/spec.md) 참조.
+
 ## HISTORY
 
 | 날짜 | 버전 | 변경 내용 |

@@ -1,5 +1,10 @@
 # SPEC-API-002: 전체 페이지 Mock → REST API 전환 + 주문 관리 API 연동
 
+> **📌 Schema Migration Note (2026-04-19)**: 본 SPEC 의 endpoint 들은 이후
+> **smartcast schema** (Confluence 32342045 v59) 로 재구현됨. legacy 엔드포인트
+> 시그니처는 `src/lib/api.ts` 의 어댑터 + 백엔드 compat router 로 호환 유지.
+> 자세한 매핑은 [SPEC-DB-V2-MIGRATION](../SPEC-DB-V2-MIGRATION/spec.md) 참조.
+
 ## Overview
 대시보드(/) 페이지는 SPEC-API-001에서 API 연동 완료. 나머지 5개 페이지(/orders, /production, /quality, /logistics, /customer/orders)를 mock-data.ts에서 FastAPI REST API 호출로 전환하고, 주문 승인/반려/수정 기능의 백엔드 API를 연동한다.
 
