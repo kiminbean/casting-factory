@@ -41,3 +41,10 @@ STEP_DELAY_SECONDS = 1.0
 
 # 시퀀서 polling 주기 (초)
 POLL_INTERVAL_SECONDS = 2.0
+
+# 오류 시뮬레이션 (env FMS_ERROR_RATE 으로 override 가능, 기본 0.0 = 비활성)
+# 0.05 = task 단계마다 5% 확률로 FAIL. equip_err_log/trans_err_log INSERT.
+ERROR_RATE_DEFAULT = 0.0
+
+# 사람 ACK 대기 task_type (SPEC-AMR-001) — 시퀀서가 자동 진행하지 않음
+HANDOFF_WAIT_TASK_TYPES: frozenset[str] = frozenset({"ToPP"})
