@@ -10,6 +10,7 @@ from app.database import Base, SessionLocal, engine
 from app.routes import alerts, dashboard, logistics, orders, production, quality, schedule, websocket
 from app.seed import seed_database
 from app.services import fms_is_enabled, run_fms_sequencer
+from app.services.ros2_publisher import init_ros2, is_real_ros2, shutdown_ros2
 
 logger = logging.getLogger("app.main")
 
@@ -32,6 +33,12 @@ async def lifespan(app: FastAPI):
         # uvicorn logger 가 app.* 로거를 노출하지 않을 수 있어 print 도 함께 사용
         print("[FMS] FMS_AUTOPLAY=1 — sequencer 백그라운드 시작", flush=True)
         logger.info("FMS_AUTOPLAY=1 — sequencer 백그라운드 시작")
+        # ROS2 publisher 사전 초기화 (rclpy 미설치/FMS_ROS2 미설정 시 no-op)
+        init_ros2()
+        if is_real_ros2():
+            print("[FMS] ROS2 publisher 활성", flush=True)
+        else:
+            print("[FMS] ROS2 publisher 폴백 모드 (mock print)", flush=True)
         sequencer_task = asyncio.create_task(run_fms_sequencer())
     else:
         print("[FMS] FMS_AUTOPLAY 비활성 — sequencer 미가동", flush=True)
@@ -46,6 +53,7 @@ async def lifespan(app: FastAPI):
             await sequencer_task
         except asyncio.CancelledError:
             pass
+    shutdown_ros2()
 
 
 app = FastAPI(
