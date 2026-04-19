@@ -27,6 +27,7 @@ from app.mqtt_worker import MqttThread, MqttWorker, mqtt_enabled
 from app.pages.dashboard import DashboardPage
 from app.pages.logistics import LogisticsPage
 from app.pages.map import FactoryMapPage
+from app.pages.operations import OperationsPage
 from app.pages.production import ProductionPage
 from app.pages.quality import QualityPage
 from app.pages.schedule import SchedulePage
@@ -35,7 +36,10 @@ from app.ws_worker import WebSocketWorker
 from config import APP_NAME, APP_VERSION, AMR_POLL_INTERVAL, REFRESH_INTERVAL_MS
 
 
+# 2026-04-19: 'operations' 신규 페이지 — Confluence 32342045 v59 의 핑크 GUI 4건 통합
+# (#3 패턴 등록, #5 생산 시작, #4 후처리 요구사항, #6 검사 요약).
 NAV_ITEMS: list[tuple[str, str]] = [
+    ("operations", "운영 관리"),
     ("dashboard", "대시보드"),
     ("map", "공장 맵"),
     ("production", "생산 모니터링"),
@@ -123,6 +127,7 @@ class MainWindow(QMainWindow):
 
         # 우측 스택 (NAV_ITEMS 순서와 반드시 일치)
         self._stack = QStackedWidget()
+        self._operations = OperationsPage(self._api)  # NAV_ITEMS[0]
         self._dashboard = DashboardPage(self._api)
         self._map = FactoryMapPage(self._api)
         self._production = ProductionPage(self._api)
@@ -131,6 +136,7 @@ class MainWindow(QMainWindow):
         self._logistics = LogisticsPage(self._api)
 
         for page in (
+            self._operations,
             self._dashboard,
             self._map,
             self._production,

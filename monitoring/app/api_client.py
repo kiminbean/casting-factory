@@ -123,6 +123,43 @@ class ApiClient:
             logger.error("PATCH %s failed: %s", url, exc)
             raise
 
+    # ===== smartcast schema (Confluence 32342045 v59) =====
+    # Pink GUI #1, #3, #4, #5, #6 백엔드 endpoint 직접 호출용.
+
+    def get_smartcast_orders(self) -> list[dict[str, Any]] | None:
+        """모든 발주 (관리자용)."""
+        return self._get("/api/orders", mock_value=[])
+
+    def lookup_orders_by_email(self, email: str) -> list[dict[str, Any]] | None:
+        """Pink GUI #1 — 이메일로 발주 조회 (없으면 빈 배열)."""
+        from urllib.parse import quote
+        return self._get(f"/api/orders/lookup?email={quote(email)}", mock_value=[])
+
+    def register_pattern(self, ord_id: int, ptn_loc: int) -> dict[str, Any] | None:
+        """Pink GUI #3 — 패턴 위치 등록 (1-6)."""
+        return self._post("/api/production/patterns", {"ptn_id": ord_id, "ptn_loc": ptn_loc})
+
+    def get_patterns(self) -> list[dict[str, Any]] | None:
+        return self._get("/api/production/patterns", mock_value=[])
+
+    def start_production(self, ord_id: int) -> dict[str, Any] | None:
+        """Pink GUI #5 — 생산 시작 (패턴 등록 후에만 가능). 400 응답 시 raise."""
+        return self._post("/api/production/start", {"ord_id": ord_id})
+
+    def get_smartcast_items(self, ord_id: int | None = None) -> list[dict[str, Any]] | None:
+        path = "/api/production/items"
+        if ord_id is not None:
+            path = f"{path}?ord_id={ord_id}"
+        return self._get(path, mock_value=[])
+
+    def get_item_pp_requirements(self, item_id: int) -> dict[str, Any] | None:
+        """Pink GUI #4 — item별 필요 후처리 + 진행 상태."""
+        return self._get(f"/api/production/items/{item_id}/pp", mock_value=None)
+
+    def get_inspection_summary(self) -> list[dict[str, Any]] | None:
+        """Pink GUI #6 — 발주별 GP/DP/미검사 카운트."""
+        return self._get("/api/quality/summary", mock_value=[])
+
     # ===== Dashboard =====
     def get_dashboard_stats(self) -> dict[str, Any] | None:
         data = self._get("/api/dashboard/stats", mock_value=mock_data.DASHBOARD_STATS)
