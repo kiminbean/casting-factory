@@ -75,9 +75,15 @@ def next_state(task_type: str, current: str | None) -> str | None:
     - current is None → 시퀀스의 첫 상태.
     - current 가 마지막이면 IDLE 로 복귀.
     - 매핑 없는 task_type → None (호출자가 로그만 남기고 현 상태 유지).
+
+    CONV task (ToINSP 등) 는 첫 진입에서 ON, 다음 호출에서 IDLE 로 종료
+    (단일-단계 task — 컨베이어가 아이템을 검사 영역으로 운반하는 1회 동작).
     """
     if task_type in CONV_TASK_STATES:
-        return CONV_TASK_STATES[task_type]
+        # 단일 단계 task: None → 정의된 상태 → IDLE 종료
+        if current is None:
+            return CONV_TASK_STATES[task_type]
+        return STATE_IDLE
 
     seq = RA_TASK_STAT_SEQUENCES.get(task_type)
     if seq is None:
