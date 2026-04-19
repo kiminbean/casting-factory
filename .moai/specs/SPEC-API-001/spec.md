@@ -11,6 +11,23 @@ issue_number: 0
 
 # SPEC-API-001: 프론트엔드-백엔드 API 연동
 
+> **📌 Schema Migration Note (2026-04-19)**: 본 SPEC 의 테이블/엔드포인트 명칭은
+> **smartcast schema** (Confluence 32342045 v59) 적용 이후 변경됨. 신규 매핑은
+> [SPEC-DB-V2-MIGRATION](../SPEC-DB-V2-MIGRATION/spec.md) 참조.
+>
+> | 기존 (public schema) | 신규 (smartcast schema) |
+> |---|---|
+> | `orders` / `order_details` | `ord` + `ord_detail` |
+> | `products` | `product` + `product_option` + `category` |
+> | `equipment` | `res` (마스터) + `equip` + `trans` |
+> | `inspection_records` | `insp_task_txn` |
+> | `transport_tasks` | `trans_task_txn` + `trans_stat` + `trans_err_log` |
+> | `outbound_orders` | `ord_stat` (SHIP/COMP) + `ship_location_stat` |
+> | `warehouse_racks` | `strg_location_stat` |
+>
+> 본문은 이력 보존을 위해 원형 유지. legacy compat endpoint 는
+> `backend/app/routes/{dashboard,production,quality,logistics}.py` 가 derive 한다.
+
 ## HISTORY
 
 | 날짜 | 버전 | 변경 내용 |
