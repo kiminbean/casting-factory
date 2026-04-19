@@ -287,20 +287,24 @@ def order_item_progress(db: Session = Depends(get_db)) -> list[dict]:
 
 
 @router.get("/hourly")
-def production_hourly() -> list[dict]:
-    """legacy 시간대별 생산 — TimescaleDB 미설치, 빈 배열 반환."""
-    return []
+def production_hourly(hours: int = 24, db: Session = Depends(get_db)) -> list[dict]:
+    """시간대별 생산 — TimescaleDB 있으면 hypertable, 없으면 date_trunc 폴백."""
+    from app.services.timescale import hourly_item_production
+
+    return hourly_item_production(db, hours=hours)
 
 
 @router.get("/weekly")
-def production_weekly() -> list[dict]:
-    """legacy 주간 생산 — 빈 배열."""
-    return []
+def production_weekly(weeks: int = 8, db: Session = Depends(get_db)) -> list[dict]:
+    """주간 생산 카운트."""
+    from app.services.timescale import weekly_item_production
+
+    return weekly_item_production(db, weeks=weeks)
 
 
 @router.get("/temperature")
 def production_temperature() -> list[dict]:
-    """legacy 온도 이력 — 센서 미연동, 빈 배열."""
+    """legacy 온도 이력 — 센서 미연동, 빈 배열 (Phase H 별도 작업)."""
     return []
 
 
