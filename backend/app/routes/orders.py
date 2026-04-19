@@ -1,158 +1,200 @@
-from datetime import datetime, timezone
+"""Orders router — smartcast schema.
+
+엔드포인트:
+  POST   /api/orders                    발주 생성 (ord + ord_detail + ord_pp_map + RCVD txn/stat)
+  GET    /api/orders                    발주 목록 (관리자 조회)
+  GET    /api/orders/{ord_id}           발주 단건 (detail + pp_options + latest_stat)
+  GET    /api/orders/lookup?email=...   고객 발주 조회 (핑크 GUI #1)
+  POST   /api/orders/{ord_id}/status    발주 상태 전이 (RCVD→APPR→...)
+
+  GET    /api/products                  표준 제품 목록 (카테고리/옵션 join)
+  GET    /api/categories                카테고리 마스터
+  GET    /api/pp-options                후처리 마스터
+  GET    /api/equip-load-spec           하중 등급별 정밀 제어 수치 (legacy load_classes 대체)
+"""
+from __future__ import annotations
+
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import desc
+from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.models.models import LoadClass, Order, OrderDetail, Product
+from app.models import (
+    Category,
+    EquipLoadSpec,
+    Ord,
+    OrdDetail,
+    OrdPpMap,
+    OrdStat,
+    OrdTxn,
+    PpOption,
+    Product,
+    UserAccount,
+)
 from app.schemas.schemas import (
-    LoadClassResponse,
-    OrderCreate,
-    OrderDetailCreate,
-    OrderDetailResponse,
-    OrderResponse,
-    OrderStatusUpdate,
-    OrderUpdate,
-    ProductResponse,
+    CategoryOut,
+    OrdCreate,
+    OrdFull,
+    OrdStatOut,
+    PpOptionOut,
+    ProductOut,
 )
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
-products_router = APIRouter(prefix="/api/products", tags=["products"])
-load_classes_router = APIRouter(prefix="/api/load-classes", tags=["load-classes"])
+products_router = APIRouter(prefix="/api", tags=["products"])
+load_classes_router = APIRouter(prefix="/api", tags=["load-classes"])
 
 
-# ---------------------------------------------------------------------------
-# Orders
-# ---------------------------------------------------------------------------
+# -------------------------------------------------------------------------
+# helpers
+# -------------------------------------------------------------------------
 
-@router.get("", response_model=List[OrderResponse])
-async def list_orders(
-    db: Session = Depends(get_db),
-    email: Optional[str] = Query(
-        None, description="이메일 정확 일치 필터 (/customer/lookup 에서 사용)"
-    ),
-):
-    """주문 목록 (생성일 역순). email 파라미터 주면 해당 이메일 주문만 반환."""
-    query = db.query(Order)
-    if email:
-        # 공백 제거 + 대소문자 무시 비교
-        normalized = email.strip().lower()
-        query = query.filter(func.lower(Order.email) == normalized)
-    return query.order_by(Order.created_at.desc()).all()
-
-
-@router.post("", response_model=OrderResponse, status_code=201)
-async def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
-    """새 주문 생성."""
-    existing = db.query(Order).filter(Order.id == payload.id).first()
-    if existing:
-        raise HTTPException(status_code=409, detail=f"Order {payload.id} already exists")
-    order = Order(**payload.model_dump())
-    db.add(order)
-    db.commit()
-    db.refresh(order)
-    return order
-
-
-@router.patch("/{order_id}/status", response_model=OrderResponse)
-async def update_order_status(
-    order_id: str,
-    payload: OrderStatusUpdate,
-    db: Session = Depends(get_db),
-):
-    """주문 상태 변경.
-
-    상태가 'shipping_ready' (출고) 로 처음 전환될 때 shipped_at 타임스탬프를
-    자동 기록한다. 이미 기록된 경우 유지.
-    """
-    order = db.query(Order).filter(Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
-    now_iso = datetime.now(timezone.utc).isoformat()
-    order.status = payload.status
-    order.updated_at = now_iso
-    if payload.status == "shipping_ready" and not order.shipped_at:
-        order.shipped_at = now_iso
-    db.commit()
-    db.refresh(order)
-    return order
-
-
-@router.patch("/{order_id}", response_model=OrderResponse)
-async def update_order(
-    order_id: str,
-    payload: OrderUpdate,
-    db: Session = Depends(get_db),
-):
-    """주문 필드 부분 수정 (견적 금액, 확정 납기)."""
-    order = db.query(Order).filter(Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
-    update_data = payload.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(order, field, value)
-    db.commit()
-    db.refresh(order)
-    return order
-
-
-# ---------------------------------------------------------------------------
-# Order Details (품목 상세)
-# ---------------------------------------------------------------------------
-
-@router.get("/{order_id}/details", response_model=List[OrderDetailResponse])
-async def get_order_details(order_id: str, db: Session = Depends(get_db)):
-    """특정 주문의 품목 상세 목록 반환."""
-    # 주문 존재 여부 확인
-    order = db.query(Order).filter(Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
-    details = (
-        db.query(OrderDetail)
-        .filter(OrderDetail.order_id == order_id)
+def _to_full(db: Session, ord_obj: Ord) -> OrdFull:
+    """Ord ORM → OrdFull (detail + pp_options + latest_stat)."""
+    pp_options = (
+        db.query(PpOption)
+        .join(OrdPpMap, OrdPpMap.pp_id == PpOption.pp_id)
+        .filter(OrdPpMap.ord_id == ord_obj.ord_id)
         .all()
     )
-    return details
+    latest_stat = (
+        db.query(OrdStat)
+        .filter(OrdStat.ord_id == ord_obj.ord_id)
+        .order_by(desc(OrdStat.updated_at))
+        .first()
+    )
+    return OrdFull(
+        ord_id=ord_obj.ord_id,
+        user_id=ord_obj.user_id,
+        created_at=ord_obj.created_at,
+        detail=ord_obj.detail,
+        pp_options=[PpOptionOut.model_validate(p) for p in pp_options],
+        latest_stat=latest_stat.ord_stat if latest_stat else "RCVD",
+    )
 
 
-@router.post("/{order_id}/details", response_model=OrderDetailResponse, status_code=201)
-async def add_order_detail(
-    order_id: str,
-    payload: OrderDetailCreate,
-    db: Session = Depends(get_db),
-):
-    """주문에 품목 상세 추가."""
-    order = db.query(Order).filter(Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
-    # payload의 order_id를 경로 파라미터로 덮어쓰기
-    data = payload.model_dump()
-    data["order_id"] = order_id
-    detail = OrderDetail(**data)
+# -------------------------------------------------------------------------
+# Order CRUD
+# -------------------------------------------------------------------------
+
+@router.post("", response_model=OrdFull, status_code=201)
+def create_order(payload: OrdCreate, db: Session = Depends(get_db)) -> OrdFull:
+    """발주 생성 — 고객 측 폼.
+
+    Pink GUI #2: 비고란 제거됨 (OrdDetailIn 에 비고 필드 없음).
+    """
+    user = db.get(UserAccount, payload.user_id)
+    if not user:
+        raise HTTPException(404, f"user_id={payload.user_id} not found")
+
+    new_ord = Ord(user_id=payload.user_id)
+    db.add(new_ord)
+    db.flush()  # ord_id 확보
+
+    detail = OrdDetail(ord_id=new_ord.ord_id, **payload.detail.model_dump(exclude_none=True))
     db.add(detail)
+
+    for pp_id in payload.pp_ids:
+        db.add(OrdPpMap(ord_id=new_ord.ord_id, pp_id=pp_id))
+
+    # 초기 상태 RCVD (txn + stat 동시 INSERT)
+    db.add(OrdTxn(ord_id=new_ord.ord_id, txn_type="RCVD"))
+    db.add(OrdStat(ord_id=new_ord.ord_id, user_id=payload.user_id, ord_stat="RCVD"))
     db.commit()
-    db.refresh(detail)
-    return detail
+    db.refresh(new_ord)
+    return _to_full(db, new_ord)
 
 
-# ---------------------------------------------------------------------------
-# Products (제품 마스터)
-# ---------------------------------------------------------------------------
-
-@products_router.get("", response_model=List[ProductResponse])
-async def list_products(db: Session = Depends(get_db)):
-    """전체 제품 목록 반환. JSON 컬럼은 ProductResponse.from_orm_model 에서 파싱."""
-    products = db.query(Product).order_by(Product.name).all()
-    return [ProductResponse.from_orm_model(p) for p in products]
+@router.get("", response_model=List[OrdFull])
+def list_orders(db: Session = Depends(get_db)) -> List[OrdFull]:
+    """발주 목록 — 관리자용."""
+    rows = db.query(Ord).options(selectinload(Ord.detail)).order_by(desc(Ord.created_at)).all()
+    return [_to_full(db, o) for o in rows]
 
 
-# ---------------------------------------------------------------------------
-# Load classes (EN 124 하중 등급 마스터)
-# ---------------------------------------------------------------------------
+@router.get("/lookup", response_model=List[OrdFull])
+def lookup_orders_by_email(
+    email: str = Query(..., min_length=1), db: Session = Depends(get_db)
+) -> List[OrdFull]:
+    """이메일로 고객 발주 조회.
 
-@load_classes_router.get("", response_model=List[LoadClassResponse])
-async def list_load_classes(db: Session = Depends(get_db)):
-    """EN 124 하중 등급 마스터 전체 (display_order 오름차순)."""
-    return db.query(LoadClass).order_by(LoadClass.display_order).all()
+    Pink GUI #1: 결과 비어있어도 200 + 빈 배열로 반환
+    (frontend 에서 빈 배열 → "발주 기록 없음" 표시 + 다음 페이지 차단).
+    """
+    user = db.query(UserAccount).filter(UserAccount.email == email).first()
+    if not user:
+        return []
+    rows = (
+        db.query(Ord)
+        .options(selectinload(Ord.detail))
+        .filter(Ord.user_id == user.user_id)
+        .order_by(desc(Ord.created_at))
+        .all()
+    )
+    return [_to_full(db, o) for o in rows]
+
+
+@router.get("/{ord_id}", response_model=OrdFull)
+def get_order(ord_id: int, db: Session = Depends(get_db)) -> OrdFull:
+    o = db.get(Ord, ord_id)
+    if not o:
+        raise HTTPException(404, f"ord_id={ord_id} not found")
+    return _to_full(db, o)
+
+
+@router.post("/{ord_id}/status", response_model=OrdStatOut)
+def update_order_status(
+    ord_id: int,
+    new_stat: str = Query(..., description="RCVD/APPR/MFG/DONE/SHIP/COMP/REJT/CNCL"),
+    user_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+) -> OrdStatOut:
+    """발주 상태 전이 (관리자)."""
+    o = db.get(Ord, ord_id)
+    if not o:
+        raise HTTPException(404, f"ord_id={ord_id} not found")
+    valid = {"RCVD", "APPR", "MFG", "DONE", "SHIP", "COMP", "REJT", "CNCL"}
+    if new_stat not in valid:
+        raise HTTPException(400, f"invalid status: {new_stat}")
+    stat = OrdStat(ord_id=ord_id, user_id=user_id, ord_stat=new_stat)
+    db.add(stat)
+    db.commit()
+    db.refresh(stat)
+    return OrdStatOut.model_validate(stat)
+
+
+# -------------------------------------------------------------------------
+# Product / Category / PpOption / EquipLoadSpec
+# -------------------------------------------------------------------------
+
+@products_router.get("/products", response_model=List[ProductOut])
+def list_products(db: Session = Depends(get_db)) -> List[ProductOut]:
+    return [ProductOut.model_validate(p) for p in db.query(Product).all()]
+
+
+@products_router.get("/categories", response_model=List[CategoryOut])
+def list_categories(db: Session = Depends(get_db)) -> List[CategoryOut]:
+    return [CategoryOut.model_validate(c) for c in db.query(Category).all()]
+
+
+@products_router.get("/pp-options", response_model=List[PpOptionOut])
+def list_pp_options(db: Session = Depends(get_db)) -> List[PpOptionOut]:
+    return [PpOptionOut.model_validate(p) for p in db.query(PpOption).all()]
+
+
+@load_classes_router.get("/equip-load-spec", tags=["load-classes"])
+def list_load_specs(db: Session = Depends(get_db)) -> list[dict]:
+    """legacy /api/load-classes 의 후속. 하중 등급별 정밀 제어 수치 반환."""
+    rows = db.query(EquipLoadSpec).all()
+    return [
+        {
+            "load_spec_id": r.load_spec_id,
+            "load_class": r.load_class,
+            "press_f": float(r.press_f) if r.press_f is not None else None,
+            "press_t": float(r.press_t) if r.press_t is not None else None,
+            "tol_val": float(r.tol_val) if r.tol_val is not None else None,
+        }
+        for r in rows
+    ]
