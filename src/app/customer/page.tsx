@@ -1172,34 +1172,42 @@ export default function CustomerOrderPage() {
       const totalPrice = unitPrice * formData.quantity;
 
       const orderId = generateOrderNumber();
-      // customer_id: 이메일 앞부분 + 타임스탬프 뒷 4자리로 간단 생성
-      const customerId = `CUST-${Date.now().toString().slice(-6)}`;
-
       try {
         setSubmitting(true);
         setSubmitError(null);
 
-        // 1) 주문 헤더 저장 (email 을 전용 컬럼으로 저장)
-        const orderRes = await fetch("/api/orders", {
+        // smartcast schema 전용 customer endpoint 한방 호출
+        // (이메일로 user_account upsert + ord + ord_detail + ord_pp_map + RCVD 일괄)
+        const customerRes = await fetch("/api/orders/customer", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            id: orderId,
-            customer_id: customerId,
-            customer_name: formData.contactPerson,
             company_name: formData.companyName,
-            contact: formData.phone,
+            customer_name: formData.contactPerson,
+            phone: formData.phone,
             email: formData.email,
             shipping_address: formData.address,
             total_amount: totalPrice,
-            status: "pending",
             requested_delivery: formData.desiredDelivery,
-            confirmed_delivery: null,
+            details: [
+              {
+                product_id: selectedProduct.id,
+                product_name: selectedProduct.name,
+                quantity: formData.quantity,
+                diameter: formData.diameter,
+                thickness: formData.thickness,
+                load_class: formData.loadClass,
+                material: formData.material,
+                post_processing_ids: formData.postProcessing,
+                unit_price: unitPrice,
+                subtotal: totalPrice,
+              },
+            ],
           }),
         });
 
-        if (!orderRes.ok) {
-          const errBody = await orderRes.json().catch(() => ({}));
+        if (!customerRes.ok) {
+          const errBody = await customerRes.json().catch(() => ({}));
           throw new Error(
             typeof errBody.detail === "string"
               ? errBody.detail
@@ -1207,41 +1215,9 @@ export default function CustomerOrderPage() {
           );
         }
 
-        // 2) 주문 품목 상세 저장
-        const postProcessingLabel =
-          formData.postProcessing.length > 0
-            ? formData.postProcessing
-                .map(
-                  (id) =>
-                    POST_PROCESSING_OPTIONS.find((o) => o.id === id)?.label ?? id
-                )
-                .join(", ")
-            : null;
-
-        const detailRes = await fetch(`/api/orders/${orderId}/details`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: `${orderId}-DET-001`,
-            order_id: orderId,
-            product_id: selectedProduct.id,
-            product_name: selectedProduct.name,
-            quantity: formData.quantity,
-            spec: `직경 ${formData.diameter} / 두께 ${formData.thickness} / 하중 ${formData.loadClass}`,
-            material: formData.material,
-            post_processing: postProcessingLabel,
-            logo_data: null,
-            unit_price: unitPrice,
-            subtotal: totalPrice,
-          }),
-        });
-
-        if (!detailRes.ok) {
-          throw new Error("주문 품목 상세 저장에 실패했습니다.");
-        }
-
-        // 저장 성공 → 서버 확정 ID 사용
-        setOrderNumber(orderId);
+        const created = await customerRes.json();
+        // 저장 성공 → 서버 확정 ID 사용 (예: "ord_7")
+        setOrderNumber(created.id ?? orderId);
       } catch (err) {
         setSubmitError(
           err instanceof Error
