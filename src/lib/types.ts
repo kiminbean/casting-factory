@@ -184,6 +184,21 @@ export interface DashboardStats {
   defectRate: number;
   equipmentUtilization: number;
   completedToday: number;
+
+  // smartcast schema (2026-04-19) — 신규 필드 (camelCase 변환됨)
+  totalOrders?: number;
+  ordersInProduction?: number;
+  ordersCompleted?: number;
+  ordersPending?: number;
+  totalItems?: number;
+  goodItems?: number;
+  defectiveItems?: number;
+  defectRatePct?: number;
+  alertsToday?: number;
+  activeResources?: number;
+  snapshotAt?: string;
+  /** TimescaleDB extension 가용 여부 — 대시보드 차트가 hypertable 사용 가능한지 표시 */
+  timescaledbEnabled?: boolean;
 }
 
 // ────────────────────────────────────────

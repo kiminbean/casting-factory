@@ -160,6 +160,26 @@ class ApiClient:
         """Pink GUI #6 — 발주별 GP/DP/미검사 카운트."""
         return self._get("/api/quality/summary", mock_value=[])
 
+    def post_handoff_ack(self) -> dict[str, Any] | None:
+        """SPEC-AMR-001 핸드오프 ACK — 시퀀서가 정지시킨 ToPP AMR 1건 풀기.
+
+        백엔드 응답:
+          {released, orphan, task_id, amr_id, item_id, ord_id, reason}
+        """
+        return self._post("/api/debug/handoff-ack", {})
+
+    def get_dashboard_stats_v2(self) -> dict[str, Any] | None:
+        """smartcast 대시보드 stats (timescaledb_enabled 포함)."""
+        return self._get("/api/dashboard/stats", mock_value=None)
+
+    def get_hourly_production_v2(self, hours: int = 24) -> list[dict[str, Any]] | None:
+        """시간대별 생산 카운트 (timescale 자동 분기)."""
+        return self._get(f"/api/production/hourly?hours={hours}", mock_value=[])
+
+    def get_err_log_trend(self, hours: int = 24) -> list[dict[str, Any]] | None:
+        """err_log 시간대별 트렌드."""
+        return self._get(f"/api/quality/trend?hours={hours}", mock_value=[])
+
     # ===== Dashboard =====
     def get_dashboard_stats(self) -> dict[str, Any] | None:
         data = self._get("/api/dashboard/stats", mock_value=mock_data.DASHBOARD_STATS)
