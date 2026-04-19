@@ -20,8 +20,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from datetime import datetime, timedelta
+
+from sqlalchemy import func
+
 from app.database import get_db
 from app.models import (
+    Equip,
     EquipStat,
     EquipTaskTxn,
     Item,
@@ -32,6 +37,7 @@ from app.models import (
     PpOption,
     PpTaskTxn,
     Res,
+    Zone,
 )
 from app.schemas.schemas import (
     EquipStatOut,
@@ -187,6 +193,216 @@ def list_equip_stats(db: Session = Depends(get_db)) -> List[EquipStatOut]:
 
 # -------------------------------------------------------------------------
 # Pink GUI #4 — item별 필요 후처리 표시
+# -------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------
+# Legacy compat — PyQt/Next.js 가 호출하는 추가 endpoint
+# -------------------------------------------------------------------------
+
+@router.get("/equipment")
+def list_equipment(db: Session = Depends(get_db)) -> list[dict]:
+    """legacy /api/production/equipment 호환. res + equip_stat 최신 합치기."""
+    out: list[dict] = []
+    res_rows = db.query(Res).all()
+    for r in res_rows:
+        latest = (
+            db.query(EquipStat)
+            .filter(EquipStat.res_id == r.res_id)
+            .order_by(desc(EquipStat.updated_at))
+            .first()
+        )
+        zone_id = None
+        e = db.get(Equip, r.res_id)
+        if e:
+            zone_id = e.zone_id
+        out.append({
+            "res_id": r.res_id,
+            "res_type": r.res_type,
+            "model_nm": r.model_nm,
+            "zone_id": zone_id,
+            "cur_stat": latest.cur_stat if latest else None,
+            "err_msg": latest.err_msg if latest else None,
+            "updated_at": latest.updated_at.isoformat() if (latest and latest.updated_at) else None,
+        })
+    return out
+
+
+@router.get("/stages")
+def list_stages(db: Session = Depends(get_db)) -> list[dict]:
+    """legacy /api/production/stages 호환. zone 별 진행중 item 수."""
+    out: list[dict] = []
+    for z in db.query(Zone).order_by(Zone.zone_id).all():
+        # 단순화: 해당 zone 의 res 에 점유된 item 수
+        in_progress = (
+            db.query(func.count(Item.item_id))
+            .filter(Item.cur_stat.in_(["MM", "POUR", "DM", "PP", "INSP", "PA", "PICK", "SHIP", "ToINSP"]))
+            .scalar()
+            or 0
+        )
+        out.append({
+            "zone_id": z.zone_id,
+            "zone_nm": z.zone_nm,
+            "in_progress_count": in_progress,
+        })
+    return out
+
+
+@router.get("/metrics")
+def production_metrics(db: Session = Depends(get_db)) -> list[dict]:
+    """legacy /api/production/metrics 호환. 최근 7 일간 일별 item 생성 수."""
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    out: list[dict] = []
+    for d_offset in range(6, -1, -1):
+        day = today - timedelta(days=d_offset)
+        nxt = day + timedelta(days=1)
+        produced = (
+            db.query(func.count(Item.item_id))
+            .filter(Item.updated_at >= day, Item.updated_at < nxt)
+            .scalar()
+            or 0
+        )
+        out.append({
+            "date": day.date().isoformat(),
+            "produced": produced,
+        })
+    return out
+
+
+@router.get("/order-item-progress")
+def order_item_progress(db: Session = Depends(get_db)) -> list[dict]:
+    """발주별 item 진행 상태 분포 (Next.js / PyQt 차트용)."""
+    out: list[dict] = []
+    for o in db.query(Ord).all():
+        items = db.query(Item).filter(Item.ord_id == o.ord_id).all()
+        stat_counts: dict[str, int] = {}
+        for it in items:
+            key = it.cur_stat or "UNKNOWN"
+            stat_counts[key] = stat_counts.get(key, 0) + 1
+        out.append({
+            "ord_id": o.ord_id,
+            "total_items": len(items),
+            "by_stat": stat_counts,
+        })
+    return out
+
+
+@router.get("/hourly")
+def production_hourly() -> list[dict]:
+    """legacy 시간대별 생산 — TimescaleDB 미설치, 빈 배열 반환."""
+    return []
+
+
+@router.get("/weekly")
+def production_weekly() -> list[dict]:
+    """legacy 주간 생산 — 빈 배열."""
+    return []
+
+
+@router.get("/temperature")
+def production_temperature() -> list[dict]:
+    """legacy 온도 이력 — 센서 미연동, 빈 배열."""
+    return []
+
+
+@router.get("/live")
+def production_live_parameters() -> list[dict]:
+    """legacy 실시간 공정 변수 — 센서 미연동, 빈 배열."""
+    return []
+
+
+@router.get("/parameter-history")
+def production_parameter_history() -> list[dict]:
+    """legacy 공정 변수 이력 — 빈 배열."""
+    return []
+
+
+# -------------------------------------------------------------------------
+# RA cur_stat 진행 (Confluence 32342045 open inline comment 대응)
+# -------------------------------------------------------------------------
+
+@router.post("/equip-tasks/{txn_id}/advance")
+def advance_equip_task(txn_id: int, db: Session = Depends(get_db)) -> dict:
+    """equip_task_txn 의 다음 cur_stat 으로 진행 + equip_stat 레코드 INSERT.
+
+    task_type 별 하드코딩 시퀀스는 backend/app/constants/ra_task_stat.py 참조.
+    RA: MV_SRC → GRASP → MV_DEST → RELEASE → RETURN → IDLE
+    POUR 은 POURING 단계 삽입.
+    CONV: ON / OFF / ERR.
+
+    시퀀스 종료 시 (IDLE 반환) txn_stat 을 SUCC 로 자동 전환.
+    """
+    from app.constants import next_state  # local import to keep top lean
+
+    txn = db.get(EquipTaskTxn, txn_id)
+    if not txn:
+        raise HTTPException(404, f"equip_task_txn={txn_id} not found")
+    if not txn.res_id:
+        raise HTTPException(400, "res_id not assigned yet; cannot advance")
+
+    # 최신 cur_stat 조회
+    latest = (
+        db.query(EquipStat)
+        .filter(EquipStat.res_id == txn.res_id)
+        .order_by(desc(EquipStat.updated_at))
+        .first()
+    )
+    cur = latest.cur_stat if latest else None
+    nxt = next_state(txn.task_type or "", cur)
+    if nxt is None:
+        raise HTTPException(400, f"no sequence defined for task_type={txn.task_type!r}")
+
+    # equip_stat INSERT
+    new_stat = EquipStat(
+        res_id=txn.res_id,
+        item_id=txn.item_id,
+        txn_type=txn.task_type,
+        cur_stat=nxt,
+    )
+    db.add(new_stat)
+
+    # IDLE 도달 시 txn 완료 처리
+    if nxt == "IDLE" and txn.txn_stat not in ("SUCC", "FAIL"):
+        txn.txn_stat = "SUCC"
+
+    db.commit()
+    db.refresh(new_stat)
+    return {
+        "txn_id": txn_id,
+        "res_id": txn.res_id,
+        "task_type": txn.task_type,
+        "prev_stat": cur,
+        "new_stat": nxt,
+        "txn_stat": txn.txn_stat,
+    }
+
+
+# -------------------------------------------------------------------------
+# Schedule (legacy /api/production/schedule/*) — scheduler 미구현 stub
+# -------------------------------------------------------------------------
+
+@router.get("/schedule/jobs")
+def production_schedule_jobs() -> list[dict]:
+    """legacy — equip_task_txn 스케줄러 별도 구현 전까지 빈 배열."""
+    return []
+
+
+@router.post("/schedule/calculate")
+def production_schedule_calculate() -> dict:
+    return {"recalculated": 0, "message": "scheduler not yet implemented under smartcast schema"}
+
+
+@router.post("/schedule/start")
+def production_schedule_start() -> dict:
+    return {"started": 0, "message": "use POST /api/production/start per ord_id"}
+
+
+@router.get("/schedule/priority-log")
+def production_schedule_priority_log() -> list[dict]:
+    return []
+
+
+# -------------------------------------------------------------------------
+# Pink GUI #4
 # -------------------------------------------------------------------------
 
 @router.get("/items/{item_id}/pp", response_model=ItemPpRequirements)

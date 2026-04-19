@@ -51,6 +51,52 @@ def list_trans_stats(db: Session = Depends(get_db)) -> List[TransStatOut]:
     return out
 
 
+# Legacy alias — PyQt/Next.js 가 /api/logistics/tasks 로 호출
+@router.get("/tasks", response_model=List[TransTaskTxnOut])
+def list_tasks_alias(db: Session = Depends(get_db)) -> List[TransTaskTxnOut]:
+    return list_trans_tasks(None, db)
+
+
+# Legacy compat — strg_location_stat 만 반환 (warehouse 의미)
+@router.get("/warehouse")
+def list_warehouse(db: Session = Depends(get_db)) -> list[dict]:
+    return [
+        {
+            "loc_id": r.loc_id,
+            "row": r.loc_row,
+            "col": r.loc_col,
+            "status": r.status,
+            "item_id": r.item_id,
+            "stored_at": r.stored_at.isoformat() if r.stored_at else None,
+        }
+        for r in db.query(StrgLocationStat)
+        .order_by(StrgLocationStat.loc_row, StrgLocationStat.loc_col)
+        .all()
+    ]
+
+
+# Legacy compat — outbound_orders 는 ord_stat 'SHIP' 또는 'COMP' 발주 목록
+@router.get("/outbound-orders")
+def list_outbound_orders(db: Session = Depends(get_db)) -> list[dict]:
+    from app.models import Ord, OrdStat  # local import to avoid cycle
+    out: list[dict] = []
+    for o in db.query(Ord).all():
+        latest = (
+            db.query(OrdStat)
+            .filter(OrdStat.ord_id == o.ord_id)
+            .order_by(desc(OrdStat.updated_at))
+            .first()
+        )
+        if latest and latest.ord_stat in {"SHIP", "COMP", "DONE"}:
+            out.append({
+                "ord_id": o.ord_id,
+                "user_id": o.user_id,
+                "stat": latest.ord_stat,
+                "updated_at": latest.updated_at.isoformat() if latest.updated_at else None,
+            })
+    return out
+
+
 @router.get("/locations")
 def list_locations(db: Session = Depends(get_db)) -> dict:
     """3개 location stat 통합 응답 (chg / strg / ship)."""
