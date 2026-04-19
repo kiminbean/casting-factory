@@ -35,6 +35,8 @@ from app.models import (
 )
 from app.schemas.schemas import (
     CategoryOut,
+    CustomerOrderCreate,
+    CustomerOrderResponse,
     OrdCreate,
     OrdFull,
     OrdStatOut,
@@ -117,6 +119,126 @@ def list_orders(db: Session = Depends(get_db)) -> List[OrdFull]:
     """발주 목록 — 관리자용."""
     rows = db.query(Ord).options(selectinload(Ord.detail)).order_by(desc(Ord.created_at)).all()
     return [_to_full(db, o) for o in rows]
+
+
+# -------------------------------------------------------------------------
+# Customer 폼 전용 — 이메일로 user upsert + ord 생성 한방 처리
+# -------------------------------------------------------------------------
+
+# 폼의 post-processing id 와 pp_options.pp_nm 매핑 (id 가 영문 코드, DB 는 한글명)
+_PP_ID_TO_NM: dict[str, str] = {
+    "polish": "표면연마",
+    "coat":   "방청코팅",
+    "zinc":   "아연도금",
+    "logo":   "로고문구삽입",
+}
+
+
+@router.post("/customer", response_model=CustomerOrderResponse, status_code=201)
+def create_customer_order(payload: CustomerOrderCreate, db: Session = Depends(get_db)) -> CustomerOrderResponse:
+    """고객 폼 전용 발주 생성. 이메일로 user_account upsert + ord/detail/pp_map/stat/txn 한방 INSERT.
+
+    Pink GUI #2 만족 — 비고/notes 필드 없음.
+    """
+    # 1. user_account upsert (email 기준)
+    user = db.query(UserAccount).filter(UserAccount.email == payload.email).first()
+    if user is None:
+        user = UserAccount(
+            co_nm=payload.company_name,
+            user_nm=payload.customer_name,
+            role="customer",
+            phone=payload.phone,
+            email=payload.email,
+            password=None,
+        )
+        db.add(user)
+        db.flush()
+    else:
+        # 기존 사용자 정보 갱신 (회사명/담당자명/연락처 변경 가능)
+        user.co_nm = payload.company_name
+        user.user_nm = payload.customer_name
+        if payload.phone:
+            user.phone = payload.phone
+
+    # 2. ord 생성
+    new_ord = Ord(user_id=user.user_id)
+    db.add(new_ord)
+    db.flush()
+
+    # 3. ord_detail (1:1) — 폼 1 detail 만 사용 (현 폼 구조)
+    if not payload.details:
+        raise HTTPException(400, "details 가 비어있습니다.")
+    d0 = payload.details[0]
+
+    # 폼의 diameter/thickness 는 다양한 형식:
+    #   "600mm"      → 600.0 (원형맨홀)
+    #   "450x450mm"  → 450.0 (사각맨홀 — 첫 값만)
+    #   "450x300mm"  → 450.0 (타원맨홀 — 첫 값만)
+    #   "50"         → 50.0
+    # 첫 번째 숫자군만 추출하여 DECIMAL 에 저장.
+    import re
+    _NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+
+    def _strip_unit(v: Optional[str]) -> Optional[float]:
+        if v is None:
+            return None
+        m = _NUM_RE.search(str(v))
+        return float(m.group()) if m else None
+
+    from datetime import date
+    due_date = None
+    if payload.requested_delivery:
+        try:
+            due_date = date.fromisoformat(payload.requested_delivery[:10])
+        except ValueError:
+            pass
+
+    # prod_id 는 product 테이블에 실제 존재할 때만 사용 (없으면 NULL → FK 위반 방지).
+    # 폼이 보내는 product_id 는 frontend mock-data 의 string id 이므로 즉시 매칭 어려움.
+    candidate_prod_id: Optional[int] = (
+        int(d0.product_id) if (d0.product_id and d0.product_id.isdigit()) else None
+    )
+    safe_prod_id: Optional[int] = None
+    if candidate_prod_id is not None:
+        if db.get(Product, candidate_prod_id) is not None:
+            safe_prod_id = candidate_prod_id
+
+    detail = OrdDetail(
+        ord_id=new_ord.ord_id,
+        prod_id=safe_prod_id,
+        diameter=_strip_unit(d0.diameter),
+        thickness=_strip_unit(d0.thickness),
+        material=d0.material,
+        load_class=d0.load_class,
+        qty=d0.quantity,
+        final_price=payload.total_amount,
+        due_date=due_date,
+        ship_addr=payload.shipping_address,
+    )
+    db.add(detail)
+
+    # 4. ord_pp_map (post_processing_ids → pp_id)
+    for pp_id_code in d0.post_processing_ids:
+        pp_nm = _PP_ID_TO_NM.get(pp_id_code)
+        if pp_nm is None:
+            continue
+        pp = db.query(PpOption).filter(PpOption.pp_nm == pp_nm).first()
+        if pp:
+            db.add(OrdPpMap(ord_id=new_ord.ord_id, pp_id=pp.pp_id))
+
+    # 5. 초기 상태 RCVD
+    db.add(OrdTxn(ord_id=new_ord.ord_id, txn_type="RCVD"))
+    db.add(OrdStat(ord_id=new_ord.ord_id, user_id=user.user_id, ord_stat="RCVD"))
+    db.commit()
+    db.refresh(new_ord)
+
+    return CustomerOrderResponse(
+        ord_id=new_ord.ord_id,
+        id=f"ord_{new_ord.ord_id}",
+        user_id=user.user_id,
+        created_at=new_ord.created_at,
+        message="발주 등록 완료",
+    )
 
 
 @router.get("/lookup", response_model=List[OrdFull])

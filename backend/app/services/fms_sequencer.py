@@ -46,6 +46,7 @@ from app.models import (
     TransStat,
     TransTaskTxn,
 )
+from app.services.ros2_publisher import publish_state
 
 logger = logging.getLogger("app.fms_sequencer")
 
@@ -255,6 +256,10 @@ def _process_equip_tasks(db: Session) -> None:
             txn_type=t.task_type,
             cur_stat=nxt,
         ))
+        # ROS2 publish (rclpy 미설치 시 print 폴백)
+        res_obj = db.get(Res, t.res_id)
+        if res_obj:
+            publish_state(res_obj.res_type or "?", t.res_id, nxt, t.task_type)
         # IDLE 도달 → SUCC 전환 + 다음 task enqueue
         if nxt == "IDLE":
             t.txn_stat = "SUCC"
@@ -333,6 +338,8 @@ def _process_trans_tasks(db: Session) -> None:
                 print(f"[FMS] trans task {t.trans_task_txn_id} ({t.task_type}) -> WAIT_HANDOFF (사람 ACK 대기)", flush=True)
             stat.cur_stat = nxt
             stat.updated_at = datetime.now()
+            # ROS2 publish — AMR 전용 토픽
+            publish_state("AMR", t.trans_id, nxt, t.task_type)
         if stat.cur_stat == "SUCC":
             t.txn_stat = "SUCC"
             t.end_at = datetime.now()

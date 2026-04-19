@@ -297,3 +297,42 @@ class ItemPpRequirements(BaseModel):
 class ProductionStartRequest(BaseModel):
     """발주 생산 시작 — 패턴 등록 후에만 호출 가능."""
     ord_id: int
+
+
+# =====================
+# Customer 폼 (이메일 기반, user_id 자동 upsert)
+# =====================
+
+class CustomerOrderDetailIn(BaseModel):
+    """customer 발주 폼의 단일 detail."""
+    product_id: Optional[str] = None
+    product_name: Optional[str] = None
+    quantity: int
+    diameter: Optional[str] = None     # 폼 select 값 (e.g. "600mm")
+    thickness: Optional[str] = None
+    load_class: Optional[str] = None
+    material: Optional[str] = None
+    post_processing_ids: List[str] = Field(default_factory=list)  # ["polish","coat",...]
+    unit_price: float
+    subtotal: float
+
+
+class CustomerOrderCreate(BaseModel):
+    """customer 발주 폼 → 신규 schema upsert 전용 entry point."""
+    company_name: str
+    customer_name: str
+    phone: Optional[str] = None
+    email: str
+    shipping_address: Optional[str] = None
+    total_amount: float
+    requested_delivery: Optional[str] = None  # "2026-05-31" 형식
+    details: List[CustomerOrderDetailIn]
+
+
+class CustomerOrderResponse(BaseModel):
+    """customer 발주 생성 응답."""
+    ord_id: int
+    id: str  # legacy 호환 "ord_{n}" 형태
+    user_id: int
+    created_at: Optional[datetime] = None
+    message: str

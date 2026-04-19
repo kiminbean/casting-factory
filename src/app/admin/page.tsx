@@ -12,9 +12,16 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ClipboardList, FlaskConical, Monitor, LogOut } from "lucide-react";
+import { BarChart3, ClipboardList, FlaskConical, Monitor, LogOut } from "lucide-react";
 
 const cards = [
+  {
+    href: "/admin/dashboard",
+    label: "운영 대시보드",
+    desc: "smartcast 기반 KPI + 시간대별/주간 생산 + err_log 트렌드 (10초 자동 갱신)",
+    icon: BarChart3,
+    color: "from-blue-500 to-indigo-600",
+  },
   {
     href: "/orders",
     label: "주문 관리",
