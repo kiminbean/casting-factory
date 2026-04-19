@@ -50,6 +50,91 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return convertKeys<T>(data);
 }
 
+// =====================================================================
+// smartcast → legacy shape adapters
+// 백엔드는 신규 smartcast schema (ord/ord_detail/user_account/ord_stat)
+// 응답을 내보내고, 기존 admin/customer 페이지는 legacy Order 타입을 기대한다.
+// 두 세계를 이어주는 어댑터.
+// =====================================================================
+
+/** smartcast ord_stat 문자열 → legacy OrderStatus 로 매핑
+ *  legacy 에는 cancelled 타입이 없어 REJT/CNCL 모두 rejected 로 압축.
+ */
+const ORD_STAT_TO_LEGACY: Record<string, OrderStatus> = {
+  RCVD: "pending",
+  APPR: "approved",
+  MFG: "in_production",
+  DONE: "production_completed",
+  SHIP: "shipping_ready",
+  COMP: "completed",
+  REJT: "rejected",
+  CNCL: "rejected",
+};
+
+type SmartcastOrdFull = {
+  ordId: number;
+  userId: number;
+  createdAt: string | null;
+  detail?: {
+    prodId?: number | null;
+    diameter?: number | string | null;
+    thickness?: number | string | null;
+    material?: string | null;
+    loadClass?: string | null;
+    qty?: number | null;
+    finalPrice?: number | string | null;
+    dueDate?: string | null;
+    shipAddr?: string | null;
+  } | null;
+  ppOptions?: Array<{ ppId: number; ppNm?: string | null; extraCost?: number | string | null }>;
+  latestStat?: string | null;
+  userCoNm?: string | null;
+  userNm?: string | null;
+  userPhone?: string | null;
+  userEmail?: string | null;
+};
+
+function adaptOrdToLegacy(o: SmartcastOrdFull): Order {
+  const legacyStatus: OrderStatus = ORD_STAT_TO_LEGACY[o.latestStat ?? "RCVD"] ?? "pending";
+  return {
+    id: `ord_${o.ordId}`,
+    customerId: String(o.userId),
+    customerName: o.userNm ?? "",
+    companyName: o.userCoNm ?? "",
+    contact: o.userPhone ?? "",
+    email: o.userEmail ?? "",
+    shippingAddress: o.detail?.shipAddr ?? "",
+    totalAmount: Number(o.detail?.finalPrice ?? 0),
+    status: legacyStatus,
+    requestedDelivery: o.detail?.dueDate ?? "",
+    confirmedDelivery: o.detail?.dueDate ?? "",
+    createdAt: o.createdAt ?? "",
+    updatedAt: o.createdAt ?? "",
+    shippedAt: "",  // ord_stat SHIP 타임스탬프는 별도 조회 필요. 현재는 빈 값.
+  };
+}
+
+function adaptOrdDetails(o: SmartcastOrdFull): OrderDetail[] {
+  const d = o.detail;
+  if (!d) return [];
+  const qty = d.qty ?? 0;
+  const unit = Number(d.finalPrice ?? 0) / Math.max(1, qty);
+  const ppNames = (o.ppOptions ?? []).map((p) => p.ppNm ?? "").filter(Boolean).join(", ");
+  return [{
+    id: `ord_${o.ordId}_d1`,
+    orderId: `ord_${o.ordId}`,
+    productId: d.prodId ? String(d.prodId) : "",
+    productName: d.material ?? "맨홀",
+    quantity: qty,
+    spec: `∅${d.diameter ?? "-"}mm × t${d.thickness ?? "-"}mm / ${d.loadClass ?? "-"}`,
+    material: d.material ?? "",
+    postProcessing: ppNames,
+    logoData: "",
+    unitPrice: unit,
+    subtotal: Number(d.finalPrice ?? 0),
+  }];
+}
+
 async function apiPatch<T>(path: string, body: Record<string, unknown>): Promise<T> {
   return apiFetch<T>(path, {
     method: "PATCH",
@@ -72,15 +157,19 @@ export function fetchEquipment(): Promise<Equipment[]> {
   return apiFetch<Equipment[]>("/api/production/equipment");
 }
 
-export function fetchOrders(): Promise<Order[]> {
-  return apiFetch<Order[]>("/api/orders");
+export async function fetchOrders(): Promise<Order[]> {
+  const raw = await apiFetch<SmartcastOrdFull[]>("/api/orders");
+  return raw.map(adaptOrdToLegacy);
 }
 
 /** 특정 이메일로 접수된 주문만 반환. /customer/lookup 흐름에서 사용.
  *  smartcast schema: GET /api/orders/lookup?email=... — 결과 없으면 빈 배열.
  */
-export function fetchOrdersByEmail(email: string): Promise<Order[]> {
-  return apiFetch<Order[]>(`/api/orders/lookup?email=${encodeURIComponent(email)}`);
+export async function fetchOrdersByEmail(email: string): Promise<Order[]> {
+  const raw = await apiFetch<SmartcastOrdFull[]>(
+    `/api/orders/lookup?email=${encodeURIComponent(email)}`,
+  );
+  return raw.map(adaptOrdToLegacy);
 }
 
 export function fetchProductionMetrics(): Promise<ProductionMetric[]> {
@@ -135,15 +224,38 @@ export function fetchOutboundOrders(): Promise<OutboundOrder[]> {
 
 // ── 주문 상세/관리 ──
 
-export function fetchOrderDetails(orderId: string): Promise<OrderDetail[]> {
-  return apiFetch<OrderDetail[]>(`/api/orders/${orderId}/details`);
+/** orderId: "ord_{n}" 형태 → ord_id 추출 후 OrdFull 로부터 legacy OrderDetail[] 변환. */
+export async function fetchOrderDetails(orderId: string): Promise<OrderDetail[]> {
+  const numericId = orderId.replace(/^ord_/, "");
+  const full = await apiFetch<SmartcastOrdFull>(`/api/orders/${numericId}`);
+  return adaptOrdDetails(full);
 }
 
-export function updateOrderStatus(
+/** 신규 API 는 POST /api/orders/{id}/status?new_stat=...&user_id=... — legacy OrderStatus → ord_stat 매핑 */
+const LEGACY_TO_ORD_STAT: Record<OrderStatus, string> = {
+  pending: "RCVD",
+  approved: "APPR",
+  in_production: "MFG",
+  production_completed: "DONE",
+  shipping_ready: "SHIP",
+  completed: "COMP",
+  rejected: "REJT",
+};
+
+export async function updateOrderStatus(
   orderId: string,
   status: OrderStatus,
 ): Promise<Order> {
-  return apiPatch<Order>(`/api/orders/${orderId}/status`, { status });
+  const numericId = orderId.replace(/^ord_/, "");
+  const newStat = LEGACY_TO_ORD_STAT[status];
+  const res = await fetch(
+    `${API_BASE}/api/orders/${numericId}/status?new_stat=${newStat}`,
+    { method: "POST" },
+  );
+  if (!res.ok) throw new Error(`API 오류: ${res.status} ${res.statusText}`);
+  // 응답이 OrdStat — 최신 상태만 반환됨. 전체 Order 재조회.
+  const full = await apiFetch<SmartcastOrdFull>(`/api/orders/${numericId}`);
+  return adaptOrdToLegacy(full);
 }
 
 export function updateOrder(
