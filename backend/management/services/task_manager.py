@@ -136,3 +136,27 @@ class TaskManager:
                     parsed, exc,
                 )
         return results
+
+    def list_items(
+        self,
+        order_id: str | None,
+        stage: str | None,
+        limit: int,
+    ) -> list[Item]:
+        """smartcast Item 목록 조회 (ListItems RPC 핸들러 용).
+
+        Args:
+            order_id: ord_id (int 문자열). None 이면 전체.
+            stage: smartcast Item.cur_stat 필터. None 이면 전체.
+            limit: 상한 (기본 100).
+        """
+        with SessionLocal() as db:
+            q = db.query(Item)
+            if order_id:
+                try:
+                    q = q.filter(Item.ord_id == int(order_id))
+                except (TypeError, ValueError):
+                    logger.warning("list_items: invalid order_id=%r — 필터 무시", order_id)
+            if stage:
+                q = q.filter(Item.cur_stat == stage)
+            return q.order_by(Item.item_id.asc()).limit(limit or 100).all()

@@ -426,13 +426,25 @@ def _ts(iso_str):
 
 
 def _item_to_proto(item):
+    """smartcast Item → proto Item (SPEC-C3 · 2026-04-20).
+
+    smartcast 필드명 매핑:
+      item.item_id → proto.id
+      item.ord_id  → proto.order_id (str 변환)
+      item.cur_stat → proto.cur_stage enum (unmapped 값은 0)
+      item.cur_res  → proto.curr_res
+    smartcast 미보유 필드는 기본값:
+      proto.insp_id → 0 (smartcast 에 inspection_id 직접 연결 없음)
+      proto.mfg_at  → updated_at (제조 시각 근사치)
+    """
+    updated = item.updated_at.isoformat() if getattr(item, "updated_at", None) else ""
     return management_pb2.Item(
-        id=item.id,
-        order_id=item.order_id or "",
-        cur_stage=_STAGE_NAME_TO_ENUM.get(item.cur_stage or "QUE", 0),
-        curr_res=item.curr_res or "",
-        insp_id=item.insp_id or 0,
-        mfg_at=_ts(item.mfg_at),
+        id=item.item_id,
+        order_id=str(item.ord_id or ""),
+        cur_stage=_STAGE_NAME_TO_ENUM.get(item.cur_stat or "", 0),
+        curr_res=item.cur_res or "",
+        insp_id=0,
+        mfg_at=_ts(updated),
     )
 
 
