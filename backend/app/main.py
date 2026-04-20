@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -6,11 +5,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.clients.management import ManagementClient
 from app.database import Base, SessionLocal, engine
-from app.routes import alerts, dashboard, logistics, orders, production, quality, schedule, websocket
+from app.routes import alerts, dashboard, logistics, management, orders, production, quality, schedule, websocket
 from app.seed import seed_database
-from app.services import fms_is_enabled, run_fms_sequencer
-from app.services.ros2_publisher import init_ros2, is_real_ros2, shutdown_ros2
 
 logger = logging.getLogger("app.main")
 
@@ -20,6 +18,10 @@ async def lifespan(app: FastAPI):
     # smartcast schema (Confluence 32342045 v59) 정착.
     # DDL 은 backend/scripts/create_tables_v2.sql 로 사전 적용됨 — create_all 은 보조.
     # search_path=smartcast,public 옵션이 DATABASE_URL 에 포함되어 있어 ORM 이 자동 사용.
+    #
+    # NOTE: V6 canonical 아키텍처에 맞춰 Phase B 에서 FMS 자동 진행 시퀀서와 ROS2 publisher 는
+    # Management Service (backend/management/server.py) 로 이관됨. Interface Service 는
+    # Admin/Customer PC 의 HTTP 요청만 처리하고 DB 조회/쓰기 책임만 가진다.
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
@@ -27,33 +29,13 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    # FMS_AUTOPLAY=1 환경에서만 자동 진행 시퀀서 실행 (실기 연동 시 OFF)
-    sequencer_task: asyncio.Task | None = None
-    if fms_is_enabled():
-        # uvicorn logger 가 app.* 로거를 노출하지 않을 수 있어 print 도 함께 사용
-        print("[FMS] FMS_AUTOPLAY=1 — sequencer 백그라운드 시작", flush=True)
-        logger.info("FMS_AUTOPLAY=1 — sequencer 백그라운드 시작")
-        # ROS2 publisher 사전 초기화 (rclpy 미설치/FMS_ROS2 미설정 시 no-op)
-        init_ros2()
-        if is_real_ros2():
-            print("[FMS] ROS2 publisher 활성", flush=True)
-        else:
-            print("[FMS] ROS2 publisher 폴백 모드 (mock print)", flush=True)
-        sequencer_task = asyncio.create_task(run_fms_sequencer())
-    else:
-        print("[FMS] FMS_AUTOPLAY 비활성 — sequencer 미가동", flush=True)
-        logger.info("FMS_AUTOPLAY 비활성 — sequencer 미가동 (실기 연동 모드)")
-
     yield
 
-    # Shutdown
-    if sequencer_task is not None:
-        sequencer_task.cancel()
-        try:
-            await sequencer_task
-        except asyncio.CancelledError:
-            pass
-    shutdown_ros2()
+    # Phase C-1: Management gRPC 채널 싱글톤 정리 (open 된 경우만)
+    try:
+        ManagementClient.get().close()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 app = FastAPI(
@@ -82,6 +64,8 @@ app.include_router(logistics.router)
 app.include_router(alerts.router)
 app.include_router(schedule.router)
 app.include_router(dashboard.router)
+# V6 canonical Phase 4 (Phase C-1): Interface → Management gRPC proxy
+app.include_router(management.router)
 
 # WebSocket router
 app.include_router(websocket.router)
