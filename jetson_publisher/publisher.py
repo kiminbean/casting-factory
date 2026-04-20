@@ -164,14 +164,32 @@ def _install_signal_handlers() -> None:
 def main() -> int:
     _install_signal_handlers()
     # ESP32 Serial bridge (opt-in via ESP_BRIDGE_ENABLED=1)
+    bridge = None
     if os.environ.get("ESP_BRIDGE_ENABLED", "0") in ("1", "true", "yes"):
         try:
             from esp_bridge import EspBridge
-            EspBridge.from_env(SHUTDOWN).start()
+            bridge = EspBridge.from_env(SHUTDOWN)
+            bridge.start()
         except Exception:  # noqa: BLE001
             log.exception("ESP bridge 기동 실패")
     else:
         log.info("ESP_BRIDGE_ENABLED 미설정 — Serial bridge 비활성")
+
+    # V6 canonical Phase D-2: Management → Jetson ConveyorCommand 구독
+    if bridge is not None and os.environ.get(
+        "MGMT_COMMAND_STREAM_ENABLED", "0"
+    ) in ("1", "true", "yes"):
+        try:
+            from command_subscriber import CommandSubscriber
+            CommandSubscriber.from_env(bridge, SHUTDOWN).start()
+        except Exception:  # noqa: BLE001
+            log.exception("CommandSubscriber 기동 실패")
+    elif bridge is None:
+        log.info(
+            "ESP bridge 비활성 → CommandSubscriber 미기동 (둘 다 켜야 Serial relay 동작)",
+        )
+    else:
+        log.info("MGMT_COMMAND_STREAM_ENABLED 미설정 — ConveyorCommand 구독 비활성")
 
     backoff = 1.0
     while not SHUTDOWN.is_set():

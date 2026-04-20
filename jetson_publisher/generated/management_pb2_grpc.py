@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import management_pb2 as management__pb2
+import management_pb2 as management__pb2
 
 GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__
@@ -98,6 +98,11 @@ class ManagementServiceStub(object):
                 request_serializer=management__pb2.WatchFramesRequest.SerializeToString,
                 response_deserializer=management__pb2.CameraFrameResponse.FromString,
                 _registered_method=True)
+        self.WatchConveyorCommands = channel.unary_stream(
+                '/casting.management.v1.ManagementService/WatchConveyorCommands',
+                request_serializer=management__pb2.WatchConveyorCommandsRequest.SerializeToString,
+                response_deserializer=management__pb2.ConveyorCommand.FromString,
+                _registered_method=True)
 
 
 class ManagementServiceServicer(object):
@@ -189,6 +194,15 @@ class ManagementServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def WatchConveyorCommands(self, request, context):
+        """V6 canonical Phase D: Jetson(Vision Controller) 가 Management 에서 ESP32 컨베이어 명령을 수신
+        Jetson 은 로컬 EspBridge 로 Serial(115200) 을 통해 ESP32(HW Controller) 에 relay.
+        Management → gRPC(TCP) → Jetson → Serial → ESP32. MQTT 경로는 Phase D 에서 제거됨.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ManagementServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -251,6 +265,11 @@ def add_ManagementServiceServicer_to_server(servicer, server):
                     servicer.WatchCameraFrames,
                     request_deserializer=management__pb2.WatchFramesRequest.FromString,
                     response_serializer=management__pb2.CameraFrameResponse.SerializeToString,
+            ),
+            'WatchConveyorCommands': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchConveyorCommands,
+                    request_deserializer=management__pb2.WatchConveyorCommandsRequest.FromString,
+                    response_serializer=management__pb2.ConveyorCommand.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -581,6 +600,33 @@ class ManagementService(object):
             '/casting.management.v1.ManagementService/WatchCameraFrames',
             management__pb2.WatchFramesRequest.SerializeToString,
             management__pb2.CameraFrameResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchConveyorCommands(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/casting.management.v1.ManagementService/WatchConveyorCommands',
+            management__pb2.WatchConveyorCommandsRequest.SerializeToString,
+            management__pb2.ConveyorCommand.FromString,
             options,
             channel_credentials,
             insecure,

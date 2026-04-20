@@ -83,6 +83,10 @@ class EspBridge:
         self._grpc_disabled = grpc_disabled
         self._handoff_queue: deque[PendingHandoff] = deque(maxlen=HANDOFF_BUFFER_MAX)
         self._handoff_lock = threading.Lock()
+        # Phase D-2 (V6 canonical): Management → Jetson → ESP32 명령 relay 큐.
+        # CommandSubscriber 가 send_command(cmd) 로 enqueue 하면 _session 루프가 Serial 로 drain.
+        self._tx_queue: deque[str] = deque()
+        self._tx_lock = threading.Lock()
         self._thread = threading.Thread(
             target=self._run, name="esp-bridge", daemon=True
         )
@@ -146,7 +150,7 @@ class EspBridge:
         log.info("EspBridge stopped")
 
     def _session(self, ser) -> None:
-        """개방된 serial 세션에서 라인 단위 이벤트 처리."""
+        """개방된 serial 세션에서 라인 단위 이벤트 처리 + outbound 큐 drain."""
         buf = bytearray()
         while not self._shutdown.is_set():
             chunk = ser.read(64)
@@ -158,6 +162,35 @@ class EspBridge:
                     line = line_b.decode(errors="replace").strip()
                     if line:
                         self._handle_line(ser, line)
+            # Phase D-2: Management 에서 수신한 명령을 Serial 로 relay
+            self._drain_tx(ser)
+
+    # ---------- Outbound command relay (Phase D-2: Management → ESP32) ----------
+    def send_command(self, cmd: str) -> None:
+        """외부 스레드(CommandSubscriber)가 호출. Serial 접근은 _session 루프가 drain.
+
+        cmd 끝에 newline 없으면 자동 추가. 큰 payload 는 분할 전송하지 않음 (ESP32 버퍼 한계 주의).
+        """
+        if not cmd:
+            return
+        normalized = cmd if cmd.endswith("\n") else cmd + "\n"
+        with self._tx_lock:
+            self._tx_queue.append(normalized)
+
+    def _drain_tx(self, ser) -> None:
+        """큐의 모든 outbound 명령을 Serial 로 flush. 스레드-안전."""
+        with self._tx_lock:
+            if not self._tx_queue:
+                return
+            pending = list(self._tx_queue)
+            self._tx_queue.clear()
+        for line in pending:
+            try:
+                ser.write(line.encode("utf-8"))
+                ser.flush()
+                log.info("Jetson → ESP32 cmd: %s", line.strip())
+            except Exception as e:  # noqa: BLE001
+                log.warning("outbound cmd 송신 실패: %s (%s)", line.strip(), e)
 
     def _handle_line(self, ser, line: str) -> None:
         if line == "STOPPED":
