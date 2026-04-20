@@ -21,9 +21,11 @@ hiddenimports = [
     "PyQt5.QtCore",
     "PyQt5.QtGui",
     "PyQt5.QtWidgets",
-    "paho.mqtt.client",
-    "websocket",
-    "websocket._app",
+    # V6 canonical (Phase D): MQTT 제거, Management gRPC 직결만
+    "grpc",
+    "grpc._channel",
+    "app.generated.management_pb2",
+    "app.generated.management_pb2_grpc",
     "app",
     "app.pages",
     "app.widgets",
@@ -44,7 +46,6 @@ hiddenimports = [
     "app.widgets.sorter_dial",
     "app.widgets.warehouse_rack",
 ]
-hiddenimports += collect_submodules("paho")
 
 a = Analysis(
     ["main.py"],

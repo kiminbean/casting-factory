@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.models.models import Alert, Item
+from app.models import Alert, Item  # SPEC-C3: Alert 는 legacy public-schema · Item 은 smartcast
 from db_session import SessionLocal
 
 import management_pb2  # type: ignore
@@ -201,7 +201,7 @@ class ExecutionMonitor:
         - 이후: seen_ids 에 없는 row 가 신규 → 모두 emit, seen_ids 갱신
         - seen_ids 는 최근 1000건 cap (메모리 보호)
         """
-        from app.models.models import Alert  # lazy import
+        from app.models import Alert  # SPEC-C3: legacy public-schema re-export
 
         seen_ids: set[str] = set()
         first_pass = True
@@ -259,9 +259,17 @@ class ExecutionMonitor:
         now_mono = _now_mono()
 
         with SessionLocal() as db:
-            stmt = select(Item.id, Item.cur_stage, Item.curr_res, Item.order_id)
+            # SPEC-C3: smartcast Item 컬럼명 (item_id/cur_stat/cur_res/ord_id).
+            # 참고: SLA stage 맵(QUE/MM/DM/TR_PP/...)은 smartcast stage 라벨
+            # (MM/POUR/DM/PP/ToINSP/INSP/PA/PICK/SHIP/ToPP/ToSTRG/ToSHIP)과 부분 일치.
+            # 불일치 stage 는 _stage_enum 이 0 반환 + SLA 무시되어 안전하게 fallback.
+            stmt = select(Item.item_id, Item.cur_stat, Item.cur_res, Item.ord_id)
             if order_filter:
-                stmt = stmt.where(Item.order_id == order_filter)
+                try:
+                    stmt = stmt.where(Item.ord_id == int(order_filter))
+                except (TypeError, ValueError):
+                    # order_filter 가 smartcast int ord_id 가 아니면 필터 적용 불가 → 전체
+                    pass
             rows = db.execute(stmt).all()
 
             for row in rows:

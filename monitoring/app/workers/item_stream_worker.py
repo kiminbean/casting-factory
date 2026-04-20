@@ -7,7 +7,7 @@ V6 아키텍처 Phase 3:
 
 @MX:NOTE: 1개 페이지에 1개 워커. 페이지 닫힐 때 stop() 호출 필수 (그렇지 않으면 좀비 스레드).
 @MX:WARN: gRPC channel 은 thread-safe 하지만 stub iterator 는 그렇지 않음 → 1 worker = 1 stream.
-@MX:REASON: paho-mqtt 와 동일하게 QThread 패턴으로 PyQt GUI 와 격리.
+@MX:REASON: QThread 패턴으로 PyQt GUI 와 격리 (blocking gRPC iterator 가 UI 스레드 정지 방지).
 """
 from __future__ import annotations
 

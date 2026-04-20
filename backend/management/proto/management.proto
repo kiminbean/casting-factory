@@ -68,11 +68,16 @@ enum AmrTaskState {
 // Task Manager
 // -----------------------------------------------------------------------------
 
+// SPEC-C2 Iteration 3 (Option A backward-compatible):
+// - order_ids: PyQt schedule 페이지 legacy 경로 (string 리스트)
+// - ord_id:    Interface smartcast v2 proxy 경로 (단건 정수)
+// Management 측은 ord_id 먼저 확인 후 비어있으면 order_ids[0] 을 int 변환.
 message StartProductionRequest {
-  repeated string order_ids = 1;
+  repeated string order_ids = 1;   // legacy PyQt · 다중 주문 시작
+  int32 ord_id = 2;                // smartcast v2 · 단건 Interface proxy
 }
 
-// Confluence work_order 테이블과 1:1 매핑
+// Confluence work_order 테이블과 1:1 매핑 (legacy v47 호환 메시지 — 유지)
 message WorkOrder {
   int64           id          = 1;   // work_ord_id (SERIAL)
   string          order_id    = 2;   // ord_id FK → order
@@ -85,8 +90,17 @@ message WorkOrder {
   repeated Item   items       = 9;   // 이 work_order 가 분해해 생성한 Item 목록
 }
 
+// SPEC-C2 신규: smartcast v2 단건 응답 (Interface proxy 용)
+message StartProductionResult {
+  int32  ord_id            = 1;
+  int32  item_id           = 2;   // 생성된 첫 item (smartcast Item.item_id)
+  int32  equip_task_txn_id = 3;   // RA1/MM QUE 트랜잭션 ID
+  string message           = 4;   // "Production started: RA1/MM task queued."
+}
+
 message StartProductionResponse {
-  repeated WorkOrder work_orders = 1;
+  repeated WorkOrder work_orders = 1;   // legacy PyQt 응답
+  StartProductionResult result   = 2;   // smartcast v2 응답 (ord_id 요청 시 채워짐)
 }
 
 // Confluence Item 테이블과 1:1 매핑
@@ -266,6 +280,30 @@ service ManagementService {
 
   // Stage B — 카메라 프레임 server streaming (image_sink condvar 기반 push)
   rpc WatchCameraFrames(WatchFramesRequest) returns (stream CameraFrameResponse);
+
+  // V6 canonical Phase D: Jetson(Vision Controller) 가 Management 에서 ESP32 컨베이어 명령을 수신
+  // Jetson 은 로컬 EspBridge 로 Serial(115200) 을 통해 ESP32(HW Controller) 에 relay.
+  // Management → gRPC(TCP) → Jetson → Serial → ESP32. MQTT 경로는 Phase D 에서 제거됨.
+  rpc WatchConveyorCommands(WatchConveyorCommandsRequest) returns (stream ConveyorCommand);
+}
+
+// -----------------------------------------------------------------------------
+// Conveyor / ESP32 command relay (V6 canonical Phase D)
+// -----------------------------------------------------------------------------
+
+message WatchConveyorCommandsRequest {
+  string subscriber_id = 1;      // "jetson-orin-nx-01" 등 구독자 식별자 (옵션)
+  // 특정 robot_id 만 필터 (비워두면 전체 CONV-*/ESP-* 수신)
+  string robot_id_filter = 2;
+}
+
+message ConveyorCommand {
+  string    robot_id   = 1;      // "CONV-01", "ESP-BTN-01"
+  string    command    = 2;      // "RUN" | "STOP" | "PING" | "STATUS" | ...
+  bytes     payload    = 3;      // 명령 부가 JSON (옵션)
+  int32     item_id    = 4;      // 관련 item (없으면 0)
+  Timestamp issued_at  = 5;
+  string    issued_by  = 6;      // "management.robot_executor" 등 추적용
 }
 
 message WatchFramesRequest {

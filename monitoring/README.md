@@ -14,11 +14,11 @@
 
 ## 기술 스택
 
-- Python 3.11+
+- Python 3.11+ (Apple Silicon 은 3.12 고정 — PyQt5/grpcio 휠 호환)
 - PyQt5 5.15
-- requests (REST)
-- websocket-client (실시간)
-- paho-mqtt (Phase 1+)
+- grpcio (V6 canonical: Management Service 직결 TCP :50051)
+- requests (legacy REST — Phase C 까지 잠정 유지)
+- paho-mqtt (Phase D 에서 제거 예정)
 
 ## 설치
 
@@ -52,8 +52,8 @@ monitoring/
 ├── README.md
 ├── app/
 │   ├── main_window.py     # QMainWindow (사이드바 + 스택)
-│   ├── api_client.py      # FastAPI REST 호출
-│   ├── ws_worker.py       # /ws/dashboard 구독 QThread
+│   ├── management_client.py # Management Service gRPC stub (V6 canonical)
+│   ├── api_client.py      # FastAPI REST 호출 (legacy, Phase C 까지)
 │   └── pages/
 │       ├── dashboard.py   # KPI 카드 + 알림
 │       ├── production.py  # 공정 / 설비 상태

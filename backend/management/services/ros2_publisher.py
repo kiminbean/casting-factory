@@ -1,4 +1,7 @@
-"""ROS2 publisher (mock fallback) — 시퀀서가 cur_stat 전이마다 명령 발행.
+"""ROS2 publisher (mock fallback) — Management FMS 시퀀서가 cur_stat 전이마다 명령 발행.
+
+V6 canonical: Management Service → ROS2 DDS → Manufacturing/Stacking/Transport Service
+(Interface Service 잔재를 Phase B 에서 이관함)
 
 설계:
 - rclpy 가 설치되어 있으면 실 ROS2 publisher 로 메시지 발행 (RA / CONV / AMR 별 토픽).
@@ -9,7 +12,8 @@
   /smartcast/conv/{res_id}/cmd    std_msgs/String  (예: "ON", "OFF")
   /smartcast/amr/{res_id}/cmd     std_msgs/String  (예: "MV_SRC", "WAIT_HANDOFF", ...)
 
-활성화: env FMS_ROS2=1 (default 0). rclpy 미설치 시 자동 OFF.
+활성화: env MGMT_ROS2_ENABLED=1 (default 0). rclpy 미설치 시 자동 OFF.
+(구 FMS_ROS2 env 는 하위 호환 유지)
 """
 from __future__ import annotations
 
@@ -17,21 +21,25 @@ import logging
 import os
 from typing import Optional
 
-logger = logging.getLogger("app.ros2_publisher")
+logger = logging.getLogger("management.ros2_publisher")
 
 
 # ---- 환경/가용성 검출 ----
 
 def _ros2_requested() -> bool:
-    """env FMS_ROS2=1 이고 rclpy 가 import 가능할 때만 활성."""
-    if os.environ.get("FMS_ROS2", "0").strip() not in ("1", "true", "True"):
+    """env MGMT_ROS2_ENABLED=1 (또는 legacy FMS_ROS2=1) 이고 rclpy 가 import 가능할 때만 활성."""
+    enabled = (
+        os.environ.get("MGMT_ROS2_ENABLED", "").strip() in ("1", "true", "True")
+        or os.environ.get("FMS_ROS2", "0").strip() in ("1", "true", "True")
+    )
+    if not enabled:
         return False
     try:
         import rclpy  # noqa: F401  (가용성 체크용)
 
         return True
     except ImportError:
-        logger.warning("FMS_ROS2=1 이지만 rclpy 미설치 — 폴백 print 모드로 전환")
+        logger.warning("MGMT_ROS2_ENABLED=1 이지만 rclpy 미설치 — 폴백 print 모드로 전환")
         return False
 
 

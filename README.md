@@ -6,14 +6,16 @@
 
 ## 빠른 시작 (다른 PC 에서 실행)
 
-> 상세 설치 가이드: [docs/SETUP.md](docs/SETUP.md)
+> 상세 설치 가이드: [docs/SETUP.md](docs/SETUP.md) · 배포 런북: [docs/DEPLOY-phase-a-to-c3.md](docs/DEPLOY-phase-a-to-c3.md)
 
 ### 사전 요구
 
-- **Node.js 20+** (v23 권장)
-- **Python 3.11+**
-- **Tailscale** (DB 서버 접근용, VPN)
-- **Git**
+| 항목 | 버전 | 비고 |
+|---|---|---|
+| **Node.js** | 20+ (v23 권장) | 프론트엔드 (Next.js 16) |
+| **Python** | **3.12 권장** | PyQt5/grpcio 는 Apple Silicon 3.14 휠 없음 (macOS 필수), 그 외 3.11+ 가능 |
+| **Tailscale** | 최신 | DB 서버(100.107.120.14) / Jetson(100.77.62.67) VPN 접근 |
+| **Git** | 2.30+ | — |
 
 ### 1. 소스 코드 클론
 
@@ -22,71 +24,154 @@ git clone https://github.com/kiminbean/casting-factory.git
 cd casting-factory
 ```
 
-### 2. 프론트엔드 설치 및 실행
+### 2. 프론트엔드 설치 및 실행 (Next.js `:3000`)
 
 ```bash
-# 프로젝트 루트 디렉터리에서 실행 (casting-factory/)
-cd casting-factory
+# 프로젝트 루트 디렉터리 (casting-factory/)
 npm install
 
 # .env.local 생성 (관리자 비밀번호)
 echo 'NEXT_PUBLIC_ADMIN_PASSWORD=admin1234' > .env.local
 
-# 개발 서버 실행 (LAN 에서도 접근 가능)
+# 개발 서버 실행 (LAN 에서도 접근 가능 — next.config.ts 의 allowedDevOrigins 참고)
 npm run dev
 ```
 
 프론트엔드: http://localhost:3000
 
-### 3. 백엔드 설치 및 실행 (별도 터미널)
+### 3. 백엔드 — Interface Service (FastAPI `:8000`)
+
+관리자/고객 웹페이지가 호출하는 HTTP API. 별도 터미널에서 실행:
 
 ```bash
-# 프로젝트 루트에서 backend/ 디렉터리로 이동
 cd casting-factory/backend
 python3 -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+source venv/bin/activate                        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # .env.local 생성 (원격 DB 접속 — 비밀번호는 관리자에게 문의)
 cat > .env.local << 'EOF'
-DATABASE_URL=postgresql+psycopg://team2:<비밀번호>@100.107.120.14:5432/smartcast_robotics
+DATABASE_URL=postgresql+psycopg://team2:<비밀번호>@100.107.120.14:5432/smartcast_robotics?options=-c%20search_path%3Dsmartcast%2Cpublic
 EOF
 
-# 개발 서버 실행
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-백엔드: http://localhost:8000
+Interface Service: http://localhost:8000
 
-### 4. 동작 확인
+### 4. 백엔드 — Management Service (gRPC `:50051`)
 
-- http://localhost:3000/ — SmartCast Robotics 랜딩 페이지 (3 버튼)
-- http://localhost:3000/admin/login — 관리자 로그인 (비밀번호: `admin1234`)
-- http://localhost:3000/customer — 고객 발주 포털
-- http://localhost:8000/health — 백엔드 헬스체크
-- http://localhost:8000/api/orders — 주문 목록 (JSON)
+PyQt 관제 모니터링이 직결하는 gRPC 서비스. **PyQt 를 쓰지 않으면 생략 가능**하지만 생산시작/실시간 스트림 기능을 쓰려면 필수. 또 다른 터미널에서:
+
+```bash
+cd casting-factory/backend/management
+python3.12 -m venv venv                         # Python 3.12 필수
+source venv/bin/activate
+pip install -r requirements.txt                 # grpcio, paramiko, psycopg 등
+make proto                                       # management_pb2*.py 생성 (최초 1회)
+
+# .env.local 로 backend/.env.local DATABASE_URL 공유됨
+python server.py
+```
+
+Management Service: gRPC `localhost:50051` · 검증:
+
+```bash
+curl http://localhost:8000/api/management/health
+# → {"status":"ok","service":"management","grpc":"localhost:50051"}
+```
+
+### 5. PyQt 관제 모니터링 (Factory Operator PC)
+
+실시간 공정/주문/AMR/품질 대시보드. 생산시작·핸드오프 ACK 등 공장 운영 UX 포함. Management Service(`:50051`)가 기동 중이어야 대부분 기능이 동작.
+
+```bash
+cd casting-factory/monitoring
+python3.12 -m venv venv                         # Python 3.12 (PyQt5 휠 호환)
+source venv/bin/activate
+pip install -r requirements.txt                 # PyQt5, grpcio, paho-mqtt 없음
+
+# Management Service 의 proto 를 PyQt 쪽으로 복사 + 컴파일
+bash scripts/gen_proto.sh                        # app/generated/management_pb2*.py 생성
+
+# 환경변수 (기본값 사용 시 생략 가능)
+export MANAGEMENT_GRPC_HOST=localhost
+export MANAGEMENT_GRPC_PORT=50051
+# FastAPI 호스트 (api_client.py legacy 호출용 — operations 페이지 일부)
+export CASTING_API_HOST=127.0.0.1
+export CASTING_API_PORT=8000
+
+python main.py
+```
+
+**전제조건**: Interface `:8000` + Management `:50051` 모두 가동 중.
+
+### 6. Jetson Orin NX (선택 — ESP32 컨베이어 제어용)
+
+이미지 publishing + ESP32 Serial relay. 공장 현장 배포 시만 필요:
+
+```bash
+# 본인 PC 에서 원격 배포 (Tailscale SSH 필요)
+bash jetson_publisher/deploy.sh --install
+```
+
+상세: [jetson_publisher/README.md](jetson_publisher/README.md)
+
+### 7. 동작 확인
+
+| URL / 명령 | 기대 |
+|---|---|
+| http://localhost:3000/ | SmartCast Robotics 랜딩 (3 버튼) |
+| http://localhost:3000/admin/login | 관리자 로그인 (비밀번호 `admin1234`) |
+| http://localhost:3000/customer | 고객 발주 포털 |
+| http://localhost:8000/health | `{"status":"ok"}` |
+| http://localhost:8000/api/orders | 주문 목록 JSON |
+| http://localhost:8000/api/management/health | Management gRPC 왕복 확인 |
+| PyQt 상태바 | `gRPC: ready` 표시 |
+| PyQt schedule `[▶ 생산 시작]` | Management `StartProduction` 호출 성공 |
+
+### 8. 환경변수 요약
+
+| 변수 | 위치 | 기본 | 설명 |
+|---|---|---|---|
+| `NEXT_PUBLIC_ADMIN_PASSWORD` | 루트 `.env.local` | — | 관리자 로그인 (프론트) |
+| `DATABASE_URL` | `backend/.env.local` | — | PostgreSQL (Interface + Management 공유) |
+| `INTERFACE_PROXY_START_PRODUCTION` | `backend/` env | `0` | **1 이면 `/api/production/start` 를 Mgmt gRPC 로 proxy** · 모듈 import 시점 고정, flip 시 FastAPI worker 재시작 필수 |
+| `MANAGEMENT_GRPC_HOST` / `PORT` | Interface + PyQt | `localhost:50051` | Management 엔드포인트 |
+| `MGMT_GRPC_TLS_ENABLED` | Management env | `0` | 1 이면 mTLS (`certs/` 필요) |
+| `MGMT_ROS2_ENABLED` | Management env | `0` | 1 + rclpy 설치 시 실 ROS2 publish (Ubuntu Jazzy) |
+| `FMS_AUTOPLAY` | Management env | `0` | 1 이면 FMS 자동 진행 시퀀서 기동 |
+| `MGMT_COMMAND_STREAM_ENABLED` | Jetson env | `0` | 1 이면 `WatchConveyorCommands` 구독 (ESP32 Serial relay) |
+| `CASTING_API_HOST` / `PORT` | PyQt | `192.168.0.16:8000` | FastAPI legacy 호출 (Phase A-2 에서 제거 예정) |
 
 ---
 
-## 아키텍처 개요
+## 아키텍처 개요 (V6 canonical)
 
 ```
-┌─────────────────────────────────────────┐
-│  Frontend (Next.js 16.2 + React 19.2)    │  ← npm run dev (포트 3000)
-│  관리자 + 고객 포털                       │
-├─────────────────────────────────────────┤
-│  Backend (FastAPI + SQLAlchemy 2.0)      │  ← uvicorn (포트 8000)
-│  REST 31 + WebSocket 1                   │
-├─────────────────────────────────────────┤
-│  DB Server (PostgreSQL 16)               │  ← Tailscale 100.107.120.14:5432
-│  Ubuntu 24.04, DB: smartcast_robotics    │
-├─────────────────────────────────────────┤
-│  Factory PC (PyQt5 데스크톱, 선택)       │  ← python main.py
-│  실시간 모니터링 6페이지                  │
-├─────────────────────────────────────────┤
-│  ESP32 Firmware (Arduino, 선택)          │  ← conveyor_controller v4.0
-│  컨베이어 + TOF250 + MQTT               │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  Frontend (Next.js 16.2 + React 19.2)  [:3000]            │  npm run dev
+│  관리자 + 고객 포털                                        │
+├──────────────────────────────────────────────────────────┤
+│  Interface Service (FastAPI + SQLAlchemy 2.0)  [:8000]    │  uvicorn
+│  REST 31 + /api/management/health (gRPC proxy)            │
+├──────────────────────────────────────────────────────────┤
+│  Management Service (gRPC + proto)  [:50051]              │  python server.py
+│  StartProduction · WatchItems · WatchAlerts · WatchCamera │
+│  WatchConveyorCommands · GetRobotStatus · Traffic · FMS   │
+├──────────────────────────────────────────────────────────┤
+│  DB Server (PostgreSQL 16 + TimescaleDB)                  │  Tailscale
+│  100.107.120.14:5432 · smartcast_robotics                 │
+├──────────────────────────────────────────────────────────┤
+│  Factory PC (PyQt5)                                       │  python main.py
+│  gRPC 직결 · 6페이지 모니터링 + 생산시작 · 핸드오프 ACK     │
+├──────────────────────────────────────────────────────────┤
+│  Jetson Orin NX (image publisher + ESP32 Serial relay)    │  systemd
+│  Tailscale 100.77.62.67 · /dev/ttyUSB0 ↔ ESP32 v5         │
+├──────────────────────────────────────────────────────────┤
+│  ESP32 (conveyor_controller v5)                           │  Serial 115200
+│  Jetson Serial 수신 · RC522 RFID · L298N 모터             │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ## UI 분리 정책

@@ -46,9 +46,9 @@ from app.models import (
     TransStat,
     TransTaskTxn,
 )
-from app.services.ros2_publisher import publish_state
+from services.ros2_publisher import publish_state
 
-logger = logging.getLogger("app.fms_sequencer")
+logger = logging.getLogger("management.fms_sequencer")
 
 # task_type → 어느 res_type 에 할당할지 (간단 라우팅)
 TASK_TO_RES_TYPE: dict[str, str] = {

@@ -45,10 +45,15 @@ from services.traffic_manager import TrafficManager  # noqa: E402
 from services.robot_executor import RobotExecutor  # noqa: E402
 from services.execution_monitor import ExecutionMonitor  # noqa: E402
 from services.image_sink import sink as image_sink  # noqa: E402
+from services.command_queue import queue as command_queue  # noqa: E402
 from services.image_forwarder import ForwarderConfig, ImageForwarder  # noqa: E402
 from services.ai_client import AIServerConfig, AIUploader  # noqa: E402
 from services.amr_battery import AmrBatteryService  # noqa: E402
 from services.amr_state_machine import AmrStateMachine  # noqa: E402
+# Phase B: Interface 로부터 이관된 FMS 자동 진행 시퀀서 + ROS2 publisher
+from services.fms_sequencer import is_enabled as fms_is_enabled  # noqa: E402
+from services.fms_sequencer import run_sequencer as run_fms_sequencer  # noqa: E402
+from services.ros2_publisher import init_ros2, is_real_ros2, shutdown_ros2  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -81,16 +86,36 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
         # RobotExecutor 에 state_machine 주입
         self.robot_executor = RobotExecutor(state_machine=self.amr_state_machine)
 
-    # ---------- Task Manager ----------
+    # ---------- Task Manager (SPEC-C2 Iteration 3: dual-input) ----------
     def StartProduction(self, request, context):
-        try:
-            wos = self.task_manager.start_production(list(request.order_ids))
-        except ValueError as e:
+        """Dual-input StartProduction.
+
+        - ord_id > 0   → smartcast v2 단건 (Interface proxy) · result 필드 반환
+        - order_ids 비어있지 않음 → legacy PyQt 다중 · work_orders 리스트 반환 (호환)
+        - 둘 다 비어있음 → INVALID_ARGUMENT
+        """
+        # smartcast v2 단건 경로 우선
+        if request.ord_id and request.ord_id > 0:
+            try:
+                result = self.task_manager.start_production_single(request.ord_id)
+            except Exception as e:  # noqa: BLE001
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details(str(e))
+                return management_pb2.StartProductionResponse()
+            return management_pb2.StartProductionResponse(
+                result=_start_result_to_proto(result),
+            )
+
+        # legacy PyQt 다중 경로
+        order_ids = list(request.order_ids)
+        if not order_ids:
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details(str(e))
+            context.set_details("either ord_id or order_ids required")
             return management_pb2.StartProductionResponse()
 
-        proto_wos = [_work_order_to_proto(wo) for wo in wos]
+        results = self.task_manager.start_production_batch(order_ids)
+        # 레거시 호환: smartcast 결과를 WorkOrder shape 로 변환 (PyQt schedule 페이지 호환)
+        proto_wos = [_result_to_legacy_work_order(r) for r in results]
         return management_pb2.StartProductionResponse(work_orders=proto_wos)
 
     def ListItems(self, request, context):
@@ -321,6 +346,33 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
     def Health(self, request, context):
         return management_pb2.Empty()
 
+    # ---------- Conveyor Command Streaming (V6 canonical Phase D) ----------
+    def WatchConveyorCommands(self, request, context):
+        """Jetson 이 구독하는 server streaming. Management → ESP32 명령 relay.
+
+        robot_executor 가 JetsonRelayAdapter 로 enqueue 한 명령을 pull 해서 Jetson 에 push.
+        keepalive: queue.wait_next 가 10s timeout → context.is_active() 체크 후 재진입.
+        """
+        subscriber_id = request.subscriber_id or "unknown"
+        filter_ = request.robot_id_filter or ""
+        logger.info(
+            "WatchConveyorCommands subscriber=%s filter=%s",
+            subscriber_id, filter_ or "<all>",
+        )
+        while context.is_active():
+            cmd = command_queue.wait_next(filter_ or None, timeout=10.0)
+            if cmd is None:
+                continue  # keepalive tick
+            yield management_pb2.ConveyorCommand(
+                robot_id=cmd.robot_id,
+                command=cmd.command,
+                payload=cmd.payload,
+                item_id=cmd.item_id,
+                issued_at=management_pb2.Timestamp(iso8601=cmd.issued_at_iso),
+                issued_by=cmd.issued_by,
+            )
+        logger.info("WatchConveyorCommands closed subscriber=%s", subscriber_id)
+
     # ---------- Camera Frames Streaming (Stage B) ----------
     def WatchCameraFrames(self, request, context):
         """image_sink condvar 기반 pub/sub. Jetson push 즉시 yield."""
@@ -374,26 +426,53 @@ def _ts(iso_str):
 
 
 def _item_to_proto(item):
+    """smartcast Item → proto Item (SPEC-C3 · 2026-04-20).
+
+    smartcast 필드명 매핑:
+      item.item_id → proto.id
+      item.ord_id  → proto.order_id (str 변환)
+      item.cur_stat → proto.cur_stage enum (unmapped 값은 0)
+      item.cur_res  → proto.curr_res
+    smartcast 미보유 필드는 기본값:
+      proto.insp_id → 0 (smartcast 에 inspection_id 직접 연결 없음)
+      proto.mfg_at  → updated_at (제조 시각 근사치)
+    """
+    updated = item.updated_at.isoformat() if getattr(item, "updated_at", None) else ""
     return management_pb2.Item(
-        id=item.id,
-        order_id=item.order_id or "",
-        cur_stage=_STAGE_NAME_TO_ENUM.get(item.cur_stage or "QUE", 0),
-        curr_res=item.curr_res or "",
-        insp_id=item.insp_id or 0,
-        mfg_at=_ts(item.mfg_at),
+        id=item.item_id,
+        order_id=str(item.ord_id or ""),
+        cur_stage=_STAGE_NAME_TO_ENUM.get(item.cur_stat or "", 0),
+        curr_res=item.cur_res or "",
+        insp_id=0,
+        mfg_at=_ts(updated),
     )
 
 
-def _work_order_to_proto(wo):
+def _start_result_to_proto(r):
+    """StartProductionResult dataclass → proto (SPEC-C2 신규 필드)."""
+    return management_pb2.StartProductionResult(
+        ord_id=r.ord_id,
+        item_id=r.item_id,
+        equip_task_txn_id=r.equip_task_txn_id,
+        message=r.message or "",
+    )
+
+
+def _result_to_legacy_work_order(r):
+    """smartcast start_production_single 결과 → legacy WorkOrder proto (PyQt 호환).
+
+    smartcast 에는 WorkOrder 엔티티가 없으므로 item_id 를 work_order.id 로 매핑,
+    pattern_id 는 빈 문자열 (PyQt UI 는 pattern_id 를 최소 표시만 사용).
+    """
     return management_pb2.WorkOrder(
-        id=wo.id,
-        order_id=wo.order_id or "",
-        pattern_id=wo.pattern_id or "",
-        qty=wo.qty or 0,
-        status=_WO_STATUS_TO_ENUM.get(wo.status or "QUE", 0),
-        plan_start=_ts(wo.plan_start),
-        act_start=_ts(wo.act_start),
-        act_end=_ts(wo.act_end),
+        id=r.item_id,                     # smartcast item_id 를 work_order id 로 매핑
+        order_id=str(r.ord_id),
+        pattern_id="",
+        qty=1,                            # smartcast 는 item 단건 생성
+        status=_WO_STATUS_TO_ENUM.get("QUE", 0),
+        plan_start=_ts(None),
+        act_start=_ts(None),
+        act_end=_ts(None),
     )
 
 
@@ -492,6 +571,48 @@ def _load_tls_credentials():
     return creds
 
 
+def _start_fms_sequencer_thread():
+    """FMS 자동 진행 시퀀서를 daemon thread + asyncio loop 로 기동.
+
+    V6 canonical (Phase B): Interface Service 로부터 이관됨.
+    FMS_AUTOPLAY=1 일 때만 가동. 실기 연동 시 OFF.
+    ROS2 publisher 는 MGMT_ROS2_ENABLED=1 + rclpy 설치 시 실 publish, 아니면 print 폴백.
+    gRPC 서버는 ThreadPoolExecutor 기반이라 별도 이벤트 루프 스레드 필요.
+    """
+    import asyncio
+    import threading
+
+    if not fms_is_enabled():
+        logger.info("FMS_AUTOPLAY 비활성 — 시퀀서 미가동 (실기 연동 모드)")
+        print("[FMS] FMS_AUTOPLAY 비활성 — sequencer 미가동", flush=True)
+        return None
+
+    init_ros2()
+    ros2_mode = "real" if is_real_ros2() else "mock-print"
+    print(f"[FMS] FMS_AUTOPLAY=1 — sequencer 백그라운드 시작 (ROS2={ros2_mode})", flush=True)
+    logger.info("FMS sequencer 백그라운드 시작 (ROS2 %s)", ros2_mode)
+
+    def _run():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(run_fms_sequencer())
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("FMS sequencer 스레드 오류: %s", exc)
+        finally:
+            try:
+                shutdown_ros2()
+            except Exception:  # noqa: BLE001
+                pass
+            loop.close()
+
+    t = threading.Thread(target=_run, daemon=True, name="fms-sequencer")
+    t.start()
+    return t
+
+
 def serve() -> None:
     # WatchItems + WatchAlerts + WatchCameraFrames 등 스트리밍이 워커 점유.
     # 다중 PyQt 클라이언트 + 내부 모니터링 대비 여유있게 32로 확장.
@@ -524,6 +645,9 @@ def serve() -> None:
 
     server.start()
     logger.info("Management Service listening on %s [%s]", bind_addr, scheme)
+
+    # Phase B: FMS 자동 진행 시퀀서 (Interface 로부터 이관)
+    _start_fms_sequencer_thread()
 
     # Graceful shutdown
     def _stop(_signum, _frame):

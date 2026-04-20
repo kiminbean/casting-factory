@@ -14,6 +14,8 @@
 """
 from __future__ import annotations
 
+import logging
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -24,7 +26,20 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import func
 
+from app.clients.management import ManagementClient, ManagementUnavailable
 from app.database import get_db
+
+logger = logging.getLogger("app.production")
+
+# SPEC-C2 §11.2: Feature flag 는 모듈 import 시점에 상수로 고정.
+# Flip 하려면 모든 uvicorn worker 재시작 필수 (per-request env read 금지 — worker race 방지).
+_PROXY_START_PRODUCTION = os.environ.get(
+    "INTERFACE_PROXY_START_PRODUCTION", "0"
+) in ("1", "true", "True", "yes")
+logger.info(
+    "[INTERFACE-PROXY] start_production proxy = %s (flag pinned at module import)",
+    "ON" if _PROXY_START_PRODUCTION else "OFF (legacy DB-direct)",
+)
 from app.models import (
     Equip,
     EquipStat,
@@ -91,16 +106,8 @@ def get_pattern(ord_id: int, db: Session = Depends(get_db)) -> PatternOut:
 # Production Start (핑크 GUI #5)
 # -------------------------------------------------------------------------
 
-@router.post("/start")
-def start_production(payload: ProductionStartRequest, db: Session = Depends(get_db)) -> dict:
-    """발주 생산 시작.
-
-    선행 조건: pattern 등록 완료. (Pink GUI #5: 패턴 등록 후에만 활성)
-    동작:
-      1. ord_stat MFG INSERT
-      2. RA1 (CAST 구역) 에 MM task QUE 생성
-      3. 첫 item INSERT (cur_stat='QUE', equip_task_type='MM')
-    """
+def _start_production_legacy(payload: ProductionStartRequest, db: Session) -> dict:
+    """Legacy DB-direct 경로 (feature flag OFF 기본값). 2주 유예 후 제거 예정."""
     ord_obj = db.get(Ord, payload.ord_id)
     if not ord_obj:
         raise HTTPException(404, f"ord_id={payload.ord_id} not found")
@@ -110,11 +117,7 @@ def start_production(payload: ProductionStartRequest, db: Session = Depends(get_
             f"pattern for ord_id={payload.ord_id} not registered. "
             "Register pattern first (핑크 GUI #3) before starting production.",
         )
-
-    # ord_stat → MFG
     db.add(OrdStat(ord_id=payload.ord_id, ord_stat="MFG"))
-
-    # 첫 item 생성 (생산 라인 진입)
     new_item = Item(
         ord_id=payload.ord_id,
         equip_task_type="MM",
@@ -124,8 +127,6 @@ def start_production(payload: ProductionStartRequest, db: Session = Depends(get_
     )
     db.add(new_item)
     db.flush()
-
-    # equip_task_txn QUE → RA1 / MM
     txn = EquipTaskTxn(
         res_id="RA1",
         task_type="MM",
@@ -136,13 +137,48 @@ def start_production(payload: ProductionStartRequest, db: Session = Depends(get_
     db.commit()
     db.refresh(new_item)
     db.refresh(txn)
-
     return {
         "ord_id": payload.ord_id,
         "item_id": new_item.item_id,
         "equip_task_txn_id": txn.txn_id,
         "message": "Production started: RA1/MM task queued.",
     }
+
+
+def _start_production_proxy(payload: ProductionStartRequest) -> dict:
+    """Management gRPC proxy 경로 (feature flag ON). SPEC-C2 Iteration 3."""
+    try:
+        result = ManagementClient.get().start_production(payload.ord_id)
+    except ValueError as exc:
+        msg = str(exc)
+        # task_manager 의 "not found" 는 404, "not registered" 는 400 으로 매핑
+        if "not found" in msg:
+            raise HTTPException(404, msg)
+        raise HTTPException(400, msg)
+    except ManagementUnavailable as exc:
+        raise HTTPException(
+            503, f"Management Service unavailable: {exc}"
+        )
+    return {
+        "ord_id": result.ord_id,
+        "item_id": result.item_id,
+        "equip_task_txn_id": result.equip_task_txn_id,
+        "message": result.message,
+    }
+
+
+@router.post("/start")
+def start_production(payload: ProductionStartRequest, db: Session = Depends(get_db)) -> dict:
+    """발주 생산 시작 — V6 canonical Phase C-2.
+
+    INTERFACE_PROXY_START_PRODUCTION=1 (모듈 import 시점 고정) 이면 Management
+    gRPC proxy, 아니면 legacy DB-direct 경로. 응답 shape 은 두 경로 동일.
+
+    선행 조건: pattern 등록 완료 (핑크 GUI #3).
+    """
+    if _PROXY_START_PRODUCTION:
+        return _start_production_proxy(payload)
+    return _start_production_legacy(payload, db)
 
 
 # -------------------------------------------------------------------------

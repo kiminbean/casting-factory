@@ -60,12 +60,7 @@ pytest tests/ --cov=services --cov-report=term-missing
 | `MGMT_TLS_SERVER_CRT` | `./certs/server.crt` | 서버 cert |
 | `MGMT_TLS_CA_CRT` | `./certs/ca.crt` | CA cert (클라이언트 검증) |
 | `MGMT_TLS_REQUIRE_CLIENT_CERT` | `1` | 1=mTLS, 0=server-only TLS |
-| `MGMT_MQTT_HOST` | `localhost` | MQTT 브로커 (Robot Executor publish 용) |
-| `MGMT_MQTT_PORT` | `1883` | MQTT 포트 |
-| `MGMT_MQTT_QOS` | `1` | publish QoS |
-| `MGMT_MQTT_CLIENT_ID` | `casting-mgmt-esp` | MQTT client id |
-| `MGMT_MQTT_USER` | (미설정) | **★ V6 S-002: MQTT 사용자명 (없으면 익명)** |
-| `MGMT_MQTT_PASS` | (미설정) | **★ V6 S-002: MQTT 비밀번호** |
+| ~~`MGMT_MQTT_*`~~ | — | **Phase D (2026-04-20) 에서 제거**. ESP32 경로는 Jetson Serial 경유(`WatchConveyorCommands` gRPC stream → Jetson → /dev/ttyUSB0) 로 통일됨. |
 | `MGMT_ADAPTIVE_POLLING` | `1` | **★ V6 P-001: ExecutionMonitor 적응형 polling** |
 | `MGMT_POLL_QUIET_CYCLES` | `5` | quiet 사이클 N건 누적 시 backoff |
 | `MGMT_POLL_BACKOFF_FACTOR` | `2.0` | backoff 시 interval 곱셈 |
@@ -86,6 +81,9 @@ pytest tests/ --cov=services --cov-report=term-missing
 | `MGMT_IMAGE_BATCH_MAX` | `50` | 1회 flush 최대 파일 수 |
 | `MGMT_IMAGE_SPOOL_MAX_FILES` | `5000` | 스풀 보관 한도 (초과 시 oldest drop) |
 | `MGMT_IP_CAMERA_ID` | `CAM-INSP-01` | IP 진입 시 스냅샷 대상 카메라 ID |
+| `FMS_AUTOPLAY` | `0` | **★ V6 Phase B (2026-04-20 Interface→Management 이관):** 1 이면 자동 진행 시퀀서 daemon thread 기동. 실기 연동 시 0 권장 |
+| `FMS_ERROR_RATE` | `0.0` | 시퀀서 오류 주입 확률 (0.0~1.0). 데모 시나리오용 |
+| `FMS_ROS2` | `0` | **Deprecated** — `MGMT_ROS2_ENABLED` 로 대체됨 (하위 호환 유지) |
 
 ## MQTT 인증 설정 (운영 환경 권장)
 
