@@ -1,130 +1,138 @@
-"""Task Manager — 승인된 주문을 work_order + items 로 분해.
+"""Task Manager — smartcast v2 기반 단건 생산 개시 (SPEC-C2 Iteration 3).
 
-Confluence DB v47 스키마 기준:
-- order (status='approved') → work_order 1건 + items N건 (N = order_detail.qty 합계)
-- 각 item 은 cur_stage='QUE' 로 시작
-- 동일 주문에 대한 중복 시작 방지
+canonical 아키텍처: Interface POST /api/production/start 가 Management gRPC StartProduction
+으로 proxy 되며, legacy PyQt schedule 페이지는 `order_ids=[...]` 로 동일 RPC 호출.
 
-@MX:ANCHOR: Phase 2 산출물. PyQt 의 [▶ 생산 시작] 버튼이 호출하는 핵심 진입점.
-@MX:REASON: V6 아키텍처에서 Interface Service 가 우회되므로 본 모듈이 트랜잭션 경계.
+입력 형식 (StartProductionRequest dual-input):
+- `ord_id` (smartcast Interface proxy 경로, 단건)
+- `order_ids` (legacy PyQt schedule 경로, 다중 주문 시작)
+
+동작:
+- ord_id > 0 → smartcast v2 로직 단건 처리
+- order_ids 비어있지 않음 → 각 원소를 int 로 변환해 smartcast v2 로직 반복
+
+smartcast v2 트랜잭션 (Interface production.py:94 와 동일 경계):
+    OrdStat(MFG) + Item(cur_stat='QUE', cur_res='RA1', equip_task_type='MM')
+    + EquipTaskTxn(res_id='RA1', task_type='MM', txn_stat='QUE')
+    단일 `db.commit()` 으로 atomic.
+
+@MX:ANCHOR: SPEC-C2 Phase C-2 산출물. Management write 경로의 단일 진입점.
+@MX:REASON: Interface proxy 와 legacy PyQt 가 모두 본 함수를 호출. 스키마/트랜잭션 규약 변경은 SPEC-C2 수정 후에만 가능.
 """
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from typing import Iterable
 
-from app.models.models import Item, Order, OrderDetail, WorkOrder
-from db_session import SessionLocal
+from app.database import SessionLocal
+from app.models import (
+    EquipTaskTxn,
+    Item,
+    Ord,
+    OrdStat,
+    Pattern,
+)
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class StartProductionResult:
+    """단건 smartcast v2 생산 개시 결과 — proto StartProductionResult 와 1:1."""
+
+    ord_id: int
+    item_id: int
+    equip_task_txn_id: int
+    message: str
+
+
+class TaskManagerError(ValueError):
+    """TaskManager 도메인 오류 — gRPC INVALID_ARGUMENT 로 매핑."""
+
+
 class TaskManager:
-    """주문 → work_order + items 분해."""
+    """smartcast v2 ORM 기반 생산 개시."""
 
-    def start_production(self, order_ids: list[str]) -> list[WorkOrder]:
-        """승인 주문들을 생산 개시 (work_order + items 생성).
+    def start_production_single(self, ord_id: int) -> StartProductionResult:
+        """단일 발주의 smartcast v2 생산 개시.
 
-        Args:
-            order_ids: 시작할 주문 ID 리스트. status='approved' 만 처리.
-
-        Returns:
-            생성된 WorkOrder ORM 객체 리스트 (items 관계 미사전 로드 — caller 가 별도 조회).
-
-        Raises:
-            ValueError: 빈 리스트
+        선행 조건:
+            - ord_id 가 smartcast `ord` 테이블에 존재
+            - `pattern` 테이블에 ord_id 키의 패턴 등록됨
+        효과 (atomic):
+            - OrdStat INSERT (ord_stat='MFG')
+            - Item INSERT (cur_stat='QUE', cur_res='RA1', equip_task_type='MM')
+            - EquipTaskTxn INSERT (res_id='RA1', task_type='MM', txn_stat='QUE')
         """
-        if not order_ids:
-            raise ValueError("order_ids 가 비어있습니다")
-
-        now = datetime.now(timezone.utc).isoformat()
-        created: list[WorkOrder] = []
+        if not ord_id or ord_id <= 0:
+            raise TaskManagerError(f"invalid ord_id: {ord_id}")
 
         with SessionLocal() as db:
-            orders = (
-                db.query(Order)
-                .filter(Order.id.in_(order_ids), Order.status == "approved")
-                .all()
+            ord_obj = db.get(Ord, ord_id)
+            if ord_obj is None:
+                raise TaskManagerError(f"ord_id={ord_id} not found")
+            if db.get(Pattern, ord_id) is None:
+                raise TaskManagerError(
+                    f"pattern for ord_id={ord_id} not registered",
+                )
+
+            db.add(OrdStat(ord_id=ord_id, ord_stat="MFG"))
+
+            new_item = Item(
+                ord_id=ord_id,
+                equip_task_type="MM",
+                trans_task_type=None,
+                cur_stat="QUE",
+                cur_res="RA1",
             )
-            if not orders:
-                logger.warning("시작 가능한 승인 주문 없음: %s", order_ids)
-                return []
+            db.add(new_item)
+            db.flush()  # new_item.item_id 확보
 
-            for order in orders:
-                # 중복 시작 방지: 이미 work_order 가 있으면 스킵
-                exists = (
-                    db.query(WorkOrder)
-                    .filter(WorkOrder.order_id == order.id)
-                    .first()
-                )
-                if exists:
-                    logger.info("이미 work_order 존재: %s (id=%s)", order.id, exists.id)
-                    created.append(exists)
-                    continue
-
-                # order_detail 의 수량 합산 → item 발급 수
-                details = (
-                    db.query(OrderDetail).filter(OrderDetail.order_id == order.id).all()
-                )
-                total_qty = sum(int(d.quantity or 0) for d in details)
-                if total_qty <= 0:
-                    logger.warning(
-                        "주문 %s 의 order_details qty 합계가 0 — work_order 미생성", order.id
-                    )
-                    continue
-
-                wo = WorkOrder(
-                    order_id=order.id,
-                    pattern_id=None,  # TODO: order_detail 에 pattern_id 추가 후 매핑
-                    qty=total_qty,
-                    status="QUE",
-                    plan_start=now,
-                )
-                db.add(wo)
-                db.flush()  # wo.id 확보
-
-                # item 1개당 1 row 생성, 모두 cur_stage='QUE'
-                items = [
-                    Item(
-                        order_id=order.id,
-                        work_order_id=wo.id,
-                        cur_stage="QUE",
-                        curr_res=None,
-                        insp_id=None,
-                        mfg_at=now,
-                    )
-                    for _ in range(total_qty)
-                ]
-                db.add_all(items)
-
-                # 주문 상태 전환
-                order.status = "in_production"
-                order.updated_at = now
-
-                created.append(wo)
-
+            txn = EquipTaskTxn(
+                res_id="RA1",
+                task_type="MM",
+                txn_stat="QUE",
+                item_id=new_item.item_id,
+            )
+            db.add(txn)
             db.commit()
-            for wo in created:
-                db.refresh(wo)
 
-        logger.info(
-            "start_production 완료: %d 건 work_order, 총 %d items",
-            len(created),
-            sum(wo.qty for wo in created),
-        )
-        return created
+            db.refresh(new_item)
+            db.refresh(txn)
 
-    def list_items(
-        self,
-        order_id: str | None,
-        stage: str | None,
-        limit: int,
-    ) -> Iterable[Item]:
-        with SessionLocal() as db:
-            q = db.query(Item)
-            if order_id:
-                q = q.filter(Item.order_id == order_id)
-            if stage:
-                q = q.filter(Item.cur_stage == stage)
-            return q.order_by(Item.id.asc()).limit(limit or 100).all()
+            result = StartProductionResult(
+                ord_id=ord_id,
+                item_id=new_item.item_id,
+                equip_task_txn_id=txn.txn_id,
+                message="Production started: RA1/MM task queued.",
+            )
+            logger.info(
+                "start_production_single: ord_id=%d item=%d txn=%d",
+                ord_id, new_item.item_id, txn.txn_id,
+            )
+            return result
+
+    def start_production_batch(
+        self, order_ids: Iterable[str]
+    ) -> list[StartProductionResult]:
+        """Legacy 다중 시작 (PyQt schedule 페이지 경로).
+
+        order_ids 각 원소를 int 변환 → start_production_single 반복.
+        변환 실패/존재하지 않음/패턴 미등록 시 해당 건 skip + warning.
+        """
+        results: list[StartProductionResult] = []
+        for raw in order_ids:
+            try:
+                parsed = int(str(raw).strip())
+            except ValueError:
+                logger.warning("start_production_batch: invalid order_id=%r skip", raw)
+                continue
+            try:
+                results.append(self.start_production_single(parsed))
+            except TaskManagerError as exc:
+                logger.warning(
+                    "start_production_batch: ord_id=%d skip reason=%s",
+                    parsed, exc,
+                )
+        return results

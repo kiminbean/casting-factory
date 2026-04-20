@@ -138,6 +138,30 @@ class ManagementClient:
                 f"Management {self.endpoint} unreachable: {exc.code()}"
             ) from exc
 
+    def start_production(self, ord_id: int):
+        """SPEC-C2 Iteration 3: smartcast v2 단건 생산 개시 proxy.
+
+        Returns: proto StartProductionResult (ord_id, item_id, equip_task_txn_id, message)
+        Raises:
+            ValueError — ord_id 무효 / 존재하지 않음 / 패턴 미등록 (gRPC INVALID_ARGUMENT)
+            ManagementUnavailable — Mgmt 미가동 또는 timeout
+        """
+        try:
+            self._ensure_channel()
+            assert self._stub is not None
+            resp = self._stub.StartProduction(
+                management_pb2.StartProductionRequest(ord_id=int(ord_id)),
+                timeout=self._timeout,
+            )
+        except grpc.RpcError as exc:
+            code = exc.code() if hasattr(exc, "code") else None
+            if code == grpc.StatusCode.INVALID_ARGUMENT:
+                raise ValueError(exc.details() or "invalid argument") from exc
+            raise ManagementUnavailable(
+                f"StartProduction failed ({code}): {exc.details() if hasattr(exc, 'details') else exc}"
+            ) from exc
+        return resp.result
+
     def close(self) -> None:
         if self._channel is not None:
             try:

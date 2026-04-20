@@ -86,16 +86,36 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
         # RobotExecutor 에 state_machine 주입
         self.robot_executor = RobotExecutor(state_machine=self.amr_state_machine)
 
-    # ---------- Task Manager ----------
+    # ---------- Task Manager (SPEC-C2 Iteration 3: dual-input) ----------
     def StartProduction(self, request, context):
-        try:
-            wos = self.task_manager.start_production(list(request.order_ids))
-        except ValueError as e:
+        """Dual-input StartProduction.
+
+        - ord_id > 0   → smartcast v2 단건 (Interface proxy) · result 필드 반환
+        - order_ids 비어있지 않음 → legacy PyQt 다중 · work_orders 리스트 반환 (호환)
+        - 둘 다 비어있음 → INVALID_ARGUMENT
+        """
+        # smartcast v2 단건 경로 우선
+        if request.ord_id and request.ord_id > 0:
+            try:
+                result = self.task_manager.start_production_single(request.ord_id)
+            except Exception as e:  # noqa: BLE001
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details(str(e))
+                return management_pb2.StartProductionResponse()
+            return management_pb2.StartProductionResponse(
+                result=_start_result_to_proto(result),
+            )
+
+        # legacy PyQt 다중 경로
+        order_ids = list(request.order_ids)
+        if not order_ids:
             context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-            context.set_details(str(e))
+            context.set_details("either ord_id or order_ids required")
             return management_pb2.StartProductionResponse()
 
-        proto_wos = [_work_order_to_proto(wo) for wo in wos]
+        results = self.task_manager.start_production_batch(order_ids)
+        # 레거시 호환: smartcast 결과를 WorkOrder shape 로 변환 (PyQt schedule 페이지 호환)
+        proto_wos = [_result_to_legacy_work_order(r) for r in results]
         return management_pb2.StartProductionResponse(work_orders=proto_wos)
 
     def ListItems(self, request, context):
@@ -416,16 +436,31 @@ def _item_to_proto(item):
     )
 
 
-def _work_order_to_proto(wo):
+def _start_result_to_proto(r):
+    """StartProductionResult dataclass → proto (SPEC-C2 신규 필드)."""
+    return management_pb2.StartProductionResult(
+        ord_id=r.ord_id,
+        item_id=r.item_id,
+        equip_task_txn_id=r.equip_task_txn_id,
+        message=r.message or "",
+    )
+
+
+def _result_to_legacy_work_order(r):
+    """smartcast start_production_single 결과 → legacy WorkOrder proto (PyQt 호환).
+
+    smartcast 에는 WorkOrder 엔티티가 없으므로 item_id 를 work_order.id 로 매핑,
+    pattern_id 는 빈 문자열 (PyQt UI 는 pattern_id 를 최소 표시만 사용).
+    """
     return management_pb2.WorkOrder(
-        id=wo.id,
-        order_id=wo.order_id or "",
-        pattern_id=wo.pattern_id or "",
-        qty=wo.qty or 0,
-        status=_WO_STATUS_TO_ENUM.get(wo.status or "QUE", 0),
-        plan_start=_ts(wo.plan_start),
-        act_start=_ts(wo.act_start),
-        act_end=_ts(wo.act_end),
+        id=r.item_id,                     # smartcast item_id 를 work_order id 로 매핑
+        order_id=str(r.ord_id),
+        pattern_id="",
+        qty=1,                            # smartcast 는 item 단건 생성
+        status=_WO_STATUS_TO_ENUM.get("QUE", 0),
+        plan_start=_ts(None),
+        act_start=_ts(None),
+        act_end=_ts(None),
     )
 
 
