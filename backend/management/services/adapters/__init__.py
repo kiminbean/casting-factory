@@ -1,12 +1,15 @@
-"""HW 통신 어댑터 묶음 (V6 아키텍처 통신 행렬 준수).
+"""HW 통신 어댑터 묶음 (V6 canonical 통신 행렬 준수).
 
-V6 결정 (2026-04-14):
-- Manufacturing / Stacking / Transport (RPi5/RPi4 ROS2 노드)  → ROS2 DDS  → ros2_adapter.py
-- HW Control Service (ESP32)                                    → MQTT       → mqtt_adapter.py
-- Image Publishing Service (Jetson)                             → gRPC streaming (별도 servicer)
+V6 canonical (2026-04-20 Phase D):
+- Manufacturing / Stacking / Transport (RPi5/RPi4 ROS2 노드) → ROS2 DDS            → ros2_adapter.py
+- HW Control Service (ESP32 컨베이어 등)                    → Jetson 경유 Serial  → jetson_relay_adapter.py
+- Image Publishing Service (Jetson)                         → gRPC streaming      → 별도 servicer
 
-@MX:ANCHOR: robot_id prefix 가 어댑터 선택의 단일 진실. AMR/ARM → ROS2, CONV/ESP → MQTT.
-@MX:REASON: V6 이미지의 화살표 색상(녹색 ROS2 / 파랑 MQTT) 1:1 매핑 보장.
+이전 (Phase D 이전):
+- ESP32 는 MQTT 로 직접 통신 → Phase D 에서 제거됨. canonical 이미지의 "HW Controller ↔ Vision Controller (Serial)" 화살표 준수.
+
+@MX:ANCHOR: robot_id prefix 가 어댑터 선택의 단일 진실. AMR/ARM → ROS2, CONV/ESP → jetson-serial.
+@MX:REASON: canonical 화살표 색상(녹색 ROS2 / 주황 TCP / 파랑 Serial) 1:1 매핑 보장.
 """
 from __future__ import annotations
 
@@ -29,7 +32,7 @@ def select_adapter(robot_id: str) -> str:
     """robot_id prefix → 어댑터 이름. 모르면 'unknown'."""
     rid = (robot_id or "").upper()
     if rid.startswith(("CONV-", "ESP-")):
-        return "mqtt"
+        return "jetson-serial"
     if rid.startswith(("AMR-", "ARM-")):
         return "ros2"
     return "unknown"

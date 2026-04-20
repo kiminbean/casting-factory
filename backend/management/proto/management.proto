@@ -266,6 +266,30 @@ service ManagementService {
 
   // Stage B — 카메라 프레임 server streaming (image_sink condvar 기반 push)
   rpc WatchCameraFrames(WatchFramesRequest) returns (stream CameraFrameResponse);
+
+  // V6 canonical Phase D: Jetson(Vision Controller) 가 Management 에서 ESP32 컨베이어 명령을 수신
+  // Jetson 은 로컬 EspBridge 로 Serial(115200) 을 통해 ESP32(HW Controller) 에 relay.
+  // Management → gRPC(TCP) → Jetson → Serial → ESP32. MQTT 경로는 Phase D 에서 제거됨.
+  rpc WatchConveyorCommands(WatchConveyorCommandsRequest) returns (stream ConveyorCommand);
+}
+
+// -----------------------------------------------------------------------------
+// Conveyor / ESP32 command relay (V6 canonical Phase D)
+// -----------------------------------------------------------------------------
+
+message WatchConveyorCommandsRequest {
+  string subscriber_id = 1;      // "jetson-orin-nx-01" 등 구독자 식별자 (옵션)
+  // 특정 robot_id 만 필터 (비워두면 전체 CONV-*/ESP-* 수신)
+  string robot_id_filter = 2;
+}
+
+message ConveyorCommand {
+  string    robot_id   = 1;      // "CONV-01", "ESP-BTN-01"
+  string    command    = 2;      // "RUN" | "STOP" | "PING" | "STATUS" | ...
+  bytes     payload    = 3;      // 명령 부가 JSON (옵션)
+  int32     item_id    = 4;      // 관련 item (없으면 0)
+  Timestamp issued_at  = 5;
+  string    issued_by  = 6;      // "management.robot_executor" 등 추적용
 }
 
 message WatchFramesRequest {
