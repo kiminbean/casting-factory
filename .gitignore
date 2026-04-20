@@ -83,3 +83,8 @@ firmware/**/build/
 
 # 로컬 DB 백업 — 추적 안 함 (용량 클 수 있음)
 backups/
+
+# OMC (oh-my-claudecode) workspace state — not versioned
+.omc/
+backend/.omc/
+backend/management/.omc/

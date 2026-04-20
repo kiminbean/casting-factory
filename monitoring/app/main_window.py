@@ -23,7 +23,6 @@ from PyQt5.QtWidgets import (
 )
 
 from app.api_client import ApiClient
-from app.mqtt_worker import MqttThread, MqttWorker, mqtt_enabled
 from app.pages.dashboard import DashboardPage
 from app.pages.logistics import LogisticsPage
 from app.pages.map import FactoryMapPage
@@ -32,7 +31,6 @@ from app.pages.production import ProductionPage
 from app.pages.quality import QualityPage
 from app.pages.schedule import SchedulePage
 from app.widgets.alert_widgets import ToastNotification, _normalize_level
-from app.ws_worker import WebSocketWorker
 from config import APP_NAME, APP_VERSION, AMR_POLL_INTERVAL, REFRESH_INTERVAL_MS
 
 
@@ -60,14 +58,11 @@ class MainWindow(QMainWindow):
         self.resize(1400, 900)
 
         self._api = ApiClient()
-        self._mqtt_worker: MqttWorker | None = None
-        self._mqtt_thread: MqttThread | None = None
         self._amr_thread = None
 
         self._build_ui()
         self._start_refresh_timer()
-        self._start_websocket()
-        self._start_mqtt()
+        self._start_alert_stream()
         self._start_amr_status()
 
     # ---------- UI ----------
@@ -165,12 +160,9 @@ class MainWindow(QMainWindow):
         )
         status.addPermanentWidget(self._clock_label)
 
-        self._ws_status_label = QLabel("WS: disconnected")
-        self._ws_status_label.setStyleSheet("color: #9ca3af; padding: 0 10px;")
-        status.addPermanentWidget(self._ws_status_label)
-        self._mqtt_status_label = QLabel("MQTT: disabled")
-        self._mqtt_status_label.setStyleSheet("color: #9ca3af; padding: 0 10px;")
-        status.addPermanentWidget(self._mqtt_status_label)
+        self._stream_status_label = QLabel("gRPC: ready")
+        self._stream_status_label.setStyleSheet("color: #9ca3af; padding: 0 10px;")
+        status.addPermanentWidget(self._stream_status_label)
 
         # 시계 타이머 (1초)
         self._clock_timer = QTimer(self)
@@ -243,25 +235,7 @@ class MainWindow(QMainWindow):
         finally:
             self._refreshing = False
 
-    # ---------- WebSocket (V6 Phase 8: 환경변수로 비활성화 가능) ----------
-    def _start_websocket(self) -> None:
-        # CASTING_WS_ENABLED=0 (기본 0) 이면 ws_worker 미기동.
-        # alerts/items 실시간은 gRPC stream(WatchAlerts/WatchItems) 로 대체.
-        import os as _os
-        if _os.environ.get("CASTING_WS_ENABLED", "0") not in ("1", "true", "yes"):
-            self._ws_status_label.setText("WS: V6 disabled (gRPC streaming 사용)")
-            self._start_alert_stream()
-            return
-        self._ws_thread = QThread()
-        self._ws_worker = WebSocketWorker()
-        self._ws_worker.moveToThread(self._ws_thread)
-        self._ws_thread.started.connect(self._ws_worker.run)
-        self._ws_worker.connection_state.connect(self._on_ws_state)
-        self._ws_worker.message_received.connect(self._on_ws_message)
-        self._ws_thread.start()
-        self._start_alert_stream()
-
-    # ---------- gRPC AlertStreamWorker (V6 Phase 8) ----------
+    # ---------- gRPC AlertStreamWorker (V6 canonical: Management 직결) ----------
     def _start_alert_stream(self) -> None:
         try:
             from app.workers.alert_stream_worker import AlertStreamWorker, AlertStreamThread
@@ -365,29 +339,6 @@ class MainWindow(QMainWindow):
             message=str(alert.get("message", "")),
         )
 
-    def _on_ws_state(self, connected: bool) -> None:
-        if connected:
-            self._ws_status_label.setText("WS: connected")
-            self._ws_status_label.setStyleSheet(
-                "color: #16a34a; font-weight: bold; padding: 0 10px;"
-            )
-        else:
-            self._ws_status_label.setText("WS: disconnected")
-            self._ws_status_label.setStyleSheet(
-                "color: #9ca3af; padding: 0 10px;"
-            )
-
-    def _on_ws_message(self, payload: dict[str, Any]) -> None:
-        # SPEC-AMR-001: handoff.ack 메시지는 페이지 무관 전역 처리 (토스트 + 상태바)
-        if payload.get("type") == "handoff.ack":
-            self._on_handoff_ack(payload)
-
-        # 현재 보이는 페이지에만 전달 (보이지 않는 페이지가 HTTP 재조회로 메인 스레드 막는 것 방지).
-        # 비가시 페이지의 데이터는 나중에 사용자가 해당 탭으로 이동할 때 타이머/초기 refresh 로 갱신됨.
-        page = self._stack.currentWidget()
-        if page is not None and hasattr(page, "handle_ws_message"):
-            page.handle_ws_message(payload)
-
     def _on_handoff_ack(self, payload: dict[str, Any]) -> None:
         """후처리존 인수인계 ACK 이벤트 — 상태바 메시지 + 로그.
 
@@ -409,46 +360,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, "statusBar"):
             self.statusBar().showMessage(msg, 8000)  # 8초 노출
 
-    # ---------- MQTT ----------
-    def _start_mqtt(self) -> None:
-        if not mqtt_enabled():
-            self._mqtt_status_label.setText("MQTT: disabled")
-            return
-        try:
-            self._mqtt_worker = MqttWorker()
-            self._mqtt_worker.connection_state.connect(self._on_mqtt_state)
-            self._mqtt_worker.message_received.connect(self._on_mqtt_message)
-            self._mqtt_thread = MqttThread(self._mqtt_worker)
-            self._mqtt_thread.start()
-            self._mqtt_status_label.setText("MQTT: connecting...")
-        except Exception as exc:  # noqa: BLE001
-            self._mqtt_status_label.setText(f"MQTT: error {exc}")
-
-    def _on_mqtt_state(self, connected: bool) -> None:
-        if connected:
-            self._mqtt_status_label.setText("MQTT: connected")
-            self._mqtt_status_label.setStyleSheet(
-                "color: #16a34a; font-weight: bold; padding: 0 10px;"
-            )
-        else:
-            self._mqtt_status_label.setText("MQTT: disconnected")
-            self._mqtt_status_label.setStyleSheet(
-                "color: #9ca3af; padding: 0 10px;"
-            )
-
-    def _on_mqtt_message(self, topic: str, payload: dict[str, Any]) -> None:
-        # 모든 페이지에 전달 (현재는 Dashboard만 처리)
-        for page in (
-            self._dashboard,
-            self._map,
-            self._production,
-            self._schedule,
-            self._quality,
-            self._logistics,
-        ):
-            if hasattr(page, "handle_mqtt_message"):
-                page.handle_mqtt_message(topic, payload)
-
     # ---------- AMR 실시간 배터리 (gRPC → Management Service) ----------
     def _start_amr_status(self) -> None:
         try:
@@ -469,17 +380,6 @@ class MainWindow(QMainWindow):
 
     # ---------- 종료 ----------
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
-        try:
-            self._ws_worker.stop()
-            self._ws_thread.quit()
-            self._ws_thread.wait(2000)
-        except Exception:  # noqa: BLE001
-            pass
-        if self._mqtt_thread is not None:
-            try:
-                self._mqtt_thread.shutdown()
-            except Exception:  # noqa: BLE001
-                pass
         if self._amr_thread is not None:
             try:
                 self._amr_thread.shutdown()
