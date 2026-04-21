@@ -45,6 +45,7 @@ from app.models.models import (
 from app.models.models_mgmt import (
     Alert,
     HandoffAck,
+    RfidScanLog,
     TransportTask,
 )
 
@@ -82,5 +83,6 @@ __all__ = [
     # SPEC-C3 legacy re-exports
     "Alert",
     "HandoffAck",
+    "RfidScanLog",
     "TransportTask",
 ]

@@ -88,6 +88,11 @@ class ManagementServiceStub(object):
                 request_serializer=management__pb2.HandoffAckEvent.SerializeToString,
                 response_deserializer=management__pb2.HandoffAckResponse.FromString,
                 _registered_method=True)
+        self.ReportRfidScan = channel.unary_unary(
+                '/casting.management.v1.ManagementService/ReportRfidScan',
+                request_serializer=management__pb2.RfidScanEvent.SerializeToString,
+                response_deserializer=management__pb2.RfidScanAck.FromString,
+                _registered_method=True)
         self.Health = channel.unary_unary(
                 '/casting.management.v1.ManagementService/Health',
                 request_serializer=management__pb2.Empty.SerializeToString,
@@ -180,6 +185,13 @@ class ManagementServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ReportRfidScan(self, request, context):
+        """SPEC-RFID-001 Wave 2: RFID 스캔 이벤트 저장 (item lookup 제외)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def Health(self, request, context):
         """Health
         """
@@ -255,6 +267,11 @@ def add_ManagementServiceServicer_to_server(servicer, server):
                     servicer.ReportHandoffAck,
                     request_deserializer=management__pb2.HandoffAckEvent.FromString,
                     response_serializer=management__pb2.HandoffAckResponse.SerializeToString,
+            ),
+            'ReportRfidScan': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReportRfidScan,
+                    request_deserializer=management__pb2.RfidScanEvent.FromString,
+                    response_serializer=management__pb2.RfidScanAck.SerializeToString,
             ),
             'Health': grpc.unary_unary_rpc_method_handler(
                     servicer.Health,
@@ -546,6 +563,33 @@ class ManagementService(object):
             '/casting.management.v1.ManagementService/ReportHandoffAck',
             management__pb2.HandoffAckEvent.SerializeToString,
             management__pb2.HandoffAckResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReportRfidScan(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/casting.management.v1.ManagementService/ReportRfidScan',
+            management__pb2.RfidScanEvent.SerializeToString,
+            management__pb2.RfidScanAck.FromString,
             options,
             channel_credentials,
             insecure,

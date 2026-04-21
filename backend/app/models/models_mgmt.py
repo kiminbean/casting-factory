@@ -1,4 +1,4 @@
-"""Management Service 전용 legacy public-schema 테이블 (SPEC-C3).
+"""Management Service 전용 legacy public-schema 테이블 (SPEC-C3 / RFID Wave 2).
 
 models_legacy.py 에서 필요한 3개 모델만 분리 import — 전체 import 시 legacy Item/Order 가
 smartcast Item/Ord 와 Base.metadata 에서 충돌하는 문제 회피.
@@ -6,6 +6,7 @@ smartcast Item/Ord 와 Base.metadata 에서 충돌하는 문제 회피.
 - Alert (public.alerts) — execution_monitor 의 SLA 타임아웃 기록
 - TransportTask (public.transport_tasks) — SPEC-AMR-001 이송 작업
 - HandoffAck (public.handoff_acks) — SPEC-AMR-001 후처리존 인수인계 이벤트
+- RfidScanLog (public.rfid_scan_log) — SPEC-RFID-001 RFID 스캔 append-only 로그
 
 향후 smartcast 로 완전 이관 시 (SPEC-C5 가칭) 본 파일 제거 예정.
 """
@@ -19,8 +20,10 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -92,5 +95,47 @@ class HandoffAck(Base):
     operator_id = Column(String, nullable=True)
     button_device_id = Column(String, nullable=True)
     orphan_ack = Column(Boolean, nullable=False, default=False)
+    idempotency_key = Column(String, nullable=True)
+    extra = Column("metadata", JSONB, nullable=True)     # 'metadata' 충돌 회피
+
+
+class RfidScanLog(Base):
+    """RFID 스캔 append-only 로그 (public.rfid_scan_log) — SPEC-RFID-001 Wave 2.
+
+    payload 파싱과 idempotency 만 저장하며, item lookup 은 현재 범위에서 제외한다.
+    DB migration 의 composite PK(hypertable 호환)를 ORM 에도 반영한다.
+    """
+
+    __tablename__ = "rfid_scan_log"
+    __table_args__ = (
+        Index(
+            "idx_rfid_scan_reader_time",
+            "reader_id",
+            text("scanned_at DESC"),
+        ),
+        Index(
+            "idx_rfid_scan_item_time",
+            "item_id",
+            text("scanned_at DESC"),
+            postgresql_where=text("item_id IS NOT NULL"),
+        ),
+        Index(
+            "idx_rfid_scan_idempotency",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+        {"schema": "public"},
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    scanned_at = Column(DateTime(timezone=True), primary_key=True, nullable=False, default=_utc_now, index=True)
+    reader_id = Column(String, nullable=False, index=True)
+    zone = Column(String, nullable=True)
+    raw_payload = Column(String, nullable=False)
+    ord_id = Column(String, nullable=True)
+    item_key = Column(String, nullable=True)
+    item_id = Column(BigInteger, nullable=True)
+    parse_status = Column(String, nullable=False)
     idempotency_key = Column(String, nullable=True)
     extra = Column("metadata", JSONB, nullable=True)     # 'metadata' 충돌 회피

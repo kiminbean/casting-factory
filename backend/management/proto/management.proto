@@ -275,6 +275,9 @@ service ManagementService {
   // SPEC-AMR-001: 후처리존 인수인계 버튼 이벤트 수신
   rpc ReportHandoffAck(HandoffAckEvent) returns (HandoffAckResponse);
 
+  // SPEC-RFID-001 Wave 2: RFID 스캔 이벤트 저장 (item lookup 제외)
+  rpc ReportRfidScan(RfidScanEvent) returns (RfidScanAck);
+
   // Health
   rpc Health(Empty) returns (Empty);
 
@@ -331,6 +334,27 @@ message HandoffAckResponse {
   string amr_id   = 3;  // 해제된 AMR ID (orphan 이면 빈 문자열)
   string reason   = 4;  // "released" | "orphan_no_waiting_task" | "duplicate" | "error"
   string ack_at   = 5;  // ISO8601 UTC
+}
+
+// -----------------------------------------------------------------------------
+// RFID Scan Logging (SPEC-RFID-001 Wave 2)
+// ESP32 RC522 → Jetson Serial bridge → Management. 현재 범위는 append-only 로그 저장 +
+// payload 파싱 + idempotency 이며, item lookup / item binding 은 제외.
+// -----------------------------------------------------------------------------
+
+message RfidScanEvent {
+  string    reader_id       = 1;   // "ESP-CONV-01" 등
+  string    zone            = 2;   // "conveyor_in" | "postprocessing" | ...
+  string    raw_payload     = 3;   // "order_1_item_20260417_1"
+  Timestamp scanned_at      = 4;
+  string    idempotency_key = 5;   // "ESP-CONV-01:1713600000000" 권장
+}
+
+message RfidScanAck {
+  bool   accepted     = 1;
+  int64  item_id      = 2;   // Wave 2 범위에서는 0 허용 (item lookup 미구현)
+  string parse_status = 3;   // "ok" | "bad_format" | "duplicate"
+  string reason       = 4;   // human-readable details
 }
 
 message CameraFrameResponse {

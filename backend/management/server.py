@@ -40,6 +40,7 @@ import management_pb2  # type: ignore  # noqa: E402
 import management_pb2_grpc  # type: ignore  # noqa: E402
 
 from services.task_manager import TaskManager  # noqa: E402
+from services.rfid_service import RfidService, RfidServiceError  # noqa: E402
 from services.task_allocator import TaskAllocator  # noqa: E402
 from services.traffic_manager import TrafficManager  # noqa: E402
 from services.robot_executor import RobotExecutor  # noqa: E402
@@ -69,6 +70,7 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
 
     def __init__(self) -> None:
         self.task_manager = TaskManager()
+        self.rfid_service = RfidService()
         self.task_allocator = TaskAllocator()
         self.traffic_manager = TrafficManager()
         # V6 AI 학습 데이터 브리지: Jetson → image_sink → forwarder → AI Server SSH 업로드
@@ -340,6 +342,28 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
             amr_id=target_amr or "",
             reason=reason,
             ack_at=now.isoformat(),
+        )
+
+    # ---------- RFID Scan Logging (SPEC-RFID-001 Wave 2) ----------
+    def ReportRfidScan(self, request, context):
+        try:
+            result = self.rfid_service.report_scan(
+                reader_id=request.reader_id,
+                zone=request.zone or None,
+                raw_payload=request.raw_payload,
+                scanned_at_iso=request.scanned_at.iso8601 or None,
+                idempotency_key=request.idempotency_key or None,
+            )
+        except RfidServiceError as exc:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(str(exc))
+            return management_pb2.RfidScanAck()
+
+        return management_pb2.RfidScanAck(
+            accepted=result.accepted,
+            item_id=result.item_id,
+            parse_status=result.parse_status,
+            reason=result.reason,
         )
 
     # ---------- Health ----------
