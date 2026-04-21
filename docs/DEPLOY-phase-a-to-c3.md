@@ -1,14 +1,15 @@
-# 배포 런북: V6 canonical 정합 (Phase A ~ SPEC-C3)
+# 배포 런북: V6 canonical 정합 (Phase A ~ SPEC-C3) + SPEC-RFID-001 Wave 2
 
 > 대상 브랜치: `feat/v6-phase-c2-proxy` (머지 대상 `main`)
-> 커밋 범위: 8개 · 2026-04-20 확정
-> 배포 영향: Interface (FastAPI) · Management (gRPC) · PyQt (monitoring) · Jetson Publisher
+> 커밋 범위: 8개 + SPEC-RFID-001 Wave 2 (2026-04-21, 작업 진행) · 2026-04-20 확정
+> 배포 영향: Interface (FastAPI) · Management (gRPC) · PyQt (monitoring) · Jetson Publisher · DB (신규 `rfid_scan_log`)
 
 ---
 
 ## 1. 커밋 이력
 
 ```
+(wip)    SPEC-RFID-001 Wave 2 · rfid_scan_log append-only + ReportRfidScan RPC (working tree)
 1c33ae4  SPEC-C3 · Management 기동 복구 + smartcast Item 매핑
 476e86b  Phase C-2 · smartcast TaskManager + Interface proxy (Option A backward-compat)
 3d42c0a  SPEC-C2 Iteration 2 합의안
@@ -155,6 +156,80 @@ grpcurl -plaintext -d '{"item_id":0,"robot_id":"CONV-01","command":"PING"}' \
 # ESP32 Serial 로 "PING\n" 전송 확인
 ```
 
+### 3.6 SPEC-RFID-001 Wave 2 (RFID append-only 로그)
+
+#### 3.6.1 DB migration 적용
+
+```bash
+# Interface/Management 호스트에서 (DATABASE_URL 환경변수 활성 상태)
+psql "$DATABASE_URL" -f backend/scripts/migrate_rfid_scan_log.sql
+# 기대 로그:
+#   CREATE TABLE / CREATE INDEX (idx_rfid_scan_reader_time, idx_rfid_scan_item_time, idx_rfid_scan_idempotency)
+#   NOTICE: SPEC-RFID-001: TimescaleDB hypertable 활성화  (확장 설치 시)
+#   NOTICE: SPEC-RFID-001: TimescaleDB 미설치 — 일반 테이블로 운영  (미설치 시)
+
+# 멱등성 검증: 재실행 해도 오류 없어야 함
+psql "$DATABASE_URL" -f backend/scripts/migrate_rfid_scan_log.sql
+```
+
+#### 3.6.2 proto 재컴파일 (이미 Mgmt 재시작 시 수행됨)
+
+`RfidScanEvent` / `RfidScanAck` / `ReportRfidScan` 이 `management_pb2*.py` 에 생성되어 있는지 재확인:
+
+```bash
+grep -n "RfidScanEvent\|ReportRfidScan" backend/management/management_pb2_grpc.py | head -4
+grep -n "RfidScanEvent\|ReportRfidScan" monitoring/app/generated/management_pb2_grpc.py | head -4
+grep -n "RfidScanEvent\|ReportRfidScan" jetson_publisher/generated/management_pb2_grpc.py | head -4
+# 각 파일에서 매치가 보여야 함
+```
+
+누락 시 재생성:
+- `backend/management/`: `cd backend/management && make proto`
+- `monitoring/app/generated/`: `bash monitoring/scripts/gen_proto.sh`
+- `jetson_publisher/generated/`: **별도 절차** — `jetson_publisher/README.md §prerequisites` 의 protoc 1.59.x venv 가이드 참조 (1.69+ 로 만들면 Jetson 에서 import 실패). 2026-04-21 기준 working tree 에서 이 stub 만 아직 재생성 전 상태로 확인됨 — Jetson 배포 직전 재컴파일 필요.
+
+#### 3.6.3 Smoke 테스트
+
+```bash
+# 유닛 테스트 (FakeSession)
+cd backend/management
+pytest tests/test_rfid_service.py -v
+# 5 케이스 (happy / bad_format / invalid_ts / duplicate_same / duplicate_conflict) PASS 기대
+
+# RPC smoke (Management :50051 기동 상태)
+grpcurl -plaintext -d '{
+  "reader_id": "ESP-CONV-01",
+  "zone": "conveyor_in",
+  "raw_payload": "order_1_item_20260417_1",
+  "scanned_at": {"iso8601": "2026-04-21T00:00:00Z"},
+  "idempotency_key": "ESP-CONV-01:smoke-1"
+}' localhost:50051 casting.management.v1.ManagementService/ReportRfidScan
+# 기대 응답:
+# {"accepted": true, "parseStatus": "ok", "reason": "parsed"}
+
+# 동일 idempotency_key 재전송 → parse_status=duplicate
+grpcurl -plaintext -d '{ ... "idempotency_key": "ESP-CONV-01:smoke-1" }' \
+  localhost:50051 casting.management.v1.ManagementService/ReportRfidScan
+# 기대: {"accepted": true, "parseStatus": "duplicate", ...}
+```
+
+#### 3.6.4 DB 확인
+
+```bash
+psql "$DATABASE_URL" -c "SELECT parse_status, count(*) FROM public.rfid_scan_log GROUP BY parse_status;"
+# smoke 1건이 ok, duplicate 중복이 차단되어 row 추가 안됨 확인
+```
+
+#### 3.6.5 Jetson 측 설정 (후속 배포)
+
+현재 Wave 2 범위는 **Management 측만**. Jetson 측 Serial → gRPC 브릿지는 별도 PR 로 분리 (SPEC 범위 외). Jetson 쪽에서 다음을 추가할 예정:
+
+```
+# jetson_publisher env 예정
+RFID_BRIDGE_ENABLED=1
+RFID_BRIDGE_PORT=/dev/ttyUSB1   # RC522 연결 ESP32 (컨베이어 ESP 와 별도 포트 권장)
+```
+
 ## 4. Feature flag 점진 활성화 (SPEC-C2 §6.2)
 
 ### 4.1 스테이징 (Staging · INTERFACE_PROXY_START_PRODUCTION=1)
@@ -222,6 +297,8 @@ ssh jetson-conveyor "sudo systemctl stop casting-image-publisher"
 | PyQt 기동 | `tail -f ~/casting-factory/monitoring/logs/*.log` | WS/MQTT 없음, gRPC stream 활성 |
 | Jetson relay | `ssh jetson-conveyor "journalctl -u casting-image-publisher -n 10"` | `CommandSubscriber` 스레드 로그 |
 | ESP32 컨베이어 | 물리 테스트 (ExecuteCommand CONV-01/RUN → 모터 회전) | 모터 기동 |
+| RFID 테이블 | `psql -c "\d+ public.rfid_scan_log"` | 3 인덱스 + composite PK(id, scanned_at) |
+| RFID RPC smoke | `grpcurl ... ReportRfidScan` (§3.6.3) | `parse_status=ok` 후 `parse_status=duplicate` |
 
 ## 7. 알려진 제약 (비차단)
 

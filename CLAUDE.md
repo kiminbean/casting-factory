@@ -171,13 +171,21 @@ When completing a task:
 운영/개발 모두 동일 PG (`100.107.120.14:5432 / smartcast_robotics`, role `team2`).
 DATABASE_URL 미설정 시 backend 가 fail-fast.
 
-**HW 통신 채널 (V6 어댑터 라우팅)**:
+**HW 통신 채널 (V6 canonical · Phase D-1/D-2 이후 2026-04-20)**:
 - AMR-* / ARM-* → ROS2 DDS (RPi5/RPi4 노드, `MGMT_ROS2_ENABLED=1` 시 활성)
-- CONV-* / ESP-* → MQTT `casting/esp/{id}/cmd` (ESP32 HW Control Service)
-- Image Publisher → gRPC streaming `ImagePublisherService/PublishFrames` (Jetson)
+- CONV-* / ESP-* → **Mgmt gRPC `WatchConveyorCommands` stream → Jetson Serial(115200) relay → ESP32** (MQTT 경로 제거)
+- Image Publisher → gRPC streaming `ImagePublisherService/PublishFrames` (Jetson → Mgmt client streaming)
+- RFID (SPEC-RFID-001 Wave 2) → RC522 → Jetson Serial → Mgmt `ReportRfidScan` unary → `public.rfid_scan_log` append-only
 
-**설계 문서**: `docs/management_service_design.md`
+**V6 Phase 상태 (2026-04-21)**:
+- Phase A (PyQt WS 제거) · B (ROS2 퍼블리셔 이관) · C-1 (Mgmt gRPC client + `/api/management/health`) · D-1/D-2 (MQTT 제거 + Jetson subscriber): ✅ 머지
+- SPEC-C2 (`INTERFACE_PROXY_START_PRODUCTION` flag, Option A backward-compat): ✅ 머지 `feat/v6-phase-c2-proxy`
+- SPEC-C3 (Mgmt 기동 복구 + `models_mgmt.py` 선별 import): ✅ 머지
+- SPEC-RFID-001 Wave 2 (`rfid_scan_log` + `ReportRfidScan` + `RfidService`): 🟡 진행 · working tree · item lookup 제외
+
+**설계 문서**: `docs/management_service_design.md` · 배포 런북: `docs/DEPLOY-phase-a-to-c3.md`
 **API 정의**: `backend/management/proto/management.proto`
+**SPEC 디렉터리**: `.moai/specs/SPEC-AMR-001/`, `.moai/specs/SPEC-RFID-001/`, `.moai/specs/SPEC-RC522-001/`, `docs/SPEC-C2-schema-migration.md`
 
 # Confluence Facts Index
 

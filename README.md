@@ -1,6 +1,6 @@
 # SmartCast Robotics — 주물공장 생산 관제 시스템
 
-> **Version**: v3.5.0 — SmartCast Robotics 랜딩 + 주문 파이프라인 6단계 + 원격 DB 이관
+> **Version**: v3.6.0 — V6 canonical 정합 (Phase A–SPEC-C3) · SPEC-RFID-001 Wave 2 append-only 로그
 
 주물(캐스팅) 스마트 공장의 실시간 생산 관제 시스템. 8단계 주물 공정(용해~분류) 모니터링, 주문 관리(접수~출고~완료), 품질 검사, 물류/이송, 3D 공장 맵을 통합 관리한다.
 
@@ -135,13 +135,15 @@ bash jetson_publisher/deploy.sh --install
 | 변수 | 위치 | 기본 | 설명 |
 |---|---|---|---|
 | `NEXT_PUBLIC_ADMIN_PASSWORD` | 루트 `.env.local` | — | 관리자 로그인 (프론트) |
-| `DATABASE_URL` | `backend/.env.local` | — | PostgreSQL (Interface + Management 공유) |
-| `INTERFACE_PROXY_START_PRODUCTION` | `backend/` env | `0` | **1 이면 `/api/production/start` 를 Mgmt gRPC 로 proxy** · 모듈 import 시점 고정, flip 시 FastAPI worker 재시작 필수 |
+| `DATABASE_URL` | `backend/.env.local` | — | PostgreSQL (Interface + Management 공유). 권장 옵션: `?options=-c%20search_path%3Dsmartcast%2Cpublic` |
+| `INTERFACE_PROXY_START_PRODUCTION` | `backend/` env | `0` | **1 이면 `/api/production/start` 를 Mgmt gRPC 로 proxy** · 모듈 import 시점 고정, flip 시 FastAPI worker 재시작 필수 (SPEC-C2) |
 | `MANAGEMENT_GRPC_HOST` / `PORT` | Interface + PyQt | `localhost:50051` | Management 엔드포인트 |
 | `MGMT_GRPC_TLS_ENABLED` | Management env | `0` | 1 이면 mTLS (`certs/` 필요) |
 | `MGMT_ROS2_ENABLED` | Management env | `0` | 1 + rclpy 설치 시 실 ROS2 publish (Ubuntu Jazzy) |
 | `FMS_AUTOPLAY` | Management env | `0` | 1 이면 FMS 자동 진행 시퀀서 기동 |
-| `MGMT_COMMAND_STREAM_ENABLED` | Jetson env | `0` | 1 이면 `WatchConveyorCommands` 구독 (ESP32 Serial relay) |
+| `MGMT_COMMAND_STREAM_ENABLED` | Jetson env | `0` | 1 이면 `WatchConveyorCommands` 구독 (ESP32 Serial relay, Phase D-2) |
+| `MGMT_COMMAND_SUBSCRIBER_ID` | Jetson env | `jetson-orin-nx-01` | `WatchConveyorCommands` 구독자 식별자 |
+| `ESP_BRIDGE_ENABLED` / `ESP_BRIDGE_PORT` | Jetson env | `0` / `/dev/ttyUSB0` | Jetson → ESP32 Serial relay |
 | `CASTING_API_HOST` / `PORT` | PyQt | `192.168.0.16:8000` | FastAPI legacy 호출 (Phase A-2 에서 제거 예정) |
 
 ---
@@ -157,8 +159,10 @@ bash jetson_publisher/deploy.sh --install
 │  REST 31 + /api/management/health (gRPC proxy)            │
 ├──────────────────────────────────────────────────────────┤
 │  Management Service (gRPC + proto)  [:50051]              │  python server.py
-│  StartProduction · WatchItems · WatchAlerts · WatchCamera │
-│  WatchConveyorCommands · GetRobotStatus · Traffic · FMS   │
+│  StartProduction · ListItems · WatchItems · WatchAlerts   │
+│  WatchCameraFrames · WatchConveyorCommands (ESP32 relay)  │
+│  GetRobotStatus · TransitionAmrState · PlanRoute          │
+│  ReportHandoffAck (SPEC-AMR-001) · ReportRfidScan (RFID)  │
 ├──────────────────────────────────────────────────────────┤
 │  DB Server (PostgreSQL 16 + TimescaleDB)                  │  Tailscale
 │  100.107.120.14:5432 · smartcast_robotics                 │
@@ -225,8 +229,9 @@ casting-factory/
 │   ├── app/                # main.py, database.py, models/, schemas/, routes/, seed.py
 │   ├── scripts/            # DB 마이그레이션 SQL
 │   └── .env.local          # DATABASE_URL (gitignored)
-├── monitoring/             # PyQt5 관제 모니터링 데스크톱 앱
-├── firmware/               # ESP32 컨베이어 컨트롤러 (v4.0 MQTT)
+├── monitoring/             # PyQt5 관제 모니터링 데스크톱 앱 (gRPC 직결)
+├── jetson_publisher/       # Jetson Orin NX (이미지 publish + ESP32 Serial relay)
+├── firmware/               # ESP32 컨베이어 컨트롤러 (v5 Serial · MQTT 제거)
 ├── scripts/                # sync_confluence_facts.py (launchd 자동 동기화)
 ├── blender/                # 3D 에셋 (Blender 스크립트, CAD 파일)
 ├── public/                 # 정적 파일 (factory-map2.glb)
@@ -268,6 +273,20 @@ casting-factory/
 | WS | `/ws/dashboard` | 실시간 WebSocket |
 
 전체 31개 엔드포인트 → [.moai/project/codemaps/entry-points.md](.moai/project/codemaps/entry-points.md)
+
+## 주요 SPEC 이력
+
+| SPEC | 상태 | 요약 |
+|---|---|---|
+| **V6 canonical Phase A–D** | ✅ 머지 (2026-04-20) | PyQt WebSocket 제거 · ROS2 publisher → Management · Mgmt gRPC client · MQTT 제거 · Jetson subscriber + EspBridge |
+| **SPEC-C2** | ✅ 머지 (Option A backward-compat) | Management TaskManager smartcast v2 이관 + Interface `/api/production/start` proxy 전환. `INTERFACE_PROXY_START_PRODUCTION` 플래그 |
+| **SPEC-C3** | ✅ 머지 | Management 기동 복구 + smartcast Item 매핑. `models_mgmt.py` 로 legacy public-schema 3개 테이블 선별 re-export |
+| **SPEC-AMR-001** | ✅ 머지 | ESP32 버튼 → Jetson → `ReportHandoffAck` gRPC → AMR FSM 해제 (Wave 1–4) |
+| **SPEC-RFID-001 Wave 2** | 🟡 구현 진행 | RC522 → Jetson Serial → `ReportRfidScan` gRPC → `rfid_scan_log` append-only (item lookup 제외). [.moai/specs/SPEC-RFID-001/spec.md](.moai/specs/SPEC-RFID-001/spec.md) |
+| **SPEC-RC522-001** | ✅ 머지 PR #2 | RC522 펌웨어 안정성 회귀 스위트. [docs/testing/rc522_regression_checklist.md](docs/testing/rc522_regression_checklist.md) |
+
+배포 런북 → [docs/DEPLOY-phase-a-to-c3.md](docs/DEPLOY-phase-a-to-c3.md)
+Management 설계 → [docs/management_service_design.md](docs/management_service_design.md)
 
 ## 라이선스
 

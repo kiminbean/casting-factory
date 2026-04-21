@@ -1,6 +1,11 @@
 # 설치 가이드 — 다른 PC 에서 프론트엔드 + 백엔드 실행
 
-> 이 문서는 개발 환경 기준입니다. 프로덕션 배포는 별도 문서화가 필요합니다.
+> 이 문서는 개발 환경 기준입니다. 프로덕션 배포는 [docs/DEPLOY-phase-a-to-c3.md](DEPLOY-phase-a-to-c3.md) 참조.
+>
+> 본 가이드는 **Next.js + FastAPI Interface Service** 설치까지 다룹니다. 추가 컴포넌트:
+> - **Management Service (gRPC :50051)**: PyQt 실시간 스트림/생산 시작에 필수 → [README.md §4](../README.md#4-백엔드--management-service-grpc-50051)
+> - **PyQt 관제 모니터링**: Factory Operator PC → [README.md §5](../README.md#5-pyqt-관제-모니터링-factory-operator-pc)
+> - **Jetson Orin NX**: 이미지 publishing + ESP32 Serial relay → [jetson_publisher/README.md](../jetson_publisher/README.md)
 
 ## 사전 요구 사항
 
@@ -10,7 +15,7 @@
 |---|---|---|---|
 | **Node.js** | 20 이상 (v23 권장) | https://nodejs.org 또는 `brew install node` | `node -v` |
 | **npm** | 10 이상 | Node.js 에 포함 | `npm -v` |
-| **Python** | 3.11 이상 | https://python.org 또는 `brew install python` | `python3 --version` |
+| **Python** | **3.12 권장** (3.11+ 허용, macOS Apple Silicon 에서 PyQt5/grpcio 는 3.14 휠 없음) | https://python.org 또는 `brew install python@3.12` | `python3.12 --version` |
 | **Git** | 2.x | OS 기본 설치 또는 https://git-scm.com | `git --version` |
 | **Tailscale** | 최신 | https://tailscale.com/download | `tailscale status` |
 
@@ -112,14 +117,17 @@ pip install -r requirements.txt
 ```bash
 cat > .env.local << 'EOF'
 # PostgreSQL 원격 DB 서버 (Tailscale VPN)
-# 비밀번호는 프로젝트 관리자에게 문의하세요
-DATABASE_URL=postgresql+psycopg://team2:<비밀번호>@100.107.120.14:5432/smartcast_robotics
+# 비밀번호는 프로젝트 관리자에게 문의하세요.
+# search_path 는 smartcast v2 스키마 우선 탐색을 위해 권장.
+DATABASE_URL=postgresql+psycopg://team2:<비밀번호>@100.107.120.14:5432/smartcast_robotics?options=-c%20search_path%3Dsmartcast%2Cpublic
 EOF
 ```
 
 **`<비밀번호>` 를 실제 값으로 교체**해야 합니다. 비밀번호는 프로젝트 관리자(kisoo)에게 문의하세요.
 
 > *.env.local* 은 `.gitignore` 에 의해 git 추적에서 제외됩니다. **절대 비밀번호를 git 에 커밋하지 마세요.**
+
+> **DB 정책 (2026-04-14 이후)**: PostgreSQL 16 + TimescaleDB **단독**. SQLite 폴백은 backend 코드에서 완전 제거되었습니다. `DATABASE_URL` 미설정 시 fail-fast. smartcast v2 스키마(27 테이블, Confluence 32342045 v59) + `public` 스키마의 legacy 3개 테이블(alerts, handoff_acks, transport_tasks, rfid_scan_log) 혼용.
 
 ### 백엔드 실행
 
@@ -269,7 +277,11 @@ casting-factory/
 
 | 변수 | 예시 | 설명 |
 |---|---|---|
-| `DATABASE_URL` | `postgresql+psycopg://team2:<pw>@100.107.120.14:5432/smartcast_robotics` | PostgreSQL 접속 문자열. 미설정 시 SQLite 로컬 DB 폴백 |
+| `DATABASE_URL` | `postgresql+psycopg://team2:<pw>@100.107.120.14:5432/smartcast_robotics?options=-c%20search_path%3Dsmartcast%2Cpublic` | PostgreSQL 접속 문자열. **미설정 시 fail-fast** (SQLite 폴백 제거됨) |
+| `INTERFACE_PROXY_START_PRODUCTION` | `0` | 1 이면 `/api/production/start` 를 Management gRPC proxy 로 라우팅 (SPEC-C2). 모듈 import 시점 고정 — flip 시 uvicorn 전체 재시작 필요 |
+| `MANAGEMENT_GRPC_HOST` / `PORT` | `localhost` / `50051` | Management Service(gRPC) 엔드포인트 |
+
+> Management Service(`:50051`) · PyQt monitoring · Jetson publisher 환경변수는 [README.md](../README.md#8-환경변수-요약) 및 [docs/DEPLOY-phase-a-to-c3.md](DEPLOY-phase-a-to-c3.md) 참조.
 
 ---
 
