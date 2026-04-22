@@ -1,9 +1,18 @@
 /*
  * Conveyor Belt Controller v5.0 — Serial Bridge (V6 Architecture)
- * Firmware tag: 1.5.0 (2026-04-17 NDEF Text 파서 추가)
+ * Firmware tag: 1.5.1 (2026-04-22 확인 · SPEC-AMR-001 Wave 3 handoff 버튼 포함)
  * Base: conveyor_controller v4.0.0 (성숙한 TOF 센서 로직·anti-crosstalk 재사용)
  *
- * 1.5.0 추가사항:
+ * 1.5.1 확인사항 (2026-04-22):
+ *   - RFID-RC522 카드 감지 실패 원인 제거 (주기 VersionReg healthcheck 삭제).
+ *   - SPEC-AMR-001 Wave 3: 후처리존 A접점 푸시 버튼 (GPIO 33, INPUT_PULLUP)
+ *     이미 포함. 버튼 rising edge (뗀 순간) 에서 `HANDOFF_ACK` 토큰 +
+ *     {"event":"handoff_ack","zone":"postprocessing",...} JSON 이벤트 발행.
+ *     Jetson bridge (jetson_publisher/esp_bridge.py) 가 파싱해
+ *     Management gRPC `ReportHandoffAck` 로 전달, public.handoff_acks 에 INSERT.
+ *     디바운스 50ms + 연타 병합 500ms.
+ *
+ * 1.5.0 (2026-04-17):
  *   - RFID-RC522 가 UID 외에 NDEF Text 레코드도 파싱하여 JSON 이벤트에 포함.
  *     페이지 4~15 (48 바이트) 에서 Text Record 감지 → UTF-8 텍스트 추출.
  *     논블로킹 (delay 사용 X), 실패해도 UID 이벤트는 항상 발행.

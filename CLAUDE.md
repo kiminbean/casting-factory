@@ -171,12 +171,13 @@ When completing a task:
 운영/개발 모두 동일 PG (`100.107.120.14:5432 / smartcast_robotics`, role `team2`).
 DATABASE_URL 미설정 시 backend 가 fail-fast.
 
-**HW 통신 채널 (V6 canonical · Phase D-1/D-2 이후 2026-04-20 · 2026-04-22 바코드 추가)**:
+**HW 통신 채널 (V6 canonical · Phase D-1/D-2 이후 2026-04-20 · 2026-04-22 바코드·Handoff 버튼 추가)**:
 - AMR-* / ARM-* → ROS2 DDS (RPi5/RPi4 노드, `MGMT_ROS2_ENABLED=1` 시 활성)
 - CONV-* / ESP-* → **Mgmt gRPC `WatchConveyorCommands` stream → Jetson Serial(115200) relay → ESP32** (MQTT 경로 제거)
 - Image Publisher → gRPC streaming `ImagePublisherService/PublishFrames` (Jetson → Mgmt client streaming)
 - RFID (SPEC-RFID-001 Wave 2) → RC522 → Jetson Serial → Mgmt `ReportRfidScan` unary → `public.rfid_scan_log` append-only
 - **Barcode (Code128 HID · 2026-04-22)** → 리더 `0483:0011` 저가 1D 레이저 → Jetson `/dev/input/event5` (HID Keyboard Boot) → `tools/barcode_live_ingest.py` (python-evdev) → Mgmt **동일** `ReportRfidScan` unary (reader_id=`BARCODE-JETSON-01`) → `public.rfid_scan_log` 공용. RfidService 무수정 재사용.
+- **Handoff Button (SPEC-AMR-001 Wave 3 · 2026-04-22 배포)** → ESP32 GPIO 33 A접점 (INPUT_PULLUP) → firmware `pollHandoffButton()` rising edge → Serial `HANDOFF_ACK` 토큰 + JSON → Jetson `jetson_publisher/esp_bridge.py` (지수 백오프 1~60s, 32 이벤트 버퍼) → Mgmt `ReportHandoffAck` unary → `public.handoff_acks` INSERT + `public.transport_tasks.status='handoff_complete'` + AMR FSM `AT_DESTINATION/UNLOADING → UNLOAD_COMPLETED`
 
 **V6 Phase 상태 (2026-04-22)**:
 - Phase A (PyQt WS 제거) · B (ROS2 퍼블리셔 이관) · C-1 (Mgmt gRPC client + `/api/management/health`) · D-1/D-2 (MQTT 제거 + Jetson subscriber): ✅ 머지
@@ -184,6 +185,7 @@ DATABASE_URL 미설정 시 backend 가 fail-fast.
 - SPEC-C3 (Mgmt 기동 복구 + `models_mgmt.py` 선별 import): ✅ 머지
 - SPEC-RFID-001 Wave 2 (`rfid_scan_log` + `ReportRfidScan` + `RfidService`): 🟡 진행 · working tree · item lookup 제외
 - **Barcode 경로 검증 (2026-04-22)**: 🟢 실측 완료 · 50회 벤치마크 100%/45ms · live ingest 5 row INSERT 검증 · Confluence 30539816 v12 반영 · 2 커밋 로컬 (`9cfe1a9 feat(tools)`, `76dce3f docs(interface)`) push 대기
+- **SPEC-AMR-001 Wave 3 Handoff Button (2026-04-22 배포 완료)**: 🟢 ESP32 v1.5.1 firmware 포함 (tag 1.5.1, GPIO 33 + pollHandoffButton + emitHandoffAck) · Jetson `jetson_publisher/` 전체 배포 · pb2 Jetson 자체 재생성 (protobuf 4.25.9 매칭) · 가상 버튼 orphan/full 시나리오 DB 검증 (handoff_acks row 12/13, transport_tasks status=handoff_complete, FSM UNLOAD_COMPLETED) · Confluence 40042733 v2 반영 · **실물 ESP32 USB 연결 + 물리 버튼 push** 단계만 남음
 
 **설계 문서**: `docs/management_service_design.md` · 배포 런북: `docs/DEPLOY-phase-a-to-c3.md` · **Barcode 핸드오프: `docs/barcode_jetson_ready.md`**
 **API 정의**: `backend/management/proto/management.proto`
