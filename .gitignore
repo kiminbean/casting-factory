@@ -88,3 +88,9 @@ backups/
 .omc/
 backend/.omc/
 backend/management/.omc/
+.omx/
+
+# 바코드 테스트 산물 (바이너리·실측 로그) — 추적 안 함
+tools/barcodes_out/
+tools/barcodes_out_code39/
+tools/barcode_bench_out/
