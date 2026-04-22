@@ -221,3 +221,89 @@ d642d22e9f90a7183e3d46bc73e253f0a815343e85ab769ea0f92f984805850d  barcode_probe.
 - 진행 로그: `.omc/progress.txt`
 - 도구 체인: `tools/barcode_*.py`
 - 인쇄물 원본: `tools/barcodes_out/*.png`
+
+---
+
+## 8. 실측 결과 (2026-04-22 — 사용자 수동 단계 완료 후)
+
+### 8.1 권한 해결 (§1 실행 결과)
+- 사용자가 `sudo usermod -aG input jetson` + 새 SSH 세션 적용 → `id -a` 에 `101(input)` 추가 확인
+- `evdev.InputDevice()` 정상 open: `OK name= "USB Adapter USB Device" phys= usb-3610000.xhci-2.3/input0`
+
+### 8.2 단일 스캔 프리체크 (probe)
+```json
+{
+  "ts": "2026-04-22T12:02:25+0900",
+  "text": "order_1_item_20260417_1",
+  "latency_ms": 45,
+  "raw": ["KEY_O","KEY_R","KEY_D","KEY_E","KEY_R",
+          "KEY_LEFTSHIFT","KEY_MINUS","KEY_1", ...]
+}
+```
+- 27 key 이벤트 → 23자 페이로드 정상 디코딩 (45ms)
+
+### 8.3 인쇄 품질 블로커 발견·해결
+- 초기 `gen_test_barcodes.py` (기본 `module_width=0.2mm`) 인쇄물은 리더가 디코딩 실패 (beep 없음, 0 HID 이벤트)
+- 상품 바코드 (EAN-13) 도 리더 내부 설정 고착으로 실패 → **USB 전원 사이클링** 으로 복구 (기동 beep 확인)
+- `ImageWriter` 옵션 명시 수정 (`module_width=0.4`, `quiet_zone=10`, `dpi=300`, `module_height=20`) → PNG 840×190 → **1492×348 px** 확대
+- 재인쇄 후 즉시 디코딩 성공
+
+### 8.4 50회 벤치마크 결과
+
+| 지표 | 기준 | 실측 | 결과 |
+|---|---|---|---|
+| accuracy_pct | ≥ 99% | **100.0%** (50/50) | ✅ |
+| avg_latency_ms | < 500 | **45.0** | ✅ |
+| max_latency_ms | < 1500 | **46** | ✅ |
+| failures | 0 | **0** | ✅ |
+
+리포트: `tools/barcode_bench_out/result_20260422T030428Z.json` (로컬 Mac + Jetson 양쪽)
+
+로그의 "MISS" 48건은 스크립트 엄격 순서 비교(`text == expected_at_index`) 때문이며 실패 아님 — `summary.matches=50` 이 실제 정확도. 사용자 스캔 패턴은 역순 `order_5→4→3→2→1` 각 9~11회 연속.
+
+### 8.5 Live Ingest DB 적재 검증 (`tools/barcode_live_ingest.py`)
+
+추가 구현: Jetson 데몬이 스캔마다 gRPC `ReportRfidScan` 호출 → `public.rfid_scan_log` INSERT.
+
+- 연결: Jetson → Tailscale `100.77.239.25:50051` (Mac Management)
+- 기반 스택: grpcio 1.59.5 + protobuf 4.25.9 (Jetson 자체 `grpcio-tools` 로 pb2 재생성 필수 — Mac 의 protoc 6.31 gencode 는 Jetson protobuf 5.29 에 호환 불가)
+- 5회 스캔 INSERT 검증:
+
+| # | scanned_at (KST) | raw_payload | parse | ord_id | item_key | idempotency_key |
+|---|---|---|---|---|---|---|
+| 1 | 12:20:40 | `order_1_item_20260417_1` | ok | 1 | 20260417_1 | `BARCODE-JETSON-01:1776828040341` |
+| 2 | 12:20:41 | `order_2_item_20260417_2` | ok | 2 | 20260417_2 | `...041809` |
+| 3 | 12:20:43 | `order_3_item_20260417_3` | ok | 3 | 20260417_3 | `...043093` |
+| 4 | 12:20:44 | `order_4_item_20260417_4` | ok | 4 | 20260417_4 | `...044301` |
+| 5 | 12:20:46 | `order_5_item_20260417_5` | ok | 5 | 20260417_5 | `...046057` |
+
+- `rfid_scan_log` total: 3 → 8 (+5 바코드)
+- `reader_id=BARCODE-JETSON-01` · `zone=conveyor_in` · RfidService 코드 변경 없음
+
+### 8.6 DBeaver 확인 쿼리
+
+```sql
+SELECT scanned_at AT TIME ZONE 'Asia/Seoul' AS kst,
+       reader_id, raw_payload, parse_status, ord_id, item_key
+  FROM public.rfid_scan_log
+ WHERE reader_id LIKE 'BARCODE-%'
+ ORDER BY scanned_at DESC
+ LIMIT 20;
+```
+
+(연결: `100.107.120.14:5432 / smartcast_robotics / team2` — 기존 DB 그대로, 바코드 전용 테이블 없음)
+
+### 8.7 Confluence 반영
+- page **30539816 v11 → v12** 업데이트 완료 (실험 2 섹션 실측 수치 반영)
+- 제목: `[실험]RFID / 바코드 통신 및 UID 추출 실험`
+- 비교 표 최종: RFID 99%/100~300ms vs **바코드 100%/45ms** (정확도·latency·표준편차 모두 우수, 단 인쇄 민감도 높음)
+
+### 8.8 로컬 커밋 (push 대기)
+- `9cfe1a9 feat(tools): 바코드 테스트 하네스 + Management gRPC 실시간 적재` (9 files, +1603)
+- `76dce3f docs(interface): Interface Service 내부 구조·치트시트·룰 설명 + PyQt 버튼 구현 계획` (4 files, +1969, 어제 세션 정리)
+
+### 8.9 미완료 / 후속 작업
+- Jetson live ingest 데몬이 백그라운드 실행 중 (정리: `ssh jetson-conveyor "pkill -f barcode_live_ingest"`)
+- systemd 서비스 등록 (운영 배포 단계)
+- reader_id 네이밍 정책 (zone 별 `BARCODE-CONV-01` / `BARCODE-POST-01` 등)
+- SPEC-RFID-001 에 barcode 경로 공식 편입 여부 결정
