@@ -80,13 +80,15 @@ class AmrStatusCard(QFrame):
       - 배터리 프로그레스 바
       - 속도, 위치
       - 현재 작업 ID + 적재 물품
-      - 다음 상태 전이 버튼
+      - 다음 상태 전이 버튼 + 수리 완료 버튼
 
     Signals:
       transition_requested(str, int): (robot_id, new_state_enum) 전이 요청
+      repair_requested(str): (robot_id) 수리 완료 요청
     """
 
     transition_requested = pyqtSignal(str, int)
+    repair_requested = pyqtSignal(str)
 
     def __init__(self, amr_id: str = "-") -> None:
         super().__init__()
@@ -156,7 +158,10 @@ class AmrStatusCard(QFrame):
         self._task_label.setWordWrap(True)
         layout.addWidget(self._task_label)
 
-        # 다음 상태 버튼
+        # 다음 상태 버튼 + 수리 완료 버튼 (가로 배치)
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(6)
+
         self._next_btn = QPushButton("출발")
         self._next_btn.setFixedHeight(28)
         self._next_btn.setCursor(Qt.PointingHandCursor)
@@ -168,7 +173,21 @@ class AmrStatusCard(QFrame):
             "QPushButton:disabled { background-color: #9ca3af; color: #d1d5db; }"
         )
         self._next_btn.clicked.connect(self._on_next_clicked)
-        layout.addWidget(self._next_btn)
+        btn_row.addWidget(self._next_btn, stretch=3)
+
+        self._repair_btn = QPushButton("수리 완료")
+        self._repair_btn.setFixedHeight(28)
+        self._repair_btn.setCursor(Qt.PointingHandCursor)
+        self._repair_btn.setStyleSheet(
+            "QPushButton { background-color: #f59e0b; color: white; "
+            "font-weight: 600; font-size: 11px; border: none; "
+            "border-radius: 6px; padding: 4px 12px; } "
+            "QPushButton:hover { background-color: #d97706; }"
+        )
+        self._repair_btn.clicked.connect(self._on_repair_clicked)
+        btn_row.addWidget(self._repair_btn, stretch=2)
+
+        layout.addLayout(btn_row)
 
         self.update_from_dict({"id": amr_id})
 
@@ -193,6 +212,9 @@ class AmrStatusCard(QFrame):
         next_info = _NEXT_STATE.get(self._current_task_state)
         if next_info:
             self.transition_requested.emit(self._amr_id, next_info[0])
+
+    def _on_repair_clicked(self) -> None:
+        self.repair_requested.emit(self._amr_id)
 
     def update_from_dict(self, data: dict[str, Any]) -> None:
         amr_id = str(data.get("id", "-"))
