@@ -41,7 +41,7 @@ _NEXT_STATE: dict[int, tuple[int, str]] = {
     7:  (8,  "하차"),        # AT_DESTINATION → UNLOADING
     8:  (9,  "하차 완료"),   # UNLOADING → UNLOAD_COMPLETED
     9:  (1,  "완료"),        # UNLOAD_COMPLETED → IDLE
-    10: (1,  "리셋"),        # FAILED → IDLE
+    10: (1,  "수리 완료"),   # FAILED → IDLE
 }
 
 # fallback: connectivity status (online/offline) 용
@@ -224,6 +224,23 @@ class AmrStatusCard(QFrame):
         if next_info:
             self._next_btn.setText(f">> {next_info[1]}")
             self._next_btn.setEnabled(True)
+            # 수리 완료 버튼 스타일 (FAIL → IDLE, 주황색)
+            if self._current_task_state == 10:
+                self._next_btn.setStyleSheet(
+                    "QPushButton { background-color: #f59e0b; color: white; "
+                    "font-weight: 600; font-size: 11px; border: none; "
+                    "border-radius: 6px; padding: 4px 12px; } "
+                    "QPushButton:hover { background-color: #d97706; } "
+                    "QPushButton:disabled { background-color: #9ca3af; color: #d1d5db; }"
+                )
+            else:
+                self._next_btn.setStyleSheet(
+                    "QPushButton { background-color: #2563eb; color: white; "
+                    "font-weight: 600; font-size: 11px; border: none; "
+                    "border-radius: 6px; padding: 4px 12px; } "
+                    "QPushButton:hover { background-color: #1d4ed8; } "
+                    "QPushButton:disabled { background-color: #9ca3af; color: #d1d5db; }"
+                )
         else:
             self._next_btn.setText("-")
             self._next_btn.setEnabled(False)

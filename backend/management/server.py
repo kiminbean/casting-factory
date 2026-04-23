@@ -219,6 +219,8 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
                 accepted=False,
                 reason=f"invalid_state: {request.new_state}",
             )
+        # 수리 전 상태 확인 (FAILED → IDLE 전이 시 DB 동기화용)
+        prev_state = self.amr_state_machine.get(request.robot_id).state
         ok = self.amr_state_machine.transition(
             robot_id=request.robot_id,
             new_state=new_state,
@@ -226,6 +228,9 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
             loaded_item=request.loaded_item or None,
         )
         if ok:
+            # 수리 완료(FAILED → IDLE) 시 DB transport_tasks 동기화
+            if prev_state == TaskState.FAILED and new_state == TaskState.IDLE:
+                self._sync_repair_to_db(request.robot_id)
             return management_pb2.TransitionAmrStateResponse(
                 accepted=True,
                 reason=f"{request.robot_id} → {new_state.name}",
@@ -235,6 +240,34 @@ class ManagementServicer(management_pb2_grpc.ManagementServiceServicer):
             accepted=False,
             reason=f"invalid_transition: {ctx.state.name} → {new_state.name}",
         )
+
+    def _sync_repair_to_db(self, robot_id: str) -> None:
+        """수리 완료 시 DB transport_tasks 의 failed 작업을 completed 로 변경."""
+        from datetime import datetime, timezone
+        from app.database import SessionLocal
+        from app.models import TransportTask
+
+        now = datetime.now(timezone.utc)
+        db = SessionLocal()
+        try:
+            failed_tasks = db.query(TransportTask).filter(
+                TransportTask.assigned_robot_id == robot_id,
+                TransportTask.status == "failed",
+            ).all()
+            for task in failed_tasks:
+                task.status = "completed"
+                task.completed_at = now.isoformat()
+            db.commit()
+            if failed_tasks:
+                logger.info(
+                    "수리 완료 DB 동기화: %s 실패 작업 %d건 → completed",
+                    robot_id, len(failed_tasks),
+                )
+        except Exception:
+            logger.exception("수리 완료 DB 업데이트 실패: %s", robot_id)
+            db.rollback()
+        finally:
+            db.close()
 
     # ---------- Handoff ACK (SPEC-AMR-001) ----------
     def ReportHandoffAck(self, request, context):

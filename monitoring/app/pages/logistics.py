@@ -280,6 +280,20 @@ class LogisticsPage(QWidget):
 
     def _on_amr_transition(self, robot_id: str, new_state: int) -> None:
         """AMR 카드 버튼 클릭 → gRPC TransitionAmrState 호출."""
+        # 수리 완료(FAILED → IDLE) 시 확인 다이얼로그
+        if new_state == 1:  # TaskState.IDLE
+            card = self._amr_cards.get(robot_id)
+            if card and getattr(card, "_current_task_state", 0) == 10:  # FAILED
+                reply = QMessageBox.question(
+                    self,
+                    "수리 완료 확인",
+                    f"<b>{robot_id}</b>의 수리가 완료되었습니까?<br>"
+                    "상태가 <b>대기(IDLE)</b>로 전환되고 DB에 반영됩니다.",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if reply != QMessageBox.Yes:
+                    return
         try:
             from app.management_client import ManagementClient
             client = ManagementClient()
